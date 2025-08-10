@@ -1,8 +1,8 @@
 export type Bindings = {
-  KV_USERS: any; // KVNamespace (Workers type at runtime)
-  KV_SNAPS: any; // KVNamespace
-  R2_SNAPSHOTS: any; // R2Bucket
-  COMMENTS_DO: any; // DurableObjectNamespace
+  KV_USERS: KVNamespace;
+  KV_SNAPS: KVNamespace;
+  R2_SNAPSHOTS: R2Bucket;
+  COMMENTS_DO: DurableObjectNamespace;
   SESSION_HMAC_SECRET: string;
   TURNSTILE_SECRET_KEY: string;
   PUBLIC_BASE_URL: string;

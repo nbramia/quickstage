@@ -18,6 +18,10 @@ bucket_name = "protosnap-snapshots"
 name = "COMMENTS_DO"
 class_name = "CommentsRoom"
 
+[[migrations]]
+tag = "v1"
+new_classes = ["CommentsRoom"]
+
 [build]
 command = "" # tsc via packages
 cwd = "../" # project root

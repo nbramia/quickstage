@@ -1,6 +1,6 @@
 export class CommentsRoom {
-    state; // DurableObjectState
-    storage; // DurableObjectStorage
+    state;
+    storage;
     constructor(state, env) {
         this.state = state;
         this.storage = state.storage;

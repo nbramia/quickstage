@@ -1,8 +1,8 @@
-export class CommentsRoom {
-  state: any; // DurableObjectState
-  storage: any; // DurableObjectStorage
+export class CommentsRoom implements DurableObject {
+  private state: DurableObjectState;
+  private storage: DurableObjectStorage;
 
-  constructor(state: any, env: any) {
+  constructor(state: DurableObjectState, env: any) {
     this.state = state;
     this.storage = state.storage;
   }

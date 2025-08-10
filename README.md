@@ -55,7 +55,7 @@ QuickStage is a one-click "stage and share" workflow for static front-end protot
 - **Real-time Comments**: Inline sidebar for each snapshot
 - **Turnstile Protection**: Cloudflare Turnstile anti-spam integration
 - **Anonymous Posting**: Optional handle/nickname for commenters
-- **Durable Objects**: Persistent comment storage per snapshot
+- **Durable Objects**: Persistent comment storage per snapshot with proper Cloudflare Workers implementation
 
 ## API Endpoints
 

@@ -22,7 +22,7 @@ async function hmacSha256Base64Url(message: string, secretBase64: string): Promi
   const keyData = base64ToBytes(secretBase64);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    keyData,
+    keyData as unknown as ArrayBuffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign', 'verify'],

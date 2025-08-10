@@ -2,8 +2,18 @@ export async function sha256Hex(input) {
     if (typeof input === 'string') {
         input = new TextEncoder().encode(input);
     }
-    const buf = input;
-    const hashBuf = await crypto.subtle.digest('SHA-256', buf instanceof Uint8Array ? buf : new Uint8Array(buf));
+    let dataToHash;
+    if (input instanceof Uint8Array) {
+        dataToHash = input;
+    }
+    else if (input instanceof ArrayBuffer) {
+        dataToHash = input;
+    }
+    else {
+        // This should never happen given the type signature, but TypeScript needs this
+        dataToHash = input;
+    }
+    const hashBuf = await crypto.subtle.digest('SHA-256', dataToHash);
     const bytes = new Uint8Array(hashBuf);
     return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
