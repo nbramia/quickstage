@@ -7,7 +7,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@protosnap/shared/*": ["../../packages/shared/src/*"]
+      "@quickstage/shared/*": ["../../packages/shared/src/*"]
     },
     "outDir": "dist",
     "lib": ["ES2020", "DOM"],

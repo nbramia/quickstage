@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { api } from '../api';
 
 type Comment = {
   id: string;
@@ -27,6 +28,7 @@ type Snapshot = {
 
 export function Viewer() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,29 +61,18 @@ export function Viewer() {
   const fetchSnapshot = async () => {
     try {
       setError(null);
-      const response = await fetch(`/api/snapshots/${snapshotId}`, { 
-        credentials: 'include' 
-      });
-      
-      if (response.status === 401) {
+      const response = await api.get(`/snapshots/${snapshotId}`);
+      setSnapshot(response.snapshot);
+      if (response.snapshot.files.length > 0) {
+        setSelectedFile(response.snapshot.files[0].name);
+      }
+    } catch (error: any) {
+      if (error.message.includes('401')) {
         setShowPasswordForm(true);
-        setLoading(false);
-        return;
-      }
-      
-      if (response.ok) {
-        const data = await response.json();
-        setSnapshot(data.snapshot);
-        if (data.snapshot.files.length > 0) {
-          setSelectedFile(data.snapshot.files[0].name);
-        }
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to fetch snapshot');
+        console.error('Failed to fetch snapshot:', error);
+        setError('Failed to fetch snapshot');
       }
-    } catch (error) {
-      console.error('Failed to fetch snapshot:', error);
-      setError('Failed to fetch snapshot');
     } finally {
       setLoading(false);
     }
@@ -89,13 +80,8 @@ export function Viewer() {
 
   const fetchComments = async () => {
     try {
-      const response = await fetch(`/api/snapshots/${snapshotId}/comments`, { 
-        credentials: 'include' 
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setComments(data.comments || []);
-      }
+      const response = await api.get(`/comments?id=${snapshotId}`);
+      setComments(response.comments || []);
     } catch (error) {
       console.error('Failed to fetch comments:', error);
     }
@@ -104,28 +90,16 @@ export function Viewer() {
   const handlePasswordSubmit = async () => {
     try {
       setError(null);
-      const response = await fetch(`/api/snapshots/${snapshotId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSnapshot(data.snapshot);
-        setShowPasswordForm(false);
-        if (data.snapshot.files.length > 0) {
-          setSelectedFile(data.snapshot.files[0].name);
-        }
-        fetchComments();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Invalid password');
+      const response = await api.post(`/snapshots/${snapshotId}/gate`, { password });
+      setSnapshot(response.snapshot);
+      setShowPasswordForm(false);
+      if (response.snapshot.files.length > 0) {
+        setSelectedFile(response.snapshot.files[0].name);
       }
-    } catch (error) {
+      fetchComments();
+    } catch (error: any) {
       console.error('Password verification failed:', error);
-      setError('Failed to verify password');
+      setError(error.message || 'Invalid password');
     }
   };
 
@@ -136,32 +110,23 @@ export function Viewer() {
       setSubmittingComment(true);
       setError(null);
       
-      const response = await fetch(`/api/snapshots/${snapshotId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: newComment,
-          turnstileToken 
-        }),
-        credentials: 'include'
+      await api.post('/comments', { 
+        snapshotId: snapshotId,
+        text: newComment,
+        turnstileToken 
       });
 
-      if (response.ok) {
-        setNewComment('');
-        setTurnstileToken(null);
-        // Reset Turnstile widget
-        if (window.turnstile) {
-          window.turnstile.reset();
-        }
-        // Fetch updated comments
-        fetchComments();
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Failed to post comment');
+      setNewComment('');
+      setTurnstileToken(null);
+      // Reset Turnstile widget
+      if (window.turnstile) {
+        window.turnstile.reset();
       }
-    } catch (error) {
+      // Fetch updated comments
+      fetchComments();
+    } catch (error: any) {
       console.error('Failed to post comment:', error);
-      setError('Failed to post comment');
+      setError(error.message || 'Failed to post comment');
     } finally {
       setSubmittingComment(false);
     }
@@ -185,37 +150,29 @@ export function Viewer() {
 
   if (loading) {
     return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, -apple-system', padding: '20px' }}>
-        <div>Loading snapshot...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading snapshot...</p>
+        </div>
       </div>
     );
   }
 
   if (error && !showPasswordForm) {
     return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, -apple-system', padding: '20px' }}>
-        <div style={{ 
-          padding: '16px', 
-          backgroundColor: '#fee2e2', 
-          border: '1px solid #fecaca',
-          borderRadius: '8px',
-          color: '#991b1b'
-        }}>
-          <h2>Error</h2>
-          <p>{error}</p>
-          <button 
-            onClick={() => window.location.href = '/'}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Back to Dashboard
-          </button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+        <div className="max-w-md w-full">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <h2 className="text-lg font-semibold mb-2">Error</h2>
+            <p className="mb-4">{error}</p>
+            <button 
+              onClick={() => navigate('/')}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -223,57 +180,38 @@ export function Viewer() {
 
   if (showPasswordForm) {
     return (
-      <div style={{ maxWidth: 400, margin: '0 auto', fontFamily: 'system-ui, -apple-system', padding: '40px 20px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <h2>Password Protected</h2>
-          <p>This snapshot is password protected. Please enter the password to continue.</p>
-          
-          {error && (
-            <div style={{ 
-              padding: '12px 16px', 
-              backgroundColor: '#fee2e2', 
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              color: '#991b1b',
-              marginBottom: '16px'
-            }}>
-              {error}
-            </div>
-          )}
-          
-          <div style={{ marginBottom: '16px' }}>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              style={{
-                width: '100%',
-                padding: '12px',
-                fontSize: '16px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                boxSizing: 'border-box'
-              }}
-              onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
-            />
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Password Protected</h1>
+            <p className="text-gray-600">This snapshot is password protected. Please enter the password to continue.</p>
           </div>
-          
-          <button 
-            onClick={handlePasswordSubmit}
-            style={{
-              width: '100%',
-              padding: '12px',
-              fontSize: '16px',
-              backgroundColor: '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            View Snapshot
-          </button>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                {error}
+              </div>
+            )}
+            
+            <div className="mb-6">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyPress={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              />
+            </div>
+            
+            <button 
+              onClick={handlePasswordSubmit}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-lg transition-colors w-full"
+            >
+              View Snapshot
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -281,8 +219,17 @@ export function Viewer() {
 
   if (!snapshot) {
     return (
-      <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, -apple-system', padding: '20px' }}>
-        <div>Snapshot not found</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Snapshot Not Found</h2>
+          <p className="text-gray-600 mb-6">The requested snapshot could not be found.</p>
+                      <button 
+              onClick={() => navigate('/')}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Back to Dashboard
+            </button>
+        </div>
       </div>
     );
   }
@@ -290,227 +237,151 @@ export function Viewer() {
   const currentFile = snapshot.files.find(f => f.name === selectedFile);
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', fontFamily: 'system-ui, -apple-system' }}>
+    <div className="min-h-screen bg-gray-50">
       {/* Navigation Header */}
-      <div style={{ 
-        borderBottom: '1px solid #ddd', 
-        padding: '20px 0', 
-        marginBottom: '24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <div>
-          <h1 style={{ margin: 0, marginBottom: '8px' }}>Snapshot: {snapshot.id}</h1>
-          <div style={{ color: '#666', fontSize: '14px' }}>
-            Created: {formatDate(snapshot.createdAt)} | 
-            Expires: {formatDate(snapshot.expiresAt)} | 
-            Size: {formatFileSize(snapshot.totalBytes)}
-          </div>
-        </div>
-        <nav>
-          <a 
-            href="/" 
-            style={{ 
-              color: '#666', 
-              textDecoration: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              border: '1px solid #ddd'
-            }}
-          >
-            Dashboard
-          </a>
-        </nav>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr 300px', gap: '24px' }}>
-        {/* File List */}
-        <div style={{ 
-          backgroundColor: '#f9f9f9', 
-          padding: '16px', 
-          borderRadius: '8px',
-          border: '1px solid #eee'
-        }}>
-          <h3 style={{ margin: '0 0 16px 0' }}>Files ({snapshot.files.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {snapshot.files.map((file) => (
-              <button
-                key={file.name}
-                onClick={() => setSelectedFile(file.name)}
-                style={{
-                  textAlign: 'left',
-                  padding: '8px 12px',
-                  backgroundColor: selectedFile === file.name ? '#e0f2fe' : 'transparent',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
-                <div style={{ fontWeight: 'bold' }}>{file.name}</div>
-                <div style={{ fontSize: '12px', color: '#666' }}>
-                  {formatFileSize(file.size)} • {file.type}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* File Content */}
-        <div style={{ 
-          backgroundColor: 'white', 
-          padding: '20px', 
-          borderRadius: '8px',
-          border: '1px solid #eee',
-          minHeight: '600px'
-        }}>
-          {currentFile ? (
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
             <div>
-              <h3 style={{ margin: '0 0 16px 0' }}>{currentFile.name}</h3>
-              {currentFile.content ? (
-                <pre style={{ 
-                  backgroundColor: '#f8f9fa', 
-                  padding: '16px', 
-                  borderRadius: '4px',
-                  overflow: 'auto',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
-                  border: '1px solid #e9ecef'
-                }}>
-                  <code>{currentFile.content}</code>
-                </pre>
+              <h1 className="text-xl font-bold text-gray-900">Snapshot: {snapshot.id}</h1>
+              <div className="text-sm text-gray-500">
+                Created: {formatDate(snapshot.createdAt)} | 
+                Expires: {formatDate(snapshot.expiresAt)} | 
+                Size: {formatFileSize(snapshot.totalBytes)}
+              </div>
+            </div>
+            <nav>
+              <button 
+                onClick={() => navigate('/')}
+                className="text-gray-600 hover:text-gray-700 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+              >
+                Dashboard
+              </button>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* File List */}
+          <div className="lg:col-span-3">
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Files ({snapshot.files.length})</h3>
+              <div className="space-y-2">
+                {snapshot.files.map((file) => (
+                  <button
+                    key={file.name}
+                    onClick={() => setSelectedFile(file.name)}
+                    className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                      selectedFile === file.name 
+                        ? 'bg-blue-50 border-blue-200 text-blue-900' 
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="font-medium text-sm">{file.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {formatFileSize(file.size)} • {file.type}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* File Content */}
+          <div className="lg:col-span-6">
+            <div className="bg-white rounded-lg shadow p-6 min-h-[600px]">
+              {currentFile ? (
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">{currentFile.name}</h3>
+                  {currentFile.content ? (
+                                      <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-auto text-sm font-mono">
+                    <code>{currentFile.content}</code>
+                  </pre>
+                  ) : (
+                    <div className="flex items-center justify-center h-64 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                      File content not available
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div style={{ 
-                  padding: '40px', 
-                  textAlign: 'center', 
-                  color: '#666',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '4px'
-                }}>
-                  File content not available
+                <div className="flex items-center justify-center h-64 text-gray-500">
+                  Select a file to view
                 </div>
               )}
             </div>
-          ) : (
-            <div style={{ 
-              padding: '40px', 
-              textAlign: 'center', 
-              color: '#666' 
-            }}>
-              Select a file to view
-            </div>
-          )}
-        </div>
-
-        {/* Comments Panel */}
-        <div style={{ 
-          backgroundColor: '#f9f9f9', 
-          padding: '16px', 
-          borderRadius: '8px',
-          border: '1px solid #eee'
-        }}>
-          <h3 style={{ margin: '0 0 16px 0' }}>Comments ({comments.length})</h3>
-          
-          {/* Comment Form */}
-          <div style={{ marginBottom: '20px' }}>
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Add a comment..."
-              style={{
-                width: '100%',
-                minHeight: '80px',
-                padding: '8px',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-                fontSize: '14px'
-              }}
-            />
-            
-            {/* Turnstile Widget */}
-            <div 
-              className="cf-turnstile" 
-              data-sitekey="1x00000000000000000000AA"
-              data-callback={handleTurnstileSuccess}
-              style={{ marginBottom: '12px' }}
-            />
-            
-            <button 
-              onClick={handleCommentSubmit}
-              disabled={!newComment.trim() || !turnstileToken || submittingComment}
-              style={{
-                width: '100%',
-                padding: '8px 16px',
-                backgroundColor: !newComment.trim() || !turnstileToken || submittingComment ? '#9ca3af' : '#2563eb',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: !newComment.trim() || !turnstileToken || submittingComment ? 'not-allowed' : 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              {submittingComment ? 'Posting...' : 'Post Comment'}
-            </button>
           </div>
 
-          {/* Comments List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {comments.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#666', fontSize: '14px' }}>
-                No comments yet. Be the first to comment!
-              </div>
-            ) : (
-              comments.map((comment) => (
+          {/* Comments Panel */}
+          <div className="lg:col-span-3">
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Comments ({comments.length})</h3>
+              
+              {/* Comment Form */}
+              <div className="mb-6">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg resize-vertical font-inherit text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                
+                {/* Turnstile Widget */}
                 <div 
-                  key={comment.id}
-                  style={{ 
-                    backgroundColor: 'white', 
-                    padding: '12px', 
-                    borderRadius: '6px',
-                    border: '1px solid #e5e7eb'
-                  }}
+                  className="cf-turnstile" 
+                  data-sitekey="1x00000000000000000000AA"
+                  data-callback={handleTurnstileSuccess}
+                />
+                
+                <button 
+                  onClick={handleCommentSubmit}
+                  disabled={!newComment.trim() || !turnstileToken || submittingComment}
+                  className={`w-full py-2 px-4 rounded-lg font-medium text-sm transition-colors ${
+                    !newComment.trim() || !turnstileToken || submittingComment
+                      ? 'bg-gray-400 text-white cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center',
-                    marginBottom: '8px'
-                  }}>
-                    <span style={{ fontWeight: 'bold', fontSize: '14px' }}>
-                      {comment.author}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#666' }}>
-                      {formatDate(comment.createdAt)}
-                    </span>
+                  {submittingComment ? 'Posting...' : 'Post Comment'}
+                </button>
+              </div>
+
+              {/* Comments List */}
+              <div className="space-y-3">
+                {comments.length === 0 ? (
+                  <div className="text-center text-gray-500 text-sm py-4">
+                    No comments yet. Be the first to comment!
                   </div>
-                  {comment.file && comment.line && (
-                    <div style={{ 
-                      fontSize: '12px', 
-                      color: '#2563eb', 
-                      marginBottom: '6px',
-                      backgroundColor: '#f0f8ff',
-                      padding: '2px 6px',
-                      borderRadius: '3px',
-                      display: 'inline-block'
-                    }}>
-                      {comment.file}:{comment.line}
+                ) : (
+                  comments.map((comment) => (
+                                      <div key={comment.id} className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium text-gray-900 text-sm">
+                        {comment.author}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {formatDate(comment.createdAt)}
+                      </span>
                     </div>
-                  )}
-                  <div style={{ fontSize: '14px', lineHeight: '1.4' }}>
-                    {comment.text}
+                    {comment.file && comment.line && (
+                      <div className="inline-block text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded mb-2">
+                        {comment.file}:{comment.line}
+                      </div>
+                    )}
+                    <div className="text-gray-700 text-sm mt-2">
+                      {comment.text}
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Turnstile Script */}
-      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     </div>
   );
 }

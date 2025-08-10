@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for QuickStage */
+@layer base {
+  html {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  
+  body {
+    @apply antialiased text-gray-900;
+  }
+}
+
+/* Turnstile widget styling */
+.cf-turnstile {
+  margin-bottom: 12px;
+}

@@ -276,7 +276,7 @@ app.post('/upload-url', async (c) => {
     const { presignR2PutURL } = await import('./s3presign');
     const url = await presignR2PutURL({
         accountId: c.env.R2_ACCOUNT_ID,
-        bucket: 'protosnap-snapshots',
+        bucket: 'quickstage-snapshots',
         key: `snap/${id}/${p}`,
         accessKeyId: c.env.R2_ACCESS_KEY_ID,
         secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,

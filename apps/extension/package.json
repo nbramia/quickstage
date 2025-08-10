@@ -1,36 +1,54 @@
 {
-  "name": "protosnap",
+  "name": "quickstage",
   "displayName": "QuickStage",
   "description": "Stage and share static prototypes privately in 1 click.",
   "version": "0.0.1",
   "publisher": "quickstage",
   "private": true,
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
-    "onCommand:protosnap.stage",
-    "onCommand:protosnap.stageManual",
-    "onCommand:protosnap.openDashboard",
-    "onCommand:protosnap.settings"
+    "onCommand:quickstage.stage",
+    "onCommand:quickstage.stageManual",
+    "onCommand:quickstage.openDashboard",
+    "onCommand:quickstage.settings"
   ],
   "main": "dist/extension.js",
   "contributes": {
     "commands": [
-      { "command": "protosnap.stage", "title": "QuickStage: Stage" },
-      { "command": "protosnap.stageManual", "title": "QuickStage: Stage (Manual output…)" },
-      { "command": "protosnap.openDashboard", "title": "QuickStage: Open Dashboard" },
-      { "command": "protosnap.settings", "title": "QuickStage: Settings" }
+      {
+        "command": "quickstage.stage",
+        "title": "QuickStage: Stage"
+      },
+      {
+        "command": "quickstage.stageManual",
+        "title": "QuickStage: Stage (Manual output…)"
+      },
+      {
+        "command": "quickstage.openDashboard",
+        "title": "QuickStage: Open Dashboard"
+      },
+      {
+        "command": "quickstage.settings",
+        "title": "QuickStage: Settings"
+      }
     ]
   },
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b -w",
     "lint": "eslint . --ext .ts",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.6.0",
     "eslint": "^8.57.0",
     "typescript": "^5.4.3",
     "vsce": "^2.15.0"
@@ -42,4 +60,3 @@
     "pretty-bytes": "^6.1.1"
   }
 }
-

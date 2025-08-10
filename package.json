@@ -1,13 +1,16 @@
 {
-  "name": "protosnap",
-  "private": true,
+  "name": "quickstage",
   "version": "0.0.1",
+  "description": "Stage and share static prototypes privately in 1 click.",
+  "private": true,
+  "license": "SEE LICENSE IN apps/extension/LICENSE",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "pnpm -r --parallel run dev",
     "lint": "pnpm -r run lint",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "package": "cd apps/extension && pnpm exec vsce package --no-dependencies --allow-missing-repository"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

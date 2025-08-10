@@ -28,23 +28,23 @@ const DEFAULT_SETTINGS: Required<Omit<Settings, 'outputDir' | 'ignore'>> & Pick<
   public: false,
 };
 
-const API_BASE = process.env.PROTOSNAP_API || 'https://quickstage.tech/api';
+const API_BASE = process.env.QUICKSTAGE_API || 'https://quickstage.tech';
 
 export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel('QuickStage');
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('protosnap.openDashboard', async () => {
+    vscode.commands.registerCommand('quickstage.openDashboard', async () => {
       vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech'));
     }),
 
-    vscode.commands.registerCommand('protosnap.settings', async () => {
+    vscode.commands.registerCommand('quickstage.settings', async () => {
       const ws = vscode.workspace.workspaceFolders?.[0];
       if (!ws) {
         vscode.window.showErrorMessage('Open a workspace first.');
         return;
       }
-      const fileUri = vscode.Uri.joinPath(ws.uri, '.protosnap.json');
+      const fileUri = vscode.Uri.joinPath(ws.uri, '.quickstage.json');
       try {
         await vscode.workspace.fs.readFile(fileUri);
       } catch {
@@ -69,7 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.window.showTextDocument(doc);
     }),
 
-    vscode.commands.registerCommand('protosnap.stage-manual', async () => {
+    vscode.commands.registerCommand('quickstage.stageManual', async () => {
       const folderUris = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false });
       if (!folderUris || folderUris.length === 0) return;
       const folderUri = folderUris[0];
@@ -77,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
       await stage(folderUri.fsPath, { manual: true }, output);
     }),
 
-    vscode.commands.registerCommand('protosnap.stage', async () => {
+    vscode.commands.registerCommand('quickstage.stage', async () => {
       const ws = vscode.workspace.workspaceFolders?.[0];
       if (!ws) {
         vscode.window.showErrorMessage('Open a workspace first.');
@@ -164,7 +164,7 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
 }
 
 async function readSettings(root: string): Promise<Settings> {
-  const file = path.join(root, '.protosnap.json');
+  const file = path.join(root, '.quickstage.json');
   try {
     const data = await fs.promises.readFile(file, 'utf8');
     return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };

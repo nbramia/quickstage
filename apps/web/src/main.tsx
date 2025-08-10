@@ -1,19 +1,68 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import { RouterProvider, createBrowserRouter } from 'react-router-dom';
-import { Dashboard } from './routes/Dashboard';
-import { Viewer } from './routes/Viewer';
-import { Settings } from './routes/Settings';
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import Dashboard from './routes/Dashboard'
+import { Settings } from './routes/Settings'
+import { Viewer } from './routes/Viewer'
+import Landing from './routes/Landing'
+import Login from './routes/Login'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import './index.css'
 
-const router = createBrowserRouter([
-  { path: '/', element: <Dashboard /> },
-  { path: '/app/s/:id', element: <Viewer /> },
-  { path: '/app/settings', element: <Settings /> },
-]);
+// Protected route wrapper using auth context
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+}
 
-createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Landing />} />
+          <Route path="/login" element={<Login />} />
+          
+          {/* Protected routes */}
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          } />
+          
+          {/* Snapshot viewer (public but password protected) */}
+          <Route path="/s/:id/*" element={<Viewer />} />
+          
+          {/* Redirect old routes */}
+          <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />
+          
+          {/* Catch all - redirect to landing */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   </React.StrictMode>,
-);
+)
 

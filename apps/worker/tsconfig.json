@@ -12,7 +12,7 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@protosnap/shared/*": ["../../packages/shared/src/*"]
+      "@quickstage/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src"]

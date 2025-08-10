@@ -1,290 +1,348 @@
-import React, { useEffect, useState } from 'react';
-import { devLogin } from '../api';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api';
 
-type Snap = { id: string; createdAt: number; expiresAt: number; totalBytes: number; status: string };
+type Snapshot = {
+  id: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string;
+  password?: string;
+  isPublic: boolean;
+  viewCount: number;
+};
 
-export function Dashboard() {
-  const [snaps, setSnaps] = useState<Snap[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function Dashboard() {
+  const { user, logout } = useAuth();
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    (async () => {
-      try {
-        await devLogin('devuser');
-      } catch {}
-    })();
-    fetchSnapshots();
+    loadSnapshots();
   }, []);
 
-  const fetchSnapshots = async () => {
+  const loadSnapshots = async () => {
     try {
-      const response = await fetch('/api/snapshots/list', { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setSnaps(data.snapshots || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch snapshots:', error);
+      const response = await api.get('/snapshots/list');
+      setSnapshots(response.data.snapshots || []);
+    } catch (err) {
+      setError('Failed to load snapshots');
+      console.error(err);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleExtend = async (id: string, days: number = 7) => {
+  const handleLogout = () => {
+    logout();
+  };
+
+  const handleExtendSnapshot = async (snapshotId: string) => {
     try {
-      const response = await fetch(`/api/snapshots/${id}/extend`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days }),
-        credentials: 'include'
-      });
-      if (response.ok) {
-        await fetchSnapshots(); // Refresh the list
-      } else {
-        alert('Failed to extend snapshot');
-      }
-    } catch (error) {
-      console.error('Failed to extend snapshot:', error);
-      alert('Failed to extend snapshot');
+      await api.post(`/snapshots/${snapshotId}/extend`, { days: 7 });
+      // Reload snapshots to get updated expiry dates
+      loadSnapshots();
+    } catch (err) {
+      setError('Failed to extend snapshot');
+      console.error(err);
     }
   };
 
-  const handleExpire = async (id: string) => {
-    if (!confirm('Are you sure you want to expire this snapshot? This action cannot be undone.')) {
-      return;
-    }
-    
+  const handleExpireSnapshot = async (snapshotId: string) => {
     try {
-      const response = await fetch(`/api/snapshots/${id}/expire`, {
-        method: 'POST',
-        credentials: 'include'
-      });
-      if (response.ok) {
-        await fetchSnapshots(); // Refresh the list
-      } else {
-        alert('Failed to expire snapshot');
-      }
-    } catch (error) {
-      console.error('Failed to expire snapshot:', error);
-      alert('Failed to expire snapshot');
+      await api.post(`/snapshots/${snapshotId}/expire`);
+      // Reload snapshots to get updated list
+      loadSnapshots();
+    } catch (err) {
+      setError('Failed to expire snapshot');
+      console.error(err);
     }
   };
 
-  const handleView = (id: string) => {
-    window.open(`/app/s/${id}`, '_blank');
+  const handleRotatePassword = async (snapshotId: string) => {
+    try {
+      const response = await api.post(`/snapshots/${snapshotId}/rotate-password`);
+      // Show the new password to the user
+      alert(`New password: ${response.password}`);
+    } catch (err) {
+      setError('Failed to rotate password');
+      console.error(err);
+    }
   };
 
-  if (loading) {
+  const handleCopyUrl = async (snapshotId: string) => {
+    try {
+      const url = `${window.location.origin}/s/${snapshotId}`;
+      await navigator.clipboard.writeText(url);
+      // Show a brief success message
+      setError(''); // Clear any existing errors
+      // You could add a success state here if you want
+    } catch (err) {
+      setError('Failed to copy URL');
+      console.error(err);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const getDaysUntilExpiry = (expiryString: string) => {
+    const expiry = new Date(expiryString);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const getExpiryColor = (days: number) => {
+    if (days <= 1) return 'text-red-600';
+    if (days <= 3) return 'text-orange-600';
+    return 'text-green-600';
+  };
+
+  if (isLoading) {
     return (
-      <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: 'system-ui, -apple-system', padding: '40px 20px' }}>
-        <div>Loading snapshots...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your snapshots...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', fontFamily: 'system-ui, -apple-system' }}>
-      {/* Navigation Header */}
-      <div style={{ 
-        borderBottom: '1px solid #ddd', 
-        padding: '20px 0', 
-        marginBottom: '32px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <h1 style={{ margin: 0 }}>QuickStage</h1>
-        <nav style={{ display: 'flex', gap: '16px' }}>
-          <a 
-            href="/" 
-            style={{ 
-              color: '#2563eb', 
-              textDecoration: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              backgroundColor: '#f0f8ff'
-            }}
-          >
-            Dashboard
-          </a>
-          <a 
-            href="/app/settings" 
-            style={{ 
-              color: '#666', 
-              textDecoration: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              border: '1px solid #ddd'
-            }}
-          >
-            Settings
-          </a>
-        </nav>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-gray-900">QuickStage</h1>
+            </div>
+            
+            <nav className="flex items-center space-x-8">
+              <Link
+                to="/dashboard"
+                className="text-blue-600 border-b-2 border-blue-600 px-3 py-2 text-sm font-medium"
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/settings"
+                className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
+              >
+                Settings
+              </Link>
+              
+              {/* User Menu */}
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-700">
+                  <span className="font-medium">{user?.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                  <span className="text-gray-500 ml-2">Plan</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </nav>
+          </div>
+        </div>
+      </header>
 
-      <p>Manage your staged snapshots.</p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button onClick={async () => {
-          const r = await fetch('/api/billing/checkout', { method: 'POST', credentials: 'include' });
-          if (!r.ok) { alert('Checkout failed'); return; }
-          const j = await r.json();
-          if (j.url) window.location.href = j.url;
-        }}>Go Pro</button>
-      </div>
-      <details style={{ marginBottom: 12 }}>
-        <summary>Passkey login</summary>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <input id="name" placeholder="Display name" />
-          <button onClick={beginRegister}>Register</button>
-          <button onClick={beginLogin}>Login</button>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Welcome Section */}
+        <div className="px-4 sm:px-0 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                  Welcome back!
+                </h2>
+                <p className="text-gray-600">
+                  Manage your staged snapshots and create new ones from VS Code.
+                </p>
+                {user && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    User ID: {user.uid.slice(0, 8)}... • Member since {new Date(user.createdAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              {user?.plan === 'free' && (
+                <Link
+                  to="/settings"
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Go Pro
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
-      </details>
-      <div style={{ margin: '12px 0' }}>
-        <button onClick={() => devLogin('devuser')}>Dev login</button>
-      </div>
-      
-      {snaps.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '40px 20px',
-          backgroundColor: '#f9f9f9',
-          borderRadius: '8px',
-          border: '1px solid #eee'
-        }}>
-          <h3 style={{ color: '#666', marginBottom: '16px' }}>No snapshots yet</h3>
-          <p style={{ color: '#888', margin: 0 }}>
-            Use the QuickStage extension in VS Code to create your first snapshot.
-          </p>
+
+        {/* Snapshots Section */}
+        <div className="px-4 sm:px-0">
+          <div className="bg-white rounded-lg shadow">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900">
+                Your Snapshots ({snapshots.length})
+              </h3>
+            </div>
+
+            {error && (
+              <div className="px-6 py-4">
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                  {error}
+                </div>
+              </div>
+            )}
+
+            {snapshots.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No snapshots yet
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  Use the QuickStage extension in VS Code to create your first snapshot.
+                </p>
+                <div className="text-sm text-gray-400">
+                  <p>1. Install the QuickStage extension</p>
+                  <p>2. Open your project in VS Code</p>
+                  <p>3. Click "QuickStage: Stage" in the command palette</p>
+                </div>
+              </div>
+            ) : (
+              <div className="overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Snapshot
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Created
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Expires
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Views
+                      </th>
+                                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Password
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {snapshots.map((snapshot) => {
+                      const daysUntilExpiry = getDaysUntilExpiry(snapshot.expiresAt);
+                      const expiryColor = getExpiryColor(daysUntilExpiry);
+                      
+                      return (
+                        <tr key={snapshot.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {snapshot.name}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                ID: {snapshot.id}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {formatDate(snapshot.createdAt)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className={`text-sm ${expiryColor}`}>
+                              {daysUntilExpiry > 0 ? `${daysUntilExpiry} days` : 'Expired'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {snapshot.viewCount}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              snapshot.isPublic 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {snapshot.isPublic ? 'Public' : 'Private'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {snapshot.password ? (
+                              <code className="bg-gray-100 px-2 py-1 rounded text-xs">
+                                {snapshot.password}
+                              </code>
+                            ) : (
+                              <span className="text-gray-500">No password</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <a
+                              href={`/s/${snapshot.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-900 mr-2"
+                            >
+                              View
+                            </a>
+                            <button
+                              onClick={() => handleCopyUrl(snapshot.id)}
+                              className="text-green-600 hover:text-green-900 mr-2"
+                            >
+                              Copy URL
+                            </button>
+                            <button 
+                              onClick={() => handleExtendSnapshot(snapshot.id)}
+                              className="text-gray-600 hover:text-gray-900 mr-2"
+                            >
+                              Extend
+                            </button>
+                            <button 
+                              onClick={() => handleExpireSnapshot(snapshot.id)}
+                              className="text-red-600 hover:text-red-900 mr-2"
+                            >
+                              Expire
+                            </button>
+                            <button 
+                              onClick={() => handleRotatePassword(snapshot.id)}
+                              className="text-purple-600 hover:text-purple-900"
+                            >
+                              New Password
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-      ) : (
-        <div style={{ 
-          border: '1px solid #ddd', 
-          borderRadius: '8px',
-          overflow: 'hidden'
-        }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8f9fa' }}>
-                <th align="left" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>ID</th>
-                <th align="left" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>Created</th>
-                <th align="left" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>Expires</th>
-                <th align="right" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>Size</th>
-                <th align="left" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>Status</th>
-                <th align="center" style={{ padding: '12px 16px', borderBottom: '1px solid #ddd' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snaps.map((s) => (
-                <tr key={s.id} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <code style={{ fontSize: '12px' }}>{s.id}</code>
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    {new Date(s.createdAt).toLocaleDateString()}
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{ 
-                      color: s.expiresAt < Date.now() + 24 * 60 * 60 * 1000 ? '#dc2626' : '#059669'
-                    }}>
-                      {new Date(s.expiresAt).toLocaleDateString()}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                    {Math.round((s.totalBytes || 0) / 1024)} KB
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      backgroundColor: s.status === 'active' ? '#dcfce7' : s.status === 'expired' ? '#fee2e2' : '#fef3c7',
-                      color: s.status === 'active' ? '#166534' : s.status === 'expired' ? '#991b1b' : '#92400e'
-                    }}>
-                      {s.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                      <button
-                        onClick={() => handleView(s.id)}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '12px',
-                          backgroundColor: '#2563eb',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        View
-                      </button>
-                      {s.status === 'active' && (
-                        <>
-                          <button
-                            onClick={() => handleExtend(s.id, 7)}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              backgroundColor: '#059669',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            +7d
-                          </button>
-                          <button
-                            onClick={() => handleExpire(s.id)}
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '12px',
-                              backgroundColor: '#dc2626',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Expire
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      </main>
     </div>
   );
-}
-
-async function beginRegister() {
-  const input = document.getElementById('name') as HTMLInputElement | null;
-  const name = input?.value?.trim();
-  if (!name) return alert('Enter name');
-  const begin = await fetch('/api/auth/register-passkey/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }), credentials: 'include' }).then((r) => r.json());
-  // Using WebAuthn API (simplified for MVP; production needs proper conversions)
-  // @ts-ignore
-  const cred: any = await navigator.credentials.create({ publicKey: begin });
-  const finish = await fetch('/api/auth/register-passkey/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, response: cred }), credentials: 'include' });
-  if (!finish.ok) alert('Registration failed');
-}
-
-async function beginLogin() {
-  const input = document.getElementById('name') as HTMLInputElement | null;
-  const name = input?.value?.trim();
-  if (!name) return alert('Enter name');
-  const begin = await fetch('/api/auth/login-passkey/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }), credentials: 'include' }).then((r) => r.json());
-  // @ts-ignore
-  const cred: any = await navigator.credentials.get({ publicKey: begin });
-  const finish = await fetch('/api/auth/login-passkey/finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, response: cred }), credentials: 'include' });
-  if (!finish.ok) alert('Login failed');
 }
 
 
