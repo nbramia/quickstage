@@ -17,6 +17,7 @@ bucket_name = "snapshots"
 [[durable_objects.bindings]]
 name = "COMMENTS_DO"
 class_name = "CommentsRoom"
+id = "f1542cc2d727402283b87219b199b013"
 
 [[migrations]]
 tag = "v1"
