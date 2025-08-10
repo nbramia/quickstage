@@ -1,0 +1,45 @@
+{
+  "name": "protosnap",
+  "displayName": "QuickStage",
+  "description": "Stage and share static prototypes privately in 1 click.",
+  "version": "0.0.1",
+  "publisher": "quickstage",
+  "private": true,
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:protosnap.stage",
+    "onCommand:protosnap.stageManual",
+    "onCommand:protosnap.openDashboard",
+    "onCommand:protosnap.settings"
+  ],
+  "main": "dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "protosnap.stage", "title": "QuickStage: Stage" },
+      { "command": "protosnap.stageManual", "title": "QuickStage: Stage (Manual output…)" },
+      { "command": "protosnap.openDashboard", "title": "QuickStage: Open Dashboard" },
+      { "command": "protosnap.settings", "title": "QuickStage: Settings" }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b -w",
+    "lint": "eslint . --ext .ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "globby": "^14.0.1",
+    "mime": "^4.0.3",
+    "p-limit": "^5.0.0",
+    "pretty-bytes": "^6.1.1"
+  }
+}
+

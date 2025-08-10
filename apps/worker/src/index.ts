@@ -1,0 +1,634 @@
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { getCookie, setCookie } from 'hono/cookie';
+import { Bindings } from './types';
+import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
+import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
+import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex } from './utils';
+import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
+// Passkeys (WebAuthn)
+// @ts-ignore
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+// Billing (Stripe)
+// Edge-compatible Stripe client with Fetch + SubtleCrypto providers
+// @ts-ignore
+import Stripe from 'stripe';
+
+const app = new Hono();
+
+app.use('*', cors({ origin: (origin: string | undefined) => origin || '*', credentials: true }));
+
+async function getUidFromSession(c: any): Promise<string | null> {
+  const cookie = getCookie(c, SESSION_COOKIE_NAME);
+  let token = cookie;
+  if (!token) {
+    const auth = c.req.header('authorization') || c.req.header('Authorization');
+    if (auth && auth.startsWith('Bearer ')) token = auth.slice(7);
+  }
+  if (!token) return null;
+  const data = await verifySession(token, c.env.SESSION_HMAC_SECRET);
+  return data && data.uid ? String(data.uid) : null;
+}
+
+// Auth (Stub: assume a single-device dev login for MVP; passkey endpoints can be added later)
+app.post('/auth/dev-login', async (c: any) => {
+  const body: any = await c.req.json();
+  const uid = body?.uid;
+  if (!uid) return c.json({ error: 'uid required' }, 400);
+  const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+  setCookie(c, SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
+  });
+  return c.json({ ok: true });
+});
+
+// User helpers
+type UserRecord = {
+  uid: string;
+  createdAt: number;
+  lastLoginAt?: number;
+  plan: 'free' | 'pro';
+  licenseKey?: string;
+  passkeys?: Array<{
+    id: string; // credential ID (base64url)
+    publicKey: string; // base64url
+    counter: number;
+    transports?: string[];
+  }>;
+};
+
+async function getUserByName(c: any, name: string): Promise<UserRecord | null> {
+  const uid = await c.env.KV_USERS.get(`user:byname:${name}`);
+  if (!uid) return null;
+  const raw = await c.env.KV_USERS.get(`user:${uid}`);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function ensureUserByName(c: any, name: string): Promise<UserRecord> {
+  let user = await getUserByName(c, name);
+  if (user) return user;
+  const uid = generateIdBase62(16);
+  user = { uid, createdAt: Date.now(), plan: 'free', passkeys: [] };
+  await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+  await c.env.KV_USERS.put(`user:byname:${name}`, uid);
+  return user;
+}
+
+// Passkey: Register begin
+app.post('/auth/register-passkey/begin', async (c: any) => {
+  const { name } = await c.req.json();
+  if (!name) return c.json({ error: 'name_required' }, 400);
+  const user = await ensureUserByName(c, name);
+  const options = generateRegistrationOptions({
+    rpID: c.env.RP_ID,
+    rpName: 'QuickStage',
+    userID: user.uid,
+    userName: name,
+    attestationType: 'none',
+    authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+    excludeCredentials: (user.passkeys || []).map((pk) => ({ id: pk.id, type: 'public-key' as const })),
+  } as any);
+  await c.env.KV_USERS.put(`user:${user.uid}:regChallenge`, options.challenge, { expirationTtl: 600 });
+  return c.json(options);
+});
+
+// Passkey: Register finish
+app.post('/auth/register-passkey/finish', async (c: any) => {
+  const { name, response } = await c.req.json();
+  if (!name || !response) return c.json({ error: 'bad_request' }, 400);
+  const user = await getUserByName(c, name);
+  if (!user) return c.json({ error: 'not_found' }, 404);
+  const expectedChallenge = await c.env.KV_USERS.get(`user:${user.uid}:regChallenge`);
+  if (!expectedChallenge) return c.json({ error: 'challenge_expired' }, 400);
+  const verification = await verifyRegistrationResponse({
+    response,
+    expectedChallenge,
+    expectedOrigin: `${c.env.PUBLIC_BASE_URL}`,
+    expectedRPID: c.env.RP_ID,
+  } as any);
+  if (!verification.verified || !verification.registrationInfo) return c.json({ error: 'verify_failed' }, 400);
+  const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
+  user.passkeys = user.passkeys || [];
+  if (!user.passkeys.find((pk) => pk.id === credentialID)) {
+    user.passkeys.push({ id: credentialID, publicKey: credentialPublicKey, counter: counter || 0 });
+  }
+  user.lastLoginAt = Date.now();
+  await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
+  const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+  setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+  return c.json({ ok: true });
+});
+
+// Passkey: Login begin
+app.post('/auth/login-passkey/begin', async (c: any) => {
+  const { name } = await c.req.json();
+  if (!name) return c.json({ error: 'name_required' }, 400);
+  const user = await getUserByName(c, name);
+  if (!user || !user.passkeys || user.passkeys.length === 0) return c.json({ error: 'not_found' }, 404);
+  const options = generateAuthenticationOptions({
+    rpID: c.env.RP_ID,
+    userVerification: 'preferred',
+    allowCredentials: user.passkeys.map((pk) => ({ id: pk.id, type: 'public-key' as const })),
+  } as any);
+  await c.env.KV_USERS.put(`user:${user.uid}:authChallenge`, options.challenge, { expirationTtl: 600 });
+  return c.json(options);
+});
+
+// Passkey: Login finish
+app.post('/auth/login-passkey/finish', async (c: any) => {
+  const { name, response } = await c.req.json();
+  if (!name || !response) return c.json({ error: 'bad_request' }, 400);
+  const user = await getUserByName(c, name);
+  if (!user) return c.json({ error: 'not_found' }, 404);
+  const expectedChallenge = await c.env.KV_USERS.get(`user:${user.uid}:authChallenge`);
+  if (!expectedChallenge) return c.json({ error: 'challenge_expired' }, 400);
+  const verification = await verifyAuthenticationResponse({
+    response,
+    expectedChallenge,
+    expectedOrigin: `${c.env.PUBLIC_BASE_URL}`,
+    expectedRPID: c.env.RP_ID,
+    authenticator: {
+      // Use the first for now; in future map credentialID to stored authenticator
+      credentialID: user.passkeys?.[0]?.id,
+      credentialPublicKey: user.passkeys?.[0]?.publicKey,
+      counter: user.passkeys?.[0]?.counter || 0,
+      transports: user.passkeys?.[0]?.transports,
+    } as any,
+  } as any);
+  if (!verification.verified) return c.json({ error: 'verify_failed' }, 400);
+  user.lastLoginAt = Date.now();
+  await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
+  const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+  setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+  return c.json({ ok: true });
+});
+
+app.get('/me', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ user: null });
+  const raw = await c.env.KV_USERS.get(`user:${uid}`);
+  return c.json({ user: raw ? JSON.parse(raw) : null });
+});
+
+// Billing: checkout
+app.post('/billing/checkout', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16',
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+  const session = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+    success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
+    cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
+    metadata: { uid },
+  });
+  return c.json({ url: session.url });
+});
+
+// Billing: webhook
+app.post('/billing/webhook', async (c: any) => {
+  const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16',
+    httpClient: Stripe.createFetchHttpClient(),
+  });
+  const sig = c.req.header('stripe-signature');
+  const rawBody = await c.req.text();
+  let event: any;
+  try {
+    const cryptoProvider = Stripe.createSubtleCryptoProvider();
+    event = await stripe.webhooks.constructEventAsync(
+      rawBody,
+      sig as string,
+      c.env.STRIPE_WEBHOOK_SECRET,
+      undefined,
+      cryptoProvider,
+    );
+  } catch (err) {
+    return c.json({ error: 'bad_signature' }, 400);
+  }
+  if (event.type === 'checkout.session.completed' || event.type === 'invoice.paid') {
+    const session = event.data.object as any;
+    const uid = session.metadata?.uid;
+    if (uid) {
+      const raw = await c.env.KV_USERS.get(`user:${uid}`);
+      if (raw) {
+        const user = JSON.parse(raw);
+        user.plan = 'pro';
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+      }
+    }
+  }
+  return c.json({ received: true });
+});
+
+// Create snapshot
+app.post('/snapshots/create', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const body = await c.req.json();
+  const parsed = CreateSnapshotBodySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'bad_request', details: parsed.error.format() }, 400);
+  const { expiryDays = 7, password = null, public: isPublic = false } = parsed.data;
+
+  // Quota: count active snapshots
+  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+  const activeIds: string[] = JSON.parse(listJson);
+  if (activeIds.length >= 10) return c.json({ error: 'quota_exceeded' }, 403);
+
+  const id = generateIdBase62(16);
+  const createdAt = nowMs();
+  const expiresAt = createdAt + expiryDays * 24 * 60 * 60 * 1000;
+  const realPassword = password ?? generatePassword(20);
+  const saltHex = randomHex(8);
+  const passwordHash = await hashPasswordArgon2id(realPassword, saltHex);
+  const meta = {
+    id,
+    ownerUid: uid,
+    createdAt,
+    expiresAt,
+    passwordHash,
+    totalBytes: 0,
+    files: [],
+    views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
+    commentsCount: 0,
+    public: Boolean(isPublic),
+    caps: DEFAULT_CAPS,
+    status: 'creating' as const,
+    gateVersion: 1,
+  };
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  return c.json({ id, password: realPassword, expiryDays, caps: DEFAULT_CAPS });
+});
+
+// Presign upload URL for direct R2 PUT
+app.post('/upload-url', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.query('id');
+  const p = c.req.query('path');
+  const ct = c.req.query('ct') || 'application/octet-stream';
+  const sz = Number(c.req.query('sz') || '0');
+  if (!id || !p) return c.json({ error: 'bad_request' }, 400);
+  if (p.includes('..')) return c.json({ error: 'bad_path' }, 400);
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large' }, 400);
+  if (!ALLOW_MIME_PREFIXES.some((x) => String(ct).startsWith(x))) return c.json({ error: 'type_not_allowed' }, 400);
+  const { presignR2PutURL } = await import('./s3presign');
+  const url = await presignR2PutURL({
+    accountId: c.env.R2_ACCOUNT_ID,
+    bucket: 'protosnap-snapshots',
+    key: `snap/${id}/${p}`,
+    accessKeyId: c.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,
+    contentType: String(ct),
+    expiresSeconds: 600,
+  });
+  return c.json({ url });
+});
+
+// Upload via Worker (streaming) to R2; path query is required
+app.put('/upload', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.query('id');
+  const p = c.req.query('path');
+  const ct = c.req.header('content-type') || 'application/octet-stream';
+  const sz = Number(c.req.header('content-length') || '0');
+  const h = c.req.query('h') || '';
+  if (!id || !p) return c.json({ error: 'bad_request' }, 400);
+  if (p.includes('..')) return c.json({ error: 'bad_path' }, 400);
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large' }, 400);
+  if (!ALLOW_MIME_PREFIXES.some((p) => ct.startsWith(p))) return c.json({ error: 'type_not_allowed' }, 400);
+  const objectKey = `snap/${id}/${p}`;
+  const body = c.req.raw.body;
+  if (!body) return c.json({ error: 'no_body' }, 400);
+  await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
+  return c.json({ ok: true });
+});
+
+// Finalize snapshot
+app.post('/snapshots/finalize', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const body = await c.req.json();
+  const parsed = FinalizeSnapshotBodySchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'bad_request', details: parsed.error.format() }, 400);
+  const { id, totalBytes, files } = parsed.data;
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  if (totalBytes > meta.caps.maxBytes) return c.json({ error: 'bundle_too_large' }, 400);
+  meta.totalBytes = totalBytes;
+  meta.files = files;
+  meta.status = 'active';
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  // Append to user index
+  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+  const ids: string[] = JSON.parse(listJson);
+  ids.unshift(id);
+  await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids.slice(0, 100)));
+  return c.json({ url: `${c.env.PUBLIC_BASE_URL}/s/${id}`, password: 'hidden' });
+});
+
+// List snapshots (compact)
+app.get('/snapshots/list', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+  const ids: string[] = JSON.parse(listJson);
+  const metas = await Promise.all(
+    ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')),
+  );
+  return c.json({ snapshots: metas.map((m) => ({ id: m.id, createdAt: m.createdAt, expiresAt: m.expiresAt, totalBytes: m.totalBytes, status: m.status })) });
+});
+
+// Expire
+app.post('/snapshots/:id/expire', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.param('id');
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  meta.status = 'expired';
+  meta.expiresAt = nowMs() - 1000;
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  // remove from index
+  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+  const ids: string[] = JSON.parse(listJson).filter((x: string) => x !== id);
+  await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+  return c.json({ ok: true });
+});
+
+// Extend
+app.post('/snapshots/:id/extend', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.param('id');
+  const body: any = await c.req.json();
+  const days: number = Number(body?.days || 1);
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  const cap = DEFAULT_CAPS.maxDays;
+  const added = Math.min(Math.max(1, days || 1), cap);
+  meta.expiresAt += added * 24 * 60 * 60 * 1000;
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  return c.json({ ok: true, expiresAt: meta.expiresAt });
+});
+
+// Rotate password
+app.post('/snapshots/:id/rotate-password', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.param('id');
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  const newPass = generatePassword(20);
+  const saltHex = randomHex(8);
+  meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  return c.json({ password: newPass });
+});
+
+// Serve viewer shell (redirect to Pages handled app) or simple shell
+app.get('/s/:id', async (c: any) => {
+  const id = c.req.param('id');
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'gone' }, 410);
+  const meta = JSON.parse(metaRaw);
+  if (meta.status === 'expired' || meta.expiresAt < nowMs()) return c.json({ error: 'gone' }, 410);
+  // Let Pages app handle viewer route
+  return c.redirect(`${c.env.PUBLIC_BASE_URL}/app/s/${id}`);
+});
+
+// Asset serving with password gate
+app.get('/s/:id/*', async (c: any) => {
+  const id = c.req.param('id');
+  const path = c.req.param('*') || '';
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.text('Gone', 410);
+  const meta = JSON.parse(metaRaw);
+  if (meta.status === 'expired' || meta.expiresAt < nowMs()) return c.text('Gone', 410);
+  if (!meta.public) {
+    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+    if (!gateCookie || gateCookie !== 'ok') return c.json({ error: 'unauthorized' }, 401);
+  }
+  const r2obj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/${path}`);
+  if (!r2obj) {
+    // SPA fallback
+    const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
+    if (indexObj) {
+      const headers: Record<string, string> = {
+        'Cache-Control': 'no-cache',
+        'Content-Type': 'text/html; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+      };
+      return new Response(indexObj.body, { headers });
+    }
+    return c.text('Not found', 404);
+  }
+  const headers: Record<string, string> = {
+    'Cache-Control': 'public, max-age=3600',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+  };
+  const ct = r2obj.httpMetadata?.contentType;
+  if (ct) headers['Content-Type'] = ct;
+  return new Response(r2obj.body, { headers });
+});
+
+// Gate
+app.post('/s/:id/gate', async (c: any) => {
+  const id = c.req.param('id');
+  const body: any = await c.req.json();
+  const password: string = String(body?.password || '');
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  const meta = JSON.parse(metaRaw);
+  const ok = await verifyPasswordHash(password, meta.passwordHash);
+  if (!ok) return c.json({ error: 'forbidden' }, 403);
+  setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
+    secure: true,
+    sameSite: 'Lax',
+    path: `/s/${id}`,
+    maxAge: 60 * 60,
+  });
+  return c.json({ ok: true });
+});
+
+// Snapshot comments endpoints
+app.get('/api/snapshots/:id/comments', async (c: any) => {
+  const id = c.req.param('id');
+  if (!id) return c.json({ error: 'bad_request' }, 400);
+  
+  const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(id));
+  const res = await stub.fetch(new URL(`/comments?id=${encodeURIComponent(id)}`, 'http://do').toString());
+  return new Response(res.body as any, { headers: { 'Content-Type': 'application/json' } });
+});
+
+app.post('/api/snapshots/:id/comments', async (c: any) => {
+  const id = c.req.param('id');
+  if (!id) return c.json({ error: 'bad_request' }, 400);
+  
+  const body: any = await c.req.json();
+  if (!body || !body.text) return c.json({ error: 'bad_request' }, 400);
+  
+  // Turnstile verification
+  const token = body.turnstileToken || '';
+  if (!token) return c.json({ error: 'turnstile_required' }, 400);
+  
+  const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ secret: c.env.TURNSTILE_SECRET_KEY, response: token }),
+  });
+  
+  const verifyJson: any = await verifyRes.json();
+  if (!verifyJson.success) return c.json({ error: 'turnstile_failed' }, 403);
+  
+  // Get user info for author
+  const uid = await getUidFromSession(c);
+  const author = uid ? `User-${uid.slice(0, 8)}` : 'Anonymous';
+  
+  const commentData = {
+    text: body.text,
+    file: body.file,
+    line: body.line,
+    author: author
+  };
+  
+  const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(id));
+  const res = await stub.fetch('http://do/comments', { 
+    method: 'POST', 
+    body: JSON.stringify(commentData), 
+    headers: { 'Content-Type': 'application/json' } 
+  });
+  
+  // Increment comments count
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (metaRaw) {
+    try {
+      const meta = JSON.parse(metaRaw);
+      meta.commentsCount = (meta.commentsCount || 0) + 1;
+      await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    } catch {}
+  }
+  
+  return new Response(res.body as any, { headers: { 'Content-Type': 'application/json' } });
+});
+
+// Legacy comments endpoints for backward compatibility
+app.get('/comments', async (c: any) => {
+  const id = c.req.query('id');
+  if (!id) return c.json({ error: 'bad_request' }, 400);
+  const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(id));
+  const res = await stub.fetch(new URL(`/comments?id=${encodeURIComponent(id)}`, 'http://do').toString());
+  return new Response(res.body as any, { headers: { 'Content-Type': 'application/json' } });
+});
+
+app.post('/comments', async (c: any) => {
+  const body: any = await c.req.json();
+  if (!body || !body.id || !body.text) return c.json({ error: 'bad_request' }, 400);
+  // Turnstile verification
+  const token = c.req.header('cf-turnstile-token') || c.req.header('x-turnstile-token') || '';
+  if (!token) return c.json({ error: 'turnstile_required' }, 400);
+  const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ secret: c.env.TURNSTILE_SECRET_KEY, response: token }),
+  });
+  const verifyJson: any = await verifyRes.json();
+  if (!verifyJson.success) return c.json({ error: 'turnstile_failed' }, 403);
+  const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(body.id));
+  const res = await stub.fetch('http://do/comments', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+  // Increment comments count eventually
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${body.id}`);
+  if (metaRaw) {
+    try {
+      const meta = JSON.parse(metaRaw);
+      meta.commentsCount = (meta.commentsCount || 0) + 1;
+      await c.env.KV_SNAPS.put(`snap:${body.id}`, JSON.stringify(meta));
+    } catch {}
+  }
+  return new Response(res.body as any, { headers: { 'Content-Type': 'application/json' } });
+});
+
+// Cron purge
+app.get('/admin/purge-expired', async (c: any) => {
+  // This route will be bound to CRON; iterate KV list
+  // Cloudflare KV list requires pagination; for MVP, skip and rely on manual
+  return c.json({ ok: true });
+});
+
+async function purgeExpired(env: Bindings) {
+  let cursor: string | undefined = undefined;
+  do {
+    const list: any = await env.KV_SNAPS.list({ prefix: 'snap:', cursor });
+    cursor = list.cursor as string | undefined;
+    for (const k of list.keys as any[]) {
+      const metaRaw = await env.KV_SNAPS.get(k.name as string);
+      if (!metaRaw) continue;
+      try {
+        const meta = JSON.parse(metaRaw);
+        if (meta.expiresAt && meta.expiresAt < Date.now()) {
+          // delete R2 objects under snap/id/
+          const id = meta.id as string;
+          let r2cursor: string | undefined = undefined;
+          do {
+            const objs: any = await env.R2_SNAPSHOTS.list({ prefix: `snap/${id}/`, cursor: r2cursor });
+            r2cursor = objs.cursor as string | undefined;
+            if (objs.objects.length) {
+              await env.R2_SNAPSHOTS.delete((objs.objects as any[]).map((o: any) => o.key as string));
+            }
+          } while (r2cursor);
+          await env.KV_SNAPS.delete(k.name);
+          if (meta.ownerUid) {
+            const listJson = (await env.KV_USERS.get(`user:${meta.ownerUid}:snapshots`)) || '[]';
+            const ids: string[] = (JSON.parse(listJson) as string[]).filter((x: string) => x !== id);
+            await env.KV_USERS.put(`user:${meta.ownerUid}:snapshots`, JSON.stringify(ids));
+          }
+        }
+      } catch {}
+    }
+  } while (cursor);
+}
+
+const worker = {
+  fetch: app.fetch,
+  scheduled: async (_event: any, env: Bindings) => {
+    await purgeExpired(env);
+  },
+};
+
+export default worker;
+export { CommentsRoom } from './comments';
+
+
