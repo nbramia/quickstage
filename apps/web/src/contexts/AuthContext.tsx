@@ -36,6 +36,7 @@ interface AuthContextType {
   updateProfile: (updates: { name?: string; email?: string }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   removePasskey: (credentialId: string) => Promise<void>;
+  sessionToken: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   const refreshUser = async () => {
     try {
@@ -240,6 +242,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateProfile,
     changePassword,
     removePasskey,
+    sessionToken,
   };
 
   return (
