@@ -23,8 +23,11 @@ This software is proprietary and confidential. It is licensed, not sold, and req
 ### Authentication & API Fixes (2025-01-27)
 - Fixed session token management between AuthContext and API client
 - Resolved 401 Unauthorized errors when fetching snapshots after login
-- Improved session token extraction from cookies for better reliability
-- API client now properly synchronizes with authentication state
+- Simplified authentication to use httpOnly cookies directly (no manual token management)
+- API client now relies on automatic cookie-based authentication
+- Removed unnecessary session token extraction since cookies are httpOnly
+- **Temporary Fix**: API client now directly calls Worker API due to Cloudflare Pages routing issues
+- **Cookie Fix**: Updated cookie settings to work across domains with `sameSite: 'None'` and proper domain configuration
 
 ## Features
 
@@ -195,6 +198,15 @@ For the Google Cloud Console OAuth 2.0 credentials:
 - Option A (preferred): Add a Worker Route for your custom domain: `quickstage.tech/api/*` → `quickstage-worker`. This keeps cookies first‑party and matches the app’s default `/api` base.
 - Option B: Use a dedicated subdomain for the Worker (e.g. `api.quickstage.tech`) and set `VITE_API_BASE_URL` to that URL.
 - If neither is configured, POSTs to `https://quickstage.tech/api/*` will hit Pages (static) and return `405 Method Not Allowed`.
+
+**Current Issue**: The Cloudflare Pages function at `/api/*` is not properly routing requests to the Worker, causing 405 errors. 
+
+**Recommended Solution**: Set up a custom domain for the Worker API:
+1. In Cloudflare, create a custom domain like `api.quickstage.tech` that points to your Worker
+2. Set `VITE_API_BASE_URL=https://api.quickstage.tech` in your Cloudflare Pages environment variables
+3. This provides a clean, reliable API endpoint without routing issues
+
+**Alternative Solution**: Configure a Worker route for `quickstage.tech/api/*` → `quickstage-worker` in the Cloudflare dashboard.
 
 ## Development
 

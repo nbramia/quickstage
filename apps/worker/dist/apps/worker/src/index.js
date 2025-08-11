@@ -328,13 +328,7 @@ app.get('/me', async (c) => {
 // Logout endpoint
 app.post('/auth/logout', async (c) => {
     // Clear the session cookie
-    setCookie(c, SESSION_COOKIE_NAME, '', {
-        httpOnly: true,
-        secure: isSecureRequest(c),
-        sameSite: 'Lax',
-        maxAge: 0,
-        path: '/'
-    });
+    setCookie(c, SESSION_COOKIE_NAME, '', { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 0, path: '/' });
     return c.json({ ok: true });
 });
 // Update user profile
@@ -887,6 +881,86 @@ app.get('/admin/purge-expired', async (c) => {
     // This route will be bound to CRON; iterate KV list
     // Cloudflare KV list requires pagination; for MVP, skip and rely on manual
     return c.json({ ok: true });
+});
+// Add /api prefixed routes for Cloudflare routing
+app.post('/api/auth/google', async (c) => {
+    const { idToken } = await c.req.json();
+    if (!idToken)
+        return c.json({ error: 'id_token_required' }, 400);
+    // Verify the token with Google
+    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+    if (!verifyRes.ok)
+        return c.json({ error: 'invalid_token' }, 400);
+    const tokenInfo = await verifyRes.json();
+    if (tokenInfo.aud !== c.env.GOOGLE_CLIENT_ID)
+        return c.json({ error: 'invalid_audience' }, 400);
+    // Find or create user
+    let user = await getUserByName(c, tokenInfo.email);
+    if (!user) {
+        const uid = generateIdBase62(16);
+        user = {
+            uid,
+            createdAt: Date.now(),
+            plan: 'free',
+            email: tokenInfo.email,
+            name: tokenInfo.name || tokenInfo.email.split('@')[0],
+            googleId: tokenInfo.sub,
+            passkeys: []
+        };
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        await c.env.KV_USERS.put(`user:byname:${tokenInfo.email}`, uid);
+    }
+    else {
+        // Update existing user
+        user.googleId = tokenInfo.sub;
+        user.email = tokenInfo.email;
+        user.name = tokenInfo.name || tokenInfo.email.split('@')[0];
+        user.lastLoginAt = Date.now();
+        await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
+    }
+    // Sign session
+    const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
+});
+app.get('/api/me', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    return c.json({ user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt } });
+});
+app.get('/api/snapshots/list', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const listJson = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
+    const ids = JSON.parse(listJson);
+    const snapshots = [];
+    for (const id of ids) {
+        const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+        if (metaRaw) {
+            try {
+                const meta = JSON.parse(metaRaw);
+                if (meta.expiresAt && meta.expiresAt > Date.now()) {
+                    snapshots.push({
+                        id: meta.id,
+                        name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
+                        createdAt: meta.createdAt,
+                        expiresAt: meta.expiresAt,
+                        password: meta.password,
+                        isPublic: meta.isPublic || false,
+                        viewCount: meta.viewCount || 0
+                    });
+                }
+            }
+            catch { }
+        }
+    }
+    return c.json({ data: { snapshots } });
 });
 async function purgeExpired(env) {
     let cursor = undefined;

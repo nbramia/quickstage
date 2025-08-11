@@ -1,5 +1,5 @@
 // Simple test function to verify Pages Functions are working
-export async function onRequest(context: any): Promise<Response> {
+export async function onRequest(context) {
   const { request } = context;
   const url = new URL(request.url);
   

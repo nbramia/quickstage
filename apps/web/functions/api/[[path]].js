@@ -1,5 +1,5 @@
 // Cloudflare Pages Function to proxy /api/* requests to the Worker
-export async function onRequest(context: any): Promise<Response> {
+export async function onRequest(context) {
   try {
     console.log('Pages Function invoked:', context.request.url);
     const { request, env } = context;
@@ -59,7 +59,7 @@ export async function onRequest(context: any): Promise<Response> {
 }
 
 // Handle CORS preflight
-export async function onRequestOptions(context: any): Promise<Response> {
+export async function onRequestOptions(context) {
   const { request } = context;
   const url = new URL(request.url);
   
@@ -72,4 +72,4 @@ export async function onRequestOptions(context: any): Promise<Response> {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
-} 
+}
