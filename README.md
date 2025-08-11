@@ -179,6 +179,17 @@ For the Google Cloud Console OAuth 2.0 credentials:
 - `http://localhost:3000` (development)
 - `https://quickstage.tech` (production)
 
+### Production build variables (Cloudflare Pages)
+- Set these in your Cloudflare Pages project under Settings → Environment variables (and re-deploy):
+  - `VITE_GOOGLE_CLIENT_ID`
+  - `VITE_API_BASE_URL` (recommended: a same-domain route like `https://quickstage.tech/api` once routed to the Worker, or a dedicated subdomain bound to the Worker, e.g. `https://api.quickstage.tech`)
+- Note: local `apps/web/.env` is not used by the Pages build. Values must be configured in the Pages project.
+
+### Routing in production
+- Option A (preferred): Add a Worker Route for your custom domain: `quickstage.tech/api/*` → `quickstage-worker`. This keeps cookies first‑party and matches the app’s default `/api` base.
+- Option B: Use a dedicated subdomain for the Worker (e.g. `api.quickstage.tech`) and set `VITE_API_BASE_URL` to that URL.
+- If neither is configured, POSTs to `https://quickstage.tech/api/*` will hit Pages (static) and return `405 Method Not Allowed`.
+
 ## Development
 
 ### Prerequisites
