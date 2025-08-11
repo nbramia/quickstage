@@ -21,7 +21,15 @@ import Stripe from 'stripe';
 
 const app = new Hono();
 
-app.use('*', cors({ origin: (origin: string | undefined) => origin || '*', credentials: true }));
+app.use('*', cors({ 
+  origin: (origin: string | undefined) => {
+    // Allow requests from quickstage.tech and localhost
+    if (!origin) return '*';
+    if (origin.includes('quickstage.tech') || origin.includes('localhost')) return origin;
+    return false;
+  }, 
+  credentials: true 
+}));
 
 function isSecureRequest(c: any): boolean {
   try {
