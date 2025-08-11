@@ -276,7 +276,7 @@ app.post('/upload-url', async (c) => {
     const { presignR2PutURL } = await import('./s3presign');
     const url = await presignR2PutURL({
         accountId: c.env.R2_ACCOUNT_ID,
-        bucket: 'quickstage-snapshots',
+        bucket: 'snapshots',
         key: `snap/${id}/${p}`,
         accessKeyId: c.env.R2_ACCESS_KEY_ID,
         secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,
@@ -354,6 +354,32 @@ app.get('/snapshots/list', async (c) => {
     const ids = JSON.parse(listJson);
     const metas = await Promise.all(ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')));
     return c.json({ snapshots: metas.map((m) => ({ id: m.id, createdAt: m.createdAt, expiresAt: m.expiresAt, totalBytes: m.totalBytes, status: m.status })) });
+});
+// Get individual snapshot details
+app.get('/snapshots/:id', async (c) => {
+    const id = c.req.param('id');
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+        return c.json({ error: 'gone' }, 410);
+    }
+    // Check if user is authenticated and owns this snapshot
+    const uid = await getUidFromSession(c);
+    if (uid && meta.ownerUid === uid) {
+        // Owner can see full details
+        return c.json({ snapshot: meta });
+    }
+    // For non-owners, check if public or password protected
+    if (meta.public) {
+        // Public snapshots can be viewed without authentication
+        return c.json({ snapshot: meta });
+    }
+    else {
+        // Password protected snapshots require authentication
+        return c.json({ error: 'unauthorized' }, 401);
+    }
 });
 // Expire
 app.post('/snapshots/:id/expire', async (c) => {
@@ -495,6 +521,15 @@ app.get('/api/snapshots/:id/comments', async (c) => {
         return c.json({ error: 'bad_request' }, 400);
     const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(id));
     const res = await stub.fetch(new URL(`/comments?id=${encodeURIComponent(id)}`, 'http://do').toString());
+    return new Response(res.body, { headers: { 'Content-Type': 'application/json' } });
+});
+// Get comments for a snapshot (public endpoint)
+app.get('/comments/:snapshotId', async (c) => {
+    const snapshotId = c.req.param('snapshotId');
+    if (!snapshotId)
+        return c.json({ error: 'bad_request' }, 400);
+    const stub = c.env.COMMENTS_DO.get(c.env.COMMENTS_DO.idFromName(snapshotId));
+    const res = await stub.fetch(new URL(`/comments?id=${encodeURIComponent(snapshotId)}`, 'http://do').toString());
     return new Response(res.body, { headers: { 'Content-Type': 'application/json' } });
 });
 app.post('/api/snapshots/:id/comments', async (c) => {

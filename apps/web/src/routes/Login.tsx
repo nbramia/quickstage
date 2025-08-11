@@ -14,11 +14,22 @@ export default function Login() {
 
   // Check if passkeys are supported
   useEffect(() => {
-    setPasskeySupported(
-      window.PublicKeyCredential &&
-      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable &&
-      window.PublicKeyCredential.isConditionalMediationAvailable
-    );
+    const checkPasskeySupport = async () => {
+      try {
+        const isSupported = window.PublicKeyCredential &&
+          typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function' &&
+          typeof window.PublicKeyCredential.isConditionalMediationAvailable === 'function' &&
+          await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() &&
+          await window.PublicKeyCredential.isConditionalMediationAvailable();
+        
+        setPasskeySupported(!!isSupported);
+      } catch (error) {
+        console.warn('Passkey support check failed:', error);
+        setPasskeySupported(false);
+      }
+    };
+    
+    checkPasskeySupport();
   }, []);
 
   // Redirect if already authenticated

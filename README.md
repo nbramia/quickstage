@@ -6,7 +6,12 @@ QuickStage is a one-click "stage and share" workflow for static front-end protot
 
 This software is proprietary and confidential. It is licensed, not sold, and requires an active subscription to QuickStage services. See [LICENSE](apps/extension/LICENSE) for full terms and conditions.
 
-This software is proprietary and confidential. It is licensed, not sold, and requires an active subscription to QuickStage services. See [LICENSE](apps/extension/LICENSE) for full terms and conditions.
+## Recent Fixes
+
+### TypeScript Build Issues (2025-08-10)
+- Fixed passkey support detection in Login.tsx that was causing Cloudflare deployment failures
+- Resolved async function calls for `isUserVerifyingPlatformAuthenticatorAvailable` and `isConditionalMediationAvailable`
+- All builds now pass successfully: `pnpm build`, `pnpm package`
 
 ## Features
 
