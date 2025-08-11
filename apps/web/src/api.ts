@@ -1,4 +1,4 @@
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://quickstage-worker.nbramia.workers.dev').replace(/\/$/, '');
+const BASE_URL = 'https://quickstage-worker.nbramia.workers.dev';
 
 // Global session token storage - not needed since we use httpOnly cookies
 let globalSessionToken: string | null = null;
