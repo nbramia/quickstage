@@ -25,7 +25,7 @@ export const api = {
     
     // Add session token if available
     if (globalSessionToken) {
-      headers['Cookie'] = `ps_sess=${globalSessionToken}`;
+      headers['Authorization'] = `Bearer ${globalSessionToken}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -47,7 +47,7 @@ export const api = {
     
     // Add session token if available
     if (globalSessionToken) {
-      headers['Cookie'] = `ps_sess=${globalSessionToken}`;
+      headers['Authorization'] = `Bearer ${globalSessionToken}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -82,7 +82,7 @@ export const api = {
     
     // Add session token if available
     if (globalSessionToken) {
-      headers['Cookie'] = `ps_sess=${globalSessionToken}`;
+      headers['Authorization'] = `Bearer ${globalSessionToken}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -106,7 +106,7 @@ export const api = {
     
     // Add session token if available
     if (globalSessionToken) {
-      headers['Cookie'] = `ps_sess=${globalSessionToken}`;
+      headers['Authorization'] = `Bearer ${globalSessionToken}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
