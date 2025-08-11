@@ -5,6 +5,7 @@ import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../p
 import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
 import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
+import { presignR2PutURL } from './s3presign';
 // Passkeys (WebAuthn)
 // @ts-ignore
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse, } from '@simplewebauthn/server';
@@ -532,7 +533,6 @@ app.post('/upload-url', async (c) => {
         return c.json({ error: 'file_too_large' }, 400);
     if (!ALLOW_MIME_PREFIXES.some((x) => String(ct).startsWith(x)))
         return c.json({ error: 'type_not_allowed' }, 400);
-    const { presignR2PutURL } = await import('./s3presign');
     const url = await presignR2PutURL({
         accountId: c.env.R2_ACCOUNT_ID,
         bucket: 'snapshots',
@@ -999,6 +999,123 @@ app.get('/api/snapshots/list', async (c) => {
         }
     }
     return c.json({ data: { snapshots } });
+});
+// Add missing /api endpoints for the extension
+app.post('/api/snapshots/create', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const { expiryDays = 7, public: isPublic = false } = await c.req.json();
+    const id = generateIdBase62(16);
+    const password = generatePassword(8);
+    const now = Date.now();
+    const expiresAt = now + (expiryDays * 24 * 60 * 60 * 1000);
+    const snapshot = {
+        id,
+        ownerUid: uid,
+        createdAt: now,
+        expiresAt,
+        password,
+        isPublic,
+        viewCount: 0,
+        commentsCount: 0,
+        status: 'uploading'
+    };
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(snapshot));
+    // Add to user's snapshot list
+    const listJson = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
+    const ids = JSON.parse(listJson);
+    ids.push(id);
+    await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+    return c.json({ id, password });
+});
+app.post('/api/upload-url', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const { id, path: filePath, ct: contentType, sz: size, h: hash } = c.req.query();
+    if (!id || !filePath || !contentType || !size || !hash) {
+        return c.json({ error: 'missing_parameters' }, 400);
+    }
+    // Verify snapshot ownership
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'snapshot_not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    // Generate presigned URL for R2
+    const key = `snap/${id}/${filePath}`;
+    const url = await presignR2PutURL({
+        accountId: c.env.R2_ACCOUNT_ID,
+        bucket: 'snapshots',
+        key,
+        accessKeyId: c.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: c.env.R2_SECRET_ACCESS_KEY,
+        contentType,
+        expiresSeconds: 600
+    });
+    return c.json({ url });
+});
+app.post('/api/snapshots/finalize', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const { id, totalBytes, files } = await c.req.json();
+    if (!id || totalBytes === undefined || !files) {
+        return c.json({ error: 'missing_parameters' }, 400);
+    }
+    // Verify snapshot ownership
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'snapshot_not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    // Update snapshot metadata
+    meta.status = 'ready';
+    meta.totalBytes = totalBytes;
+    meta.files = files;
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    return c.json({ ok: true });
+});
+// Add snapshot serving endpoint for /api/s/:id/*
+app.get('/api/s/:id/*', async (c) => {
+    const id = c.req.param('id');
+    const path = c.req.param('*');
+    if (!id || !path)
+        return c.json({ error: 'invalid_path' }, 400);
+    // Get snapshot metadata
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'snapshot_not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    // Check if expired
+    if (meta.expiresAt && meta.expiresAt < Date.now()) {
+        return c.json({ error: 'snapshot_expired' }, 410);
+    }
+    // Check if password protected
+    if (meta.password) {
+        const accessCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+        if (!accessCookie) {
+            return c.json({ error: 'password_required' }, 401);
+        }
+    }
+    // Get file from R2
+    const key = `snap/${id}/${path}`;
+    const obj = await c.env.R2_SNAPSHOTS.get(key);
+    if (!obj)
+        return c.json({ error: 'file_not_found' }, 404);
+    // Increment view count
+    meta.viewCount = (meta.viewCount || 0) + 1;
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    // Return file with appropriate headers
+    const headers = new Headers();
+    if (obj.httpMetadata?.contentType) {
+        headers.set('Content-Type', obj.httpMetadata.contentType);
+    }
+    headers.set('Cache-Control', 'public, max-age=3600');
+    return new Response(obj.body, { headers });
 });
 async function purgeExpired(env) {
     let cursor = undefined;
