@@ -20,6 +20,12 @@ This software is proprietary and confidential. It is licensed, not sold, and req
 - Resolved async function calls for `isUserVerifyingPlatformAuthenticatorAvailable` and `isConditionalMediationAvailable`
 - All builds now pass successfully: `pnpm build`, `pnpm package`
 
+### Authentication & API Fixes (2025-01-27)
+- Fixed session token management between AuthContext and API client
+- Resolved 401 Unauthorized errors when fetching snapshots after login
+- Improved session token extraction from cookies for better reliability
+- API client now properly synchronizes with authentication state
+
 ## Features
 
 - **One-Click Staging**: VS Code extension with single "Stage" button

@@ -8,6 +8,17 @@ export function setSessionToken(token: string | null) {
 }
 
 export function getSessionToken() {
+  // If no global token, try to extract from cookies as fallback
+  if (!globalSessionToken) {
+    const cookies = document.cookie.split(';');
+    const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+    if (sessionCookie) {
+      const token = sessionCookie.split('=')[1];
+      if (token) {
+        globalSessionToken = token;
+      }
+    }
+  }
   return globalSessionToken;
 }
 
@@ -24,8 +35,9 @@ export const api = {
     };
     
     // Add session token if available
-    if (globalSessionToken) {
-      headers['Authorization'] = `Bearer ${globalSessionToken}`;
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -46,8 +58,9 @@ export const api = {
     };
     
     // Add session token if available
-    if (globalSessionToken) {
-      headers['Authorization'] = `Bearer ${globalSessionToken}`;
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -57,13 +70,14 @@ export const api = {
       body: data ? JSON.stringify(data) : undefined,
     });
     
-    // Extract session token from Set-Cookie header for auth endpoints
+    // Extract session token from cookies for auth endpoints
     if (endpoint.includes('/auth/') && response.ok) {
-      const setCookie = response.headers.get('set-cookie');
-      if (setCookie) {
-        const tokenMatch = setCookie.match(/ps_sess=([^;]+)/);
-        if (tokenMatch && tokenMatch[1]) {
-          globalSessionToken = tokenMatch[1];
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+      if (sessionCookie) {
+        const token = sessionCookie.split('=')[1];
+        if (token) {
+          globalSessionToken = token;
         }
       }
     }
@@ -81,8 +95,9 @@ export const api = {
     };
     
     // Add session token if available
-    if (globalSessionToken) {
-      headers['Authorization'] = `Bearer ${globalSessionToken}`;
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
@@ -105,8 +120,9 @@ export const api = {
     };
     
     // Add session token if available
-    if (globalSessionToken) {
-      headers['Authorization'] = `Bearer ${globalSessionToken}`;
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {

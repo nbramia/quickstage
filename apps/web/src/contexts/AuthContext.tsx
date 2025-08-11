@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from '../api';
+import { api, setSessionToken } from '../api';
 
 type UserPlan = 'free' | 'pro';
 
@@ -99,6 +99,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       setLoading(true);
       const response = await api.post('/auth/login', { email, password });
+      
+      // Extract session token from cookies and set it globally
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+      if (sessionCookie) {
+        const token = sessionCookie.split('=')[1];
+        if (token) {
+          setSessionToken(token);
+        }
+      }
+      
       if (response.user) {
         setUser(response.user);
       } else {
@@ -119,6 +130,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       setLoading(true);
       const response = await api.post('/auth/google', { idToken });
+      
+      // Extract session token from cookies and set it globally
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+      if (sessionCookie) {
+        const token = sessionCookie.split('=')[1];
+        if (token) {
+          setSessionToken(token);
+        }
+      }
+      
       if (response.user) {
         setUser(response.user);
       } else {
@@ -139,6 +161,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       setLoading(true);
       const response = await api.post('/auth/register', { email, password, name });
+      
+      // Extract session token from cookies and set it globally
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+      if (sessionCookie) {
+        const token = sessionCookie.split('=')[1];
+        if (token) {
+          setSessionToken(token);
+        }
+      }
+      
       if (response.user) {
         setUser(response.user);
       } else {
@@ -165,6 +198,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       // Clear session by setting cookie to expired
       document.cookie = 'ps_sess=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      setSessionToken(null); // Clear global session token
       setUser(null);
       setError(null);
     }
@@ -221,6 +255,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     // Check if user is already authenticated
     if (document.cookie.includes('ps_sess=')) {
+      // Extract and set session token from existing cookie
+      const cookies = document.cookie.split(';');
+      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
+      if (sessionCookie) {
+        const token = sessionCookie.split('=')[1];
+        if (token) {
+          setSessionToken(token);
+        }
+      }
       refreshUser();
     } else {
       setLoading(false);
