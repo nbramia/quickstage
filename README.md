@@ -136,16 +136,20 @@ This software is proprietary and confidential. It is licensed, not sold, and req
 ### Required Environment Variables
 ```bash
 # Google OAuth (for web app)
-VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id-here
+VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
 
 # API Configuration
-VITE_API_BASE_URL=http://localhost:8787
+# Optional. The web app defaults to `/api`, which works for both:
+# - local dev via Vite proxy → Worker at http://localhost:8787
+# - production via Cloudflare Pages route → Worker
+# Uncomment to override.
+# VITE_API_BASE_URL=http://localhost:8787/api
 ```
 
 ### Google OAuth Setup
 1. Create a project in Google Cloud Console
-2. Enable Google+ API and Google OAuth 2.0
-3. Create OAuth 2.0 credentials
+2. Enable Google OAuth 2.0
+3. Create OAuth 2.0 credentials (type: Web application)
 4. Add authorized origins and redirect URIs
 5. Set `VITE_GOOGLE_CLIENT_ID` in your environment
 
@@ -168,11 +172,11 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key
 For the Google Cloud Console OAuth 2.0 credentials:
 
 **Authorized JavaScript origins:**
-- `http://localhost:5173` (development)
+- `http://localhost:3000` (development)
 - `https://quickstage.tech` (production)
 
 **Authorized redirect URIs:**
-- `http://localhost:5173` (development)
+- `http://localhost:3000` (development)
 - `https://quickstage.tech` (production)
 
 ## Development

@@ -1,12 +1,14 @@
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
 export async function devLogin(uid: string) {
-  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid }), credentials: 'include' });
+  const res = await fetch(`${BASE_URL}/auth/dev-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid }), credentials: 'include' });
   if (!res.ok) throw new Error('login failed');
 }
 
 // API client for making authenticated requests
 export const api = {
   async get(endpoint: string) {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -21,7 +23,7 @@ export const api = {
   },
 
   async post(endpoint: string, data?: any) {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -38,7 +40,7 @@ export const api = {
   },
 
   async put(endpoint: string, data?: any) {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'PUT',
       credentials: 'include',
       headers: {
@@ -55,7 +57,7 @@ export const api = {
   },
 
   async delete(endpoint: string) {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}${endpoint}`, {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'DELETE',
       credentials: 'include',
       headers: {

@@ -111,11 +111,16 @@ export default function Login() {
     setError('');
     
     try {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        setError('Google OAuth is not configured. Please set VITE_GOOGLE_CLIENT_ID.');
+        return;
+      }
       // Initialize Google Sign-In
       if (typeof window !== 'undefined' && window.google) {
         const google = window.google;
         const client = google.accounts.oauth2.initTokenClient({
-          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id',
+          client_id: clientId,
           scope: 'email profile',
           callback: async (response) => {
             if (response.access_token) {
