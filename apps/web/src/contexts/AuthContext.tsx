@@ -96,8 +96,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setError(null);
       setLoading(true);
-      await api.post('/auth/login', { email, password });
-      await refreshUser();
+      const response = await api.post('/auth/login', { email, password });
+      if (response.user) {
+        setUser(response.user);
+      } else {
+        await refreshUser();
+      }
     } catch (error: any) {
       const errorMessage = error.message || 'Login failed';
       setError(errorMessage);
@@ -112,8 +116,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setError(null);
       setLoading(true);
-      await api.post('/auth/google', { idToken });
-      await refreshUser();
+      const response = await api.post('/auth/google', { idToken });
+      if (response.user) {
+        setUser(response.user);
+      } else {
+        await refreshUser();
+      }
     } catch (error: any) {
       const errorMessage = error.message || 'Google login failed';
       setError(errorMessage);
@@ -128,8 +136,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setError(null);
       setLoading(true);
-      await api.post('/auth/register', { email, password, name });
-      await refreshUser();
+      const response = await api.post('/auth/register', { email, password, name });
+      if (response.user) {
+        setUser(response.user);
+      } else {
+        await refreshUser();
+      }
     } catch (error: any) {
       const errorMessage = error.message || 'Registration failed';
       setError(errorMessage);
