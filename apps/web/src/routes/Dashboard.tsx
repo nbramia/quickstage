@@ -19,10 +19,52 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showInstallInstructions, setShowInstallInstructions] = useState(false);
+  const [saveLocation, setSaveLocation] = useState('downloads');
+  const [customPath, setCustomPath] = useState('');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [currentVersion, setCurrentVersion] = useState('');
+  const [lastDownloadedVersion, setLastDownloadedVersion] = useState('');
+  const [needsUpdate, setNeedsUpdate] = useState(false);
 
   useEffect(() => {
     loadSnapshots();
+    
+    // Load saved user preferences
+    const savedLocation = localStorage.getItem('quickstage-save-location');
+    const savedCustomPath = localStorage.getItem('quickstage-custom-path');
+    const downloadedVersion = localStorage.getItem('quickstage-downloaded-version');
+    
+    if (savedLocation) {
+      setSaveLocation(savedLocation);
+      if (savedCustomPath) {
+        setCustomPath(savedCustomPath);
+      }
+    }
+    
+    if (downloadedVersion) {
+      setLastDownloadedVersion(downloadedVersion);
+    }
+    
+    // Check for updates
+    checkForUpdates();
   }, []);
+  
+  const checkForUpdates = async () => {
+    try {
+      const response = await fetch('/api/extensions/version');
+      if (response.ok) {
+        const versionInfo = await response.json();
+        setCurrentVersion(versionInfo.version);
+        
+        // Check if user needs to update
+        if (lastDownloadedVersion && lastDownloadedVersion !== versionInfo.version) {
+          setNeedsUpdate(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+    }
+  };
 
   const loadSnapshots = async () => {
     try {
@@ -88,15 +130,18 @@ export default function Dashboard() {
 
   const handleDownloadExtension = () => {
     // Download the VSIX file from the API
-    const url = `${window.location.origin}/api/extensions/quickstage-0.0.1.vsix`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'quickstage-0.0.1.vsix';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const url = `${window.location.origin}/api/extensions/quickstage.vsix`;
     
-    // Show installation instructions after a short delay
+    // Try to use File System Access API if available and custom location selected
+    if (saveLocation === 'custom' && customPath && 'showSaveFilePicker' in window) {
+      // Use modern file picker API
+      downloadToCustomLocation(url, customPath);
+    } else {
+      // Fallback to traditional download
+      downloadToDefaultLocation(url);
+    }
+    
+    // Show instructions after delay
     setTimeout(() => {
       setShowInstallInstructions(true);
     }, 1000);
@@ -104,6 +149,112 @@ export default function Dashboard() {
 
   const handleShowInstructions = () => {
     setShowInstallInstructions(true);
+  };
+
+  const downloadToCustomLocation = async (url: string, path: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      
+      // Use File System Access API
+      if (window.showSaveFilePicker) {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'quickstage.vsix',
+          types: [{
+            description: 'VS Code Extension',
+            accept: { 'application/octet-stream': ['.vsix'] }
+          }]
+        });
+        
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        // Save user preference and track version
+        localStorage.setItem('quickstage-save-location', 'custom');
+        localStorage.setItem('quickstage-custom-path', path);
+        localStorage.setItem('quickstage-downloaded-version', currentVersion);
+        setLastDownloadedVersion(currentVersion);
+        setNeedsUpdate(false);
+      } else {
+        throw new Error('File System Access API not supported');
+      }
+    } catch (error) {
+      console.error('Failed to save to custom location:', error);
+      // Fallback to default download
+      downloadToDefaultLocation(url);
+    }
+  };
+  
+  const downloadToDefaultLocation = (url: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quickstage.vsix';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Track version when downloading
+    if (currentVersion) {
+      localStorage.setItem('quickstage-downloaded-version', currentVersion);
+      setLastDownloadedVersion(currentVersion);
+      setNeedsUpdate(false);
+    }
+  };
+
+  const getPlatformInfo = () => {
+    const platform = navigator.platform;
+    const isWindows = platform.indexOf('Win') > -1;
+    const isMac = platform.indexOf('Mac') > -1;
+    const isLinux = platform.indexOf('Linux') > -1;
+    
+    return {
+      isWindows,
+      isMac,
+      isLinux,
+      platform
+    };
+  };
+
+  const getExtensionPaths = () => {
+    const { isWindows, isMac, isLinux } = getPlatformInfo();
+    
+    if (isWindows) {
+      return {
+        vscode: '%USERPROFILE%\\.vscode\\extensions\\',
+        cursor: '%USERPROFILE%\\.cursor\\extensions\\',
+        downloads: '%USERPROFILE%\\Downloads\\'
+      };
+    } else if (isMac) {
+      return {
+        vscode: '~/Library/Application Support/Code/User/extensions/',
+        cursor: '~/Library/Application Support/Cursor/User/extensions/',
+        downloads: '~/Downloads/'
+      };
+      } else if (isLinux) {
+        return {
+          vscode: '~/.vscode/extensions/',
+          cursor: '~/.cursor/extensions/',
+          downloads: '~/Downloads/'
+        };
+      }
+      
+      return {
+        vscode: '~/.vscode/extensions/',
+        cursor: '~/.cursor/extensions/',
+        downloads: '~/Downloads/'
+      };
+  };
+
+  const handleLocationChange = (newLocation: string) => {
+    setSaveLocation(newLocation);
+    localStorage.setItem('quickstage-save-location', newLocation);
+    
+    // Clear custom path if not using custom location
+    if (newLocation !== 'custom') {
+      setCustomPath('');
+      localStorage.removeItem('quickstage-custom-path');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -219,6 +370,111 @@ export default function Dashboard() {
                 <p className="text-gray-600 mb-4">
                   Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
                 </p>
+                
+                {/* Update Notification */}
+                {currentVersion && (
+                  <div className="mb-4">
+                    {needsUpdate ? (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                          <div>
+                            <div className="text-sm font-medium text-yellow-800">
+                              Update Available!
+                            </div>
+                            <div className="text-xs text-yellow-600">
+                              New version {currentVersion} available. You have version {lastDownloadedVersion}.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : lastDownloadedVersion ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <div>
+                            <div className="text-sm font-medium text-green-800">
+                              Up to Date!
+                            </div>
+                            <div className="text-xs text-green-600">
+                              You have the latest version ({currentVersion}) installed.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          <div>
+                            <div className="text-sm font-medium text-blue-800">
+                              First Time Install
+                            </div>
+                            <div className="text-xs text-blue-600">
+                              Download version {currentVersion} to get started.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Location Selection */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Save Location
+                  </label>
+                  <select
+                    value={saveLocation}
+                    onChange={(e) => handleLocationChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="downloads">Downloads Folder</option>
+                    <option value="vscode">VS Code Extensions Folder</option>
+                    <option value="cursor">Cursor Extensions Folder</option>
+                    <option value="custom">Custom Location...</option>
+                  </select>
+                  
+                  {/* Show platform-specific path info */}
+                  {saveLocation !== 'downloads' && saveLocation !== 'custom' && (
+                    <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                      <strong>Suggested path:</strong> {getExtensionPaths()[saveLocation as keyof ReturnType<typeof getExtensionPaths>]}
+                      <br />
+                      <span className="text-gray-500">
+                        {getPlatformInfo().isWindows ? 'Windows' : getPlatformInfo().isMac ? 'macOS' : 'Linux'} detected
+                      </span>
+                    </div>
+                  )}
+                  
+                  {saveLocation === 'custom' && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={customPath}
+                        onChange={(e) => {
+                          setCustomPath(e.target.value);
+                          localStorage.setItem('quickstage-custom-path', e.target.value);
+                        }}
+                        placeholder="Enter custom path..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                      <button
+                        onClick={() => setShowLocationPicker(true)}
+                        className="mt-2 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                      >
+                        Browse...
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="flex items-center space-x-4">
                   <button
                     onClick={() => handleDownloadExtension()}
@@ -228,6 +484,17 @@ export default function Dashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <span>Download Extension</span>
+                  </button>
+                  
+                  <button
+                    onClick={checkForUpdates}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors flex items-center space-x-2"
+                    title="Check for updates"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Check Updates</span>
                   </button>
                   <button
                     onClick={() => handleShowInstructions()}
@@ -239,7 +506,7 @@ export default function Dashboard() {
                     <span>View Instructions</span>
                   </button>
                   <span className="text-sm text-gray-500">
-                    Version 0.0.1 • VS Code & Cursor Compatible
+                    Version 0.0.1 • VS Code & Cursor Compatible • Consistent Naming
                   </span>
                 </div>
               </div>

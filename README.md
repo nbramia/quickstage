@@ -97,7 +97,8 @@ Your Worker is configured with these routes:
 - `GET /api/s/:id/*` - Web dashboard file serving
 
 ##### **Extension Download Endpoints**
-- `GET /api/extensions/quickstage-0.0.1.vsix` - Download QuickStage VSIX extension
+- `GET /api/extensions/quickstage.vsix` - Download QuickStage VSIX extension (consistent naming)
+- `GET /api/extensions/version` - Get extension version information and update status
 
 ### 🔐 **Authentication & Security Flow**
 
@@ -149,12 +150,29 @@ pnpm build          # Compile TypeScript
 pnpm package        # Generate .vsix file
 ```
 
-#### **Extension Download from Dashboard**
-Users can download the QuickStage extension directly from the web dashboard:
+#### **Enhanced Extension Download System**
+Users can download the QuickStage extension directly from the web dashboard with advanced location selection:
+
 1. **Login to Dashboard**: Access the QuickStage web dashboard
-2. **Download Extension**: Click "Download Extension" button in the Extension section
-3. **Automatic Instructions**: Installation instructions appear automatically after download
-4. **Manual Instructions**: Click "View Instructions" button for detailed steps
+2. **Choose Save Location**: Select from dropdown options:
+   - **Downloads Folder**: Standard browser download location
+   - **VS Code Extensions Folder**: Direct installation path for VS Code
+   - **Cursor Extensions Folder**: Direct installation path for Cursor
+   - **Custom Location**: User-defined path with file picker support
+3. **Download Extension**: Click "Download Extension" button
+4. **Automatic Instructions**: Installation instructions appear automatically after download
+5. **Manual Instructions**: Click "View Instructions" button for detailed steps
+6. **Preference Persistence**: User's location choice is remembered across sessions
+
+**Features:**
+- **Consistent Naming**: All downloads use `quickstage.vsix` filename
+- **Version Tracking**: Automatically detects when updates are available
+- **Update Notifications**: Clear visual indicators for update status
+- **Cross-Platform Paths**: Smart suggestions for Windows, macOS, and Linux
+- **Modern File API**: Uses File System Access API when available for custom locations
+- **Fallback Support**: Gracefully falls back to traditional download for older browsers
+- **Smart Defaults**: Automatically detects and suggests common extension paths
+- **Preference Persistence**: User's location choice and version info remembered across sessions
 
 #### **Extension Installation**
 1. Download `quickstage-0.0.1.vsix` from the dashboard
@@ -314,6 +332,16 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - Advanced security features
 
 ## Recent Updates
+
+### Enhanced Extension Download System (2025-01-27)
+- **Location Selection**: Added dropdown for choosing save location (Downloads, VS Code, Cursor, Custom)
+- **Consistent Naming**: All downloads now use `quickstage.vsix` filename instead of versioned names
+- **Version Tracking**: Automatic detection of available updates with visual notifications
+- **Cross-Platform Support**: Smart path suggestions for Windows, macOS, and Linux
+- **Update Notifications**: Clear indicators for "Update Available", "Up to Date", and "First Time Install"
+- **Modern File API**: Integrated File System Access API for custom save locations
+- **Preference Persistence**: User's location choice and version info remembered across sessions
+- **Smart Fallbacks**: Graceful degradation for browsers without modern file API support
 
 ### Complete API Routing Fix (2025-01-27)
 - **Fixed Extension API Endpoints**: Added missing `/api/snapshots/create`, `/api/upload-url`, `/api/snapshots/finalize`, and `/api/s/:id/*` endpoints

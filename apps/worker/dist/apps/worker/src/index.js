@@ -3,9 +3,10 @@ import { cors } from 'hono/cors';
 import { getCookie, setCookie } from 'hono/cookie';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
 import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
-import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex } from './utils';
+import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
+import { VSIX_EXTENSION_BASE64 } from './constants';
 // Passkeys (WebAuthn)
 // @ts-ignore
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse, } from '@simplewebauthn/server';
@@ -1117,17 +1118,36 @@ app.get('/api/s/:id/*', async (c) => {
     headers.set('Cache-Control', 'public, max-age=3600');
     return new Response(obj.body, { headers });
 });
-// Add extension download endpoint
-app.get('/api/extensions/quickstage-0.0.1.vsix', async (c) => {
+// Add extension version endpoint
+app.get('/api/extensions/version', async (c) => {
     try {
-        // For now, return a placeholder response
-        // In production, you would serve the actual VSIX file from R2 or embed it in the code
-        const placeholderContent = 'This is a placeholder VSIX file. In production, this would contain the actual extension binary.';
-        const response = new Response(placeholderContent, {
+        return c.json({
+            version: '0.0.1',
+            buildDate: '2025-01-27T00:00:00Z',
+            checksum: await sha256Hex(VSIX_EXTENSION_BASE64),
+            downloadUrl: '/api/extensions/quickstage.vsix',
+            filename: 'quickstage.vsix'
+        });
+    }
+    catch (error) {
+        console.error('Error serving version info:', error);
+        return c.json({ error: 'version_info_unavailable' }, 500);
+    }
+});
+// Add extension download endpoint
+app.get('/api/extensions/quickstage.vsix', async (c) => {
+    try {
+        // Base64-encoded VSIX file content (quickstage.vsix)
+        const vsixBase64 = VSIX_EXTENSION_BASE64;
+        // Convert base64 to binary
+        const vsixBinary = Uint8Array.from(atob(vsixBase64), c => c.charCodeAt(0));
+        const response = new Response(vsixBinary, {
             headers: {
                 'Content-Type': 'application/octet-stream',
-                'Content-Disposition': 'attachment; filename="quickstage-0.0.1.vsix"',
-                'Cache-Control': 'no-cache'
+                'Content-Disposition': 'attachment; filename="quickstage.vsix"',
+                'Cache-Control': 'no-cache',
+                'Last-Modified': 'Mon, 27 Jan 2025 00:00:00 GMT',
+                'ETag': '"quickstage-v0.0.1"'
             }
         });
         return response;
