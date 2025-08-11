@@ -29,12 +29,3 @@ cwd = "../" # project root
 
 [triggers]
 crons = ["0 4 * * *"]
-
-[vars]
-R2_ACCOUNT_ID = "518ca8e15f53365e91b4405317cb7772"
-PUBLIC_BASE_URL = "https://quickstage.tech"
-LICENSE_BYPASS_KEY = "dev-bypass-key"
-REQUIRE_LICENSE = "false"
-RP_ID = "quickstage.tech"
-STRIPE_PRICE_ID = "price_1RuSJcPDkQopAc5hGO0qLNvU"
-

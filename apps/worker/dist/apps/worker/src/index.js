@@ -27,22 +27,6 @@ async function getUidFromSession(c) {
     const data = await verifySession(token, c.env.SESSION_HMAC_SECRET);
     return data && data.uid ? String(data.uid) : null;
 }
-// Auth (Stub: assume a single-device dev login for MVP; passkey endpoints can be added later)
-app.post('/auth/dev-login', async (c) => {
-    const body = await c.req.json();
-    const uid = body?.uid;
-    if (!uid)
-        return c.json({ error: 'uid required' }, 400);
-    const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'Lax',
-        maxAge: 60 * 60 * 24 * 7,
-        path: '/',
-    });
-    return c.json({ ok: true });
-});
 async function getUserByName(c, name) {
     const uid = await c.env.KV_USERS.get(`user:byname:${name}`);
     if (!uid)
@@ -106,7 +90,7 @@ app.post('/auth/register-passkey/finish', async (c) => {
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
     setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true });
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
 });
 // Passkey: Login begin
 app.post('/auth/login-passkey/begin', async (c) => {
@@ -154,14 +138,275 @@ app.post('/auth/login-passkey/finish', async (c) => {
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
     setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true });
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
+});
+// Email/Password: Register
+app.post('/auth/register', async (c) => {
+    const { email, password, name } = await c.req.json();
+    if (!email || !password || !name)
+        return c.json({ error: 'missing_fields' }, 400);
+    // Check if user already exists
+    const existingUser = await getUserByName(c, name);
+    if (existingUser)
+        return c.json({ error: 'user_exists' }, 400);
+    // Hash password
+    const salt = randomHex(16);
+    const hashedPassword = await hashPasswordArgon2id(password, salt);
+    // Create user
+    const uid = generateIdBase62(16);
+    const user = {
+        uid,
+        createdAt: Date.now(),
+        plan: 'free',
+        passkeys: [],
+        email,
+        passwordHash: hashedPassword,
+        name
+    };
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    await c.env.KV_USERS.put(`user:byname:${name}`, uid);
+    await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+    // Sign session
+    const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    return c.json({ ok: true, user: { uid, name, email, plan: user.plan } });
+});
+// Email/Password: Login
+app.post('/auth/login', async (c) => {
+    const { email, password } = await c.req.json();
+    if (!email || !password)
+        return c.json({ error: 'missing_fields' }, 400);
+    // Find user by email
+    const uid = await c.env.KV_USERS.get(`user:byemail:${email}`);
+    if (!uid)
+        return c.json({ error: 'invalid_credentials' }, 401);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'invalid_credentials' }, 401);
+    const user = JSON.parse(raw);
+    if (!user.passwordHash)
+        return c.json({ error: 'invalid_credentials' }, 401);
+    // Verify password
+    const isValid = await verifyPasswordHash(password, user.passwordHash);
+    if (!isValid)
+        return c.json({ error: 'invalid_credentials' }, 401);
+    // Update last login
+    user.lastLoginAt = Date.now();
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Sign session
+    const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
+});
+// Google OAuth: Login/Register
+app.post('/auth/google', async (c) => {
+    const { idToken } = await c.req.json();
+    if (!idToken)
+        return c.json({ error: 'missing_token' }, 400);
+    try {
+        // Verify Google ID token with Google's servers
+        const verifyResponse = await fetch('https://oauth2.googleapis.com/tokeninfo', {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        // For now, we'll use the access token to get user info directly
+        // In production, you should verify the ID token properly
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+            },
+        });
+        if (!userInfoResponse.ok) {
+            return c.json({ error: 'invalid_token' }, 401);
+        }
+        const userInfo = await userInfoResponse.json();
+        const { email, name, given_name, family_name } = userInfo;
+        if (!email) {
+            return c.json({ error: 'email_required' }, 400);
+        }
+        // Check if user exists by email
+        let uid = await c.env.KV_USERS.get(`user:byemail:${email}`);
+        let user;
+        if (uid) {
+            // User exists, update last login and Google ID
+            const raw = await c.env.KV_USERS.get(`user:${uid}`);
+            if (raw) {
+                user = JSON.parse(raw);
+                user.lastLoginAt = Date.now();
+                user.googleId = idToken; // Store Google ID for future reference
+                if (!user.name && name)
+                    user.name = name;
+                await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+            }
+            else {
+                // Fallback: create user if raw data is missing
+                uid = generateIdBase62(16);
+                user = {
+                    uid,
+                    createdAt: Date.now(),
+                    plan: 'free',
+                    passkeys: [],
+                    email: email,
+                    name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
+                    googleId: idToken
+                };
+                await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+                await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
+                await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+            }
+        }
+        else {
+            // Create new user
+            uid = generateIdBase62(16);
+            const displayName = name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User';
+            user = {
+                uid,
+                createdAt: Date.now(),
+                plan: 'free',
+                passkeys: [],
+                email: email,
+                name: displayName,
+                googleId: idToken
+            };
+            await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+            await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
+            await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+        }
+        // Sign session
+        const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
+        setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+        return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
+    }
+    catch (error) {
+        console.error('Google OAuth error:', error);
+        return c.json({ error: 'authentication_failed' }, 401);
+    }
 });
 app.get('/me', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
         return c.json({ user: null });
     const raw = await c.env.KV_USERS.get(`user:${uid}`);
-    return c.json({ user: raw ? JSON.parse(raw) : null });
+    if (!raw)
+        return c.json({ user: null });
+    const user = JSON.parse(raw);
+    // Return safe user data (no sensitive info)
+    return c.json({
+        user: {
+            uid: user.uid,
+            name: user.name,
+            email: user.email,
+            plan: user.plan,
+            createdAt: user.createdAt,
+            lastLoginAt: user.lastLoginAt,
+            hasPasskeys: user.passkeys && user.passkeys.length > 0,
+            hasPassword: !!user.passwordHash,
+            hasGoogle: !!user.googleId
+        }
+    });
+});
+// Logout endpoint
+app.post('/auth/logout', async (c) => {
+    // Clear the session cookie
+    setCookie(c, SESSION_COOKIE_NAME, '', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+        maxAge: 0,
+        path: '/'
+    });
+    return c.json({ ok: true });
+});
+// Update user profile
+app.put('/auth/profile', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const { name, email } = await c.req.json();
+    if (!name && !email)
+        return c.json({ error: 'no_changes' }, 400);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(raw);
+    let updated = false;
+    if (name && name !== user.name) {
+        // Check if new name is already taken
+        const existingUid = await c.env.KV_USERS.get(`user:byname:${name}`);
+        if (existingUid && existingUid !== uid) {
+            return c.json({ error: 'name_taken' }, 400);
+        }
+        // Update name mappings
+        if (user.name) {
+            await c.env.KV_USERS.delete(`user:byname:${user.name}`);
+        }
+        await c.env.KV_USERS.put(`user:byname:${name}`, uid);
+        user.name = name;
+        updated = true;
+    }
+    if (email && email !== user.email) {
+        // Check if new email is already taken
+        const existingUid = await c.env.KV_USERS.get(`user:byemail:${email}`);
+        if (existingUid && existingUid !== uid) {
+            return c.json({ error: 'email_taken' }, 400);
+        }
+        // Update email mappings
+        if (user.email) {
+            await c.env.KV_USERS.delete(`user:byemail:${user.email}`);
+        }
+        await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+        user.email = email;
+        updated = true;
+    }
+    if (updated) {
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    }
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
+});
+// Change password
+app.post('/auth/change-password', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const { currentPassword, newPassword } = await c.req.json();
+    if (!currentPassword || !newPassword)
+        return c.json({ error: 'missing_fields' }, 400);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(raw);
+    if (!user.passwordHash)
+        return c.json({ error: 'no_password_set' }, 400);
+    // Verify current password
+    const isValid = await verifyPasswordHash(currentPassword, user.passwordHash);
+    if (!isValid)
+        return c.json({ error: 'invalid_password' }, 401);
+    // Hash new password
+    const salt = randomHex(16);
+    const hashedPassword = await hashPasswordArgon2id(newPassword, salt);
+    // Update password
+    user.passwordHash = hashedPassword;
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    return c.json({ ok: true });
+});
+// Remove passkey
+app.delete('/auth/passkeys/:credentialId', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const credentialId = c.req.param('credentialId');
+    if (!credentialId)
+        return c.json({ error: 'missing_credential_id' }, 400);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(raw);
+    if (!user.passkeys || user.passkeys.length === 0)
+        return c.json({ error: 'no_passkeys' }, 400);
+    // Remove the passkey
+    user.passkeys = user.passkeys.filter((pk) => pk.id !== credentialId);
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    return c.json({ ok: true, passkeys: user.passkeys });
 });
 // Billing: checkout
 app.post('/billing/checkout', async (c) => {
