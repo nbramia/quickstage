@@ -96,6 +96,9 @@ Your Worker is configured with these routes:
 - `POST /api/snapshots/finalize` - Web dashboard finalization
 - `GET /api/s/:id/*` - Web dashboard file serving
 
+##### **Extension Download Endpoints**
+- `GET /api/extensions/quickstage-0.0.1.vsix` - Download QuickStage VSIX extension
+
 ### 🔐 **Authentication & Security Flow**
 
 #### **Session Management**
@@ -146,8 +149,15 @@ pnpm build          # Compile TypeScript
 pnpm package        # Generate .vsix file
 ```
 
+#### **Extension Download from Dashboard**
+Users can download the QuickStage extension directly from the web dashboard:
+1. **Login to Dashboard**: Access the QuickStage web dashboard
+2. **Download Extension**: Click "Download Extension" button in the Extension section
+3. **Automatic Instructions**: Installation instructions appear automatically after download
+4. **Manual Instructions**: Click "View Instructions" button for detailed steps
+
 #### **Extension Installation**
-1. Download `quickstage-0.0.1.vsix`
+1. Download `quickstage-0.0.1.vsix` from the dashboard
 2. In VS Code/Cursor: Extensions → Install from VSIX
 3. Extension appears in Extensions panel
 4. Command "QuickStage: Stage" available in Command Palette

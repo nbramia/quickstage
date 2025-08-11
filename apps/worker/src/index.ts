@@ -1191,6 +1191,30 @@ app.get('/api/s/:id/*', async (c: any) => {
   return new Response(obj.body, { headers });
 });
 
+// Add extension download endpoint
+app.get('/api/extensions/quickstage-0.0.1.vsix', async (c: any) => {
+  try {
+    // Base64-encoded VSIX file content (quickstage-0.0.1.vsix)
+    const vsixBase64 = 'UEsDBBQAAAgIACeuCltc2yZdWQIAAFsGAAAWAAAAZXh0ZW5zaW9uLnZzaXhtYW5pZmVzdK1Vy27bMBA8O19B8G7RDlAgCCgFgfOo%';
+    
+    // Convert base64 to binary
+    const vsixBinary = Uint8Array.from(atob(vsixBase64), c => c.charCodeAt(0));
+    
+    const response = new Response(vsixBinary, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': 'attachment; filename="quickstage-0.0.1.vsix"',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Error serving VSIX file:', error);
+    return c.json({ error: 'extension_not_found' }, 404);
+  }
+});
+
 async function purgeExpired(env: Bindings) {
   let cursor: string | undefined = undefined;
   do {

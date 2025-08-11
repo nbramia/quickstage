@@ -1117,6 +1117,26 @@ app.get('/api/s/:id/*', async (c) => {
     headers.set('Cache-Control', 'public, max-age=3600');
     return new Response(obj.body, { headers });
 });
+// Add extension download endpoint
+app.get('/api/extensions/quickstage-0.0.1.vsix', async (c) => {
+    try {
+        // For now, return a placeholder response
+        // In production, you would serve the actual VSIX file from R2 or embed it in the code
+        const placeholderContent = 'This is a placeholder VSIX file. In production, this would contain the actual extension binary.';
+        const response = new Response(placeholderContent, {
+            headers: {
+                'Content-Type': 'application/octet-stream',
+                'Content-Disposition': 'attachment; filename="quickstage-0.0.1.vsix"',
+                'Cache-Control': 'no-cache'
+            }
+        });
+        return response;
+    }
+    catch (error) {
+        console.error('Error serving VSIX file:', error);
+        return c.json({ error: 'extension_not_found' }, 404);
+    }
+});
 async function purgeExpired(env) {
     let cursor = undefined;
     do {

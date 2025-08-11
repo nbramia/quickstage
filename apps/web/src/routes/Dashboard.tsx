@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showInstallInstructions, setShowInstallInstructions] = useState(false);
 
   useEffect(() => {
     loadSnapshots();
@@ -83,6 +84,26 @@ export default function Dashboard() {
       setError('Failed to copy URL');
       console.error(err);
     }
+  };
+
+  const handleDownloadExtension = () => {
+    // Download the VSIX file from the API
+    const url = `${window.location.origin}/api/extensions/quickstage-0.0.1.vsix`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quickstage-0.0.1.vsix';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Show installation instructions after a short delay
+    setTimeout(() => {
+      setShowInstallInstructions(true);
+    }, 1000);
+  };
+
+  const handleShowInstructions = () => {
+    setShowInstallInstructions(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -186,6 +207,176 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Extension Download Section */}
+        <div className="px-4 sm:px-0 mb-8">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                  QuickStage Extension
+                </h2>
+                <p className="text-gray-600 mb-4">
+                  Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
+                </p>
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={() => handleDownloadExtension()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Download Extension</span>
+                  </button>
+                  <button
+                    onClick={() => handleShowInstructions()}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>View Instructions</span>
+                  </button>
+                  <span className="text-sm text-gray-500">
+                    Version 0.0.1 • VS Code & Cursor Compatible
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="text-sm text-blue-800 font-medium">Ready to Install</div>
+                  <div className="text-xs text-blue-600">All systems operational</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Installation Instructions Modal */}
+        {showInstallInstructions && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    Installation Instructions
+                  </h3>
+                  <button
+                    onClick={() => setShowInstallInstructions(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-2">Step 1: Install the Extension</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Open VS Code or Cursor</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Press <code className="bg-gray-200 px-1 rounded text-xs">Ctrl+Shift+P</code> (Windows/Linux) or <code className="bg-gray-200 px-1 rounded text-xs">Cmd+Shift+P</code> (Mac) to open Command Palette</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Type <code className="bg-gray-200 px-1 rounded text-xs">Extensions: Install from VSIX...</code> and press Enter</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">4</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Navigate to and select the downloaded <code className="bg-gray-200 px-1 rounded text-xs">quickstage-0.0.1.vsix</code> file</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">5</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Click "Install" when prompted</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-2">Step 2: Restart VS Code/Cursor</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-sm text-gray-700">After installation, you'll be prompted to restart VS Code or Cursor. Click "Reload" to activate the extension.</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-2">Step 3: Use QuickStage</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Open your project folder in VS Code/Cursor</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Press <code className="bg-gray-200 px-1 rounded text-xs">Ctrl+Shift+P</code> (Windows/Linux) or <code className="bg-gray-200 px-1 rounded text-xs">Cmd+Shift+P</code> (Mac)</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Type <code className="bg-gray-200 px-1 rounded text-xs">QuickStage: Stage</code> and press Enter</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">4</div>
+                        <div>
+                          <p className="text-sm text-gray-700">The extension will build your project and create a shareable snapshot</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-medium text-blue-900 mb-2">💡 Pro Tip</h4>
+                    <p className="text-sm text-blue-800">
+                      Make sure your project has a build script in <code className="bg-blue-100 px-1 rounded text-xs">package.json</code>. 
+                      QuickStage supports Vite, Create React App, SvelteKit, and Next.js projects.
+                    </p>
+                  </div>
+
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <h4 className="font-medium text-yellow-900 mb-2">⚠️ Important Notes</h4>
+                    <ul className="text-sm text-yellow-800 space-y-1">
+                      <li>• The extension requires Node.js 18+ with corepack enabled</li>
+                      <li>• Your project must have a valid build script</li>
+                      <li>• Snapshots are password-protected by default</li>
+                      <li>• Files are automatically cleaned up after 7 days</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setShowInstallInstructions(false)}
+                    className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Got it!
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Snapshots Section */}
         <div className="px-4 sm:px-0">
