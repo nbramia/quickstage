@@ -1,13 +1,16 @@
 // Cloudflare Pages Function to proxy /api/* requests to the Worker
 export async function onRequest(context: any): Promise<Response> {
+  console.log('Pages Function invoked:', context.request.url);
   const { request, env } = context;
   const url = new URL(request.url);
   
   // Get the path after /api/
   const apiPath = url.pathname.replace(/^\/api/, '');
+  console.log('API path:', apiPath);
   
   // Construct the Worker URL
   const workerUrl = `https://quickstage-worker.nbramia.workers.dev${apiPath}${url.search}`;
+  console.log('Proxying to:', workerUrl);
   
   // Forward the request to the Worker
   const workerRequest = new Request(workerUrl, {
