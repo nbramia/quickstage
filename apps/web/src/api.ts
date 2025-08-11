@@ -1,6 +1,6 @@
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://quickstage-worker.nbramia.workers.dev').replace(/\/$/, '');
 
-// Global session token storage
+// Global session token storage - not needed since we use httpOnly cookies
 let globalSessionToken: string | null = null;
 
 export function setSessionToken(token: string | null) {
@@ -8,18 +8,9 @@ export function setSessionToken(token: string | null) {
 }
 
 export function getSessionToken() {
-  // If no global token, try to extract from cookies as fallback
-  if (!globalSessionToken) {
-    const cookies = document.cookie.split(';');
-    const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
-    if (sessionCookie) {
-      const token = sessionCookie.split('=')[1];
-      if (token) {
-        globalSessionToken = token;
-      }
-    }
-  }
-  return globalSessionToken;
+  // Since cookies are httpOnly, we can't access them from JavaScript
+  // The backend will handle authentication via cookies automatically
+  return null;
 }
 
 export async function devLogin(uid: string) {
@@ -34,11 +25,9 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
-    // Add session token if available
-    const token = getSessionToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    // No need to manually add Authorization header - cookies handle auth
+    console.log('Making request to:', `${BASE_URL}${endpoint}`);
+    console.log('Headers:', headers);
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       credentials: 'include',
@@ -46,6 +35,7 @@ export const api = {
     });
     
     if (!response.ok) {
+      console.error('Request failed:', response.status, response.statusText);
       throw new Error(`API request failed: ${response.status}`);
     }
     
@@ -57,30 +47,12 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
-    // Add session token if available
-    const token = getSessionToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       credentials: 'include',
       headers,
       body: data ? JSON.stringify(data) : undefined,
     });
-    
-    // Extract session token from cookies for auth endpoints
-    if (endpoint.includes('/auth/') && response.ok) {
-      const cookies = document.cookie.split(';');
-      const sessionCookie = cookies.find(cookie => cookie.trim().startsWith('ps_sess='));
-      if (sessionCookie) {
-        const token = sessionCookie.split('=')[1];
-        if (token) {
-          globalSessionToken = token;
-        }
-      }
-    }
     
     if (!response.ok) {
       throw new Error(`API request failed: ${response.status}`);
@@ -93,12 +65,6 @@ export const api = {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    
-    // Add session token if available
-    const token = getSessionToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'PUT',
@@ -118,12 +84,6 @@ export const api = {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    
-    // Add session token if available
-    const token = getSessionToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'DELETE',
