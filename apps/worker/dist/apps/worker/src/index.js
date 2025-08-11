@@ -14,6 +14,16 @@ import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthen
 import Stripe from 'stripe';
 const app = new Hono();
 app.use('*', cors({ origin: (origin) => origin || '*', credentials: true }));
+function isSecureRequest(c) {
+    try {
+        const url = new URL(c.req.url);
+        if (url.protocol === 'https:')
+            return true;
+    }
+    catch { }
+    const xfProto = c.req.header('x-forwarded-proto') || c.req.header('X-Forwarded-Proto');
+    return typeof xfProto === 'string' && xfProto.toLowerCase().includes('https');
+}
 async function getUidFromSession(c) {
     const cookie = getCookie(c, SESSION_COOKIE_NAME);
     let token = cookie;
@@ -89,7 +99,7 @@ app.post('/auth/register-passkey/finish', async (c) => {
     user.lastLoginAt = Date.now();
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
     return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
 });
 // Passkey: Login begin
@@ -137,7 +147,7 @@ app.post('/auth/login-passkey/finish', async (c) => {
     user.lastLoginAt = Date.now();
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
     return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
 });
 // Email/Password: Register
@@ -168,7 +178,7 @@ app.post('/auth/register', async (c) => {
     await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
     return c.json({ ok: true, user: { uid, name, email, plan: user.plan } });
 });
 // Email/Password: Login
@@ -195,7 +205,7 @@ app.post('/auth/login', async (c) => {
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
     return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
 });
 // Google OAuth: Login/Register
@@ -274,7 +284,7 @@ app.post('/auth/google', async (c) => {
         }
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-        setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: true, sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
+        setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
         return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
     }
     catch (error) {
@@ -310,7 +320,7 @@ app.post('/auth/logout', async (c) => {
     // Clear the session cookie
     setCookie(c, SESSION_COOKIE_NAME, '', {
         httpOnly: true,
-        secure: true,
+        secure: isSecureRequest(c),
         sameSite: 'Lax',
         maxAge: 0,
         path: '/'
@@ -752,7 +762,7 @@ app.post('/s/:id/gate', async (c) => {
     if (!ok)
         return c.json({ error: 'forbidden' }, 403);
     setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
-        secure: true,
+        secure: isSecureRequest(c),
         sameSite: 'Lax',
         path: `/s/${id}`,
         maxAge: 60 * 60,
