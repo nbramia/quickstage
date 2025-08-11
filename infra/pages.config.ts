@@ -6,5 +6,8 @@ export default {
     command: 'pnpm build',
     output_dir: 'apps/web/dist',
   },
+  functions: {
+    directory: 'apps/web/functions',
+  },
 };
 

@@ -2,6 +2,10 @@ name = "quickstage-worker"
 main = "../apps/worker/src/index.ts"
 compatibility_date = "2024-05-12"
 
+# Pages configuration
+[pages]
+pages_build_output_dir = "../apps/web/dist"
+
 [[kv_namespaces]]
 binding = "KV_USERS"
 id = "2808162d18d0411d9b05ab8ae76fa500"
