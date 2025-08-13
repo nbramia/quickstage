@@ -2,7 +2,7 @@
 // This file is automatically updated when the extension version changes
 export function getExtensionVersion() {
     return {
-        version: '0.0.15', // Synced from extension/package.json
+        version: '0.0.21', // Synced from extension/package.json
         buildDate: new Date().toISOString(),
         filename: 'quickstage.vsix'
     };

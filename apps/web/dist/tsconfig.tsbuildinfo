@@ -1,0 +1,1 @@
+{"root":["../src/api.ts","../src/env.d.ts","../src/main.tsx","../src/version.ts","../src/contexts/authcontext.tsx","../src/routes/dashboard.tsx","../src/routes/landing.tsx","../src/routes/login.tsx","../src/routes/settings.tsx","../src/routes/viewer.tsx"],"version":"5.9.2"}

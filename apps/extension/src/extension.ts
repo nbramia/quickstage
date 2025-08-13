@@ -38,6 +38,10 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech'));
     }),
 
+    vscode.commands.registerCommand('quickstage.login', async () => {
+      await authenticateUser(context, output);
+    }),
+
     vscode.commands.registerCommand('quickstage.settings', async () => {
       const ws = vscode.workspace.workspaceFolders?.[0];
       if (!ws) {
@@ -93,58 +97,90 @@ export function deactivate() {}
 async function authenticateUser(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<boolean> {
   output.show(true);
   output.appendLine('🔐 QuickStage Authentication Required');
-  output.appendLine('Opening dashboard for authentication...');
+  output.appendLine('You need a Personal Access Token (PAT) to use QuickStage.');
   
-  // Open the dashboard for the user to log in
-  vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech/dashboard'));
-  
-  // Wait a moment for the browser to open
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Show a message asking the user to log in and return
   const action = await vscode.window.showInformationMessage(
-    'Dashboard opened! Please log in to QuickStage, then return here and click "I\'m Logged In"',
-    'I\'m Logged In',
+    'QuickStage requires a Personal Access Token for authentication.',
+    'Open Dashboard to Generate PAT',
+    'Enter PAT Manually',
     'Cancel'
   );
-  
-  if (action === 'I\'m Logged In') {
-    output.appendLine('✅ User confirmed login. Getting session token...');
+
+  if (action === 'Open Dashboard to Generate PAT') {
+    // Open the dashboard for the user to generate a PAT
+    output.appendLine('🌐 Opening dashboard in browser...');
+    vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech/dashboard'));
     
-    // Get a session token by making a request to the dashboard
-    try {
-      // We need to get a session token that the extension can use
-      // For now, let's prompt the user to get it from the dashboard
-      const token = await vscode.window.showInputBox({
-        prompt: 'Please get your session token from the dashboard and paste it here:',
-        placeHolder: 'Paste your session token...',
-        password: true
-      });
-      
-      if (token) {
-        // Store the token securely
-        await context.secrets.store('quickstage-session-token', token);
-        output.appendLine('✅ Session token stored successfully!');
+    // Wait a moment for the browser to open
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    output.appendLine('📋 Please generate a PAT from the dashboard, then return here.');
+    
+    // Prompt for the PAT with a more explicit message
+    const pat = await vscode.window.showInputBox({
+      prompt: 'QuickStage Personal Access Token',
+      placeHolder: 'Paste your PAT here (e.g., qs_pat_ABC123...)',
+      password: true,
+      ignoreFocusOut: true // Keep the input box open even if focus changes
+    });
+    
+    if (pat && pat.trim()) {
+      try {
+        await context.secrets.store('quickstage-pat', pat.trim());
+        output.appendLine('✅ Personal Access Token stored successfully!');
         vscode.window.showInformationMessage('Authentication successful! You can now use QuickStage.');
         return true;
-      } else {
-        output.appendLine('❌ No session token provided.');
+      } catch (error) {
+        output.appendLine(`❌ Failed to store PAT: ${error}`);
+        vscode.window.showErrorMessage('Failed to store PAT. Please try again.');
         return false;
       }
-    } catch (error) {
-      output.appendLine(`❌ Authentication failed: ${error}`);
-      vscode.window.showErrorMessage('Authentication failed. Please try again.');
+    } else if (pat === '') {
+      output.appendLine('❌ No PAT provided. Please enter a valid token.');
+      vscode.window.showWarningMessage('No PAT provided. Please try again.');
+      return false;
+    } else {
+      output.appendLine('❌ PAT input cancelled.');
+      return false;
+    }
+  } else if (action === 'Enter PAT Manually') {
+    output.appendLine('📝 Manual PAT entry mode...');
+    
+    const pat = await vscode.window.showInputBox({
+      prompt: 'Enter your QuickStage Personal Access Token',
+      placeHolder: 'Paste your PAT here (e.g., qs_pat_ABC123...)',
+      password: true,
+      ignoreFocusOut: true
+    });
+    
+    if (pat && pat.trim()) {
+      try {
+        await context.secrets.store('quickstage-pat', pat.trim());
+        output.appendLine('✅ Personal Access Token stored successfully!');
+        vscode.window.showInformationMessage('Authentication successful! You can now use QuickStage.');
+        return true;
+      } catch (error) {
+        output.appendLine(`❌ Failed to store PAT: ${error}`);
+        vscode.window.showErrorMessage('Failed to store PAT. Please try again.');
+        return false;
+      }
+    } else if (pat === '') {
+      output.appendLine('❌ No PAT provided. Please enter a valid token.');
+      vscode.window.showWarningMessage('No PAT provided. Please try again.');
+      return false;
+    } else {
+      output.appendLine('❌ PAT input cancelled.');
       return false;
     }
   }
   
-  output.appendLine('❌ Authentication cancelled');
+  output.appendLine('❌ Authentication cancelled or failed');
   return false;
 }
 
-async function getSessionToken(context: vscode.ExtensionContext): Promise<string | null> {
+async function getPAT(context: vscode.ExtensionContext): Promise<string | null> {
   try {
-    return await context.secrets.get('quickstage-session-token') || null;
+    return await context.secrets.get('quickstage-pat') || null;
   } catch {
     return null;
   }
@@ -153,20 +189,20 @@ async function getSessionToken(context: vscode.ExtensionContext): Promise<string
 async function stage(root: string, opts: { manual: boolean }, output: vscode.OutputChannel, context: vscode.ExtensionContext) {
   output.show(true);
   
-  // Check if user has a stored session token
-  let sessionToken = await getSessionToken(context);
+  // Check if user has a stored PAT
+  let pat = await getPAT(context);
   
-  if (!sessionToken) {
-    output.appendLine('❌ No session token found. Opening dashboard for login...');
+  if (!pat) {
+    output.appendLine('❌ No Personal Access Token found. Please authenticate first.');
     const authenticated = await authenticateUser(context, output);
     if (!authenticated) {
       output.appendLine('❌ Authentication required to continue.');
       return;
     }
-    // Get the fresh token after authentication
-    sessionToken = await getSessionToken(context);
-    if (!sessionToken) {
-      output.appendLine('❌ Failed to get session token after authentication.');
+    // Get the fresh PAT after authentication
+    pat = await getPAT(context);
+    if (!pat) {
+      output.appendLine('❌ Failed to get PAT after authentication.');
       return;
     }
   }
@@ -185,40 +221,40 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
 
   output.appendLine('📤 Creating snapshot...');
   
-  // Create snapshot using the session token
+  // Create snapshot using the PAT
   const createRes = await fetch(`${API_BASE}/snapshots/create`, {
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${sessionToken}`
+      'Authorization': `Bearer ${pat}`
     },
     body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public }),
   });
   
-  if (!createRes.ok) {
-    if (createRes.status === 401) {
-      output.appendLine('❌ Session token expired. Please authenticate again.');
-      await context.secrets.delete('quickstage-session-token');
-      const authenticated = await authenticateUser(context, output);
-      if (!authenticated) {
-        output.appendLine('❌ Authentication required to continue.');
-        return;
-      }
-      // Retry the entire process with new token
-      await stage(root, opts, output, context);
-      return;
-    } else {
-      output.appendLine(`❌ Create snapshot failed: ${createRes.status} ${createRes.statusText}`);
-      vscode.window.showErrorMessage('Create snapshot failed');
-      return;
-    }
-  }
-  
-  const created = await createRes.json();
-  await uploadAndFinalize(created, scan, outDir, output, sessionToken, context);
+                if (!createRes.ok) {
+                if (createRes.status === 401) {
+                  output.appendLine('❌ Personal Access Token expired or invalid. Please authenticate again.');
+                  await context.secrets.delete('quickstage-pat');
+                  const authenticated = await authenticateUser(context, output);
+                  if (!authenticated) {
+                    output.appendLine('❌ Authentication required to continue.');
+                    return;
+                  }
+                  // Retry the entire process with new PAT
+                  await stage(root, opts, output, context);
+                  return;
+                } else {
+                  output.appendLine(`❌ Create snapshot failed: ${createRes.status} ${createRes.statusText}`);
+                  vscode.window.showErrorMessage('Create snapshot failed');
+                  return;
+                }
+              }
+              
+              const created = await createRes.json();
+              await uploadAndFinalize(created, scan, outDir, output, pat, context);
 }
 
-async function uploadAndFinalize(created: any, scan: { ok: true; files: string[] }, outDir: string, output: vscode.OutputChannel, sessionToken: string, context: vscode.ExtensionContext) {
+async function uploadAndFinalize(created: any, scan: { ok: true; files: string[] }, outDir: string, output: vscode.OutputChannel, pat: string, context: vscode.ExtensionContext) {
   const limit = pLimit(8);
   let uploadedBytes = 0;
   
@@ -246,7 +282,7 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
         const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
         const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, { 
           method: 'POST', 
-          credentials: 'include' // Use browser's cookies
+          headers: { 'Authorization': `Bearer ${pat}` }
         });
         if (!up.ok) throw new Error(`Failed to get upload URL for ${rel}`);
         const { url } = await up.json();
@@ -264,7 +300,7 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
     method: 'POST',
     headers: { 
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${sessionToken}`
+      'Authorization': `Bearer ${pat}`
     },
     body: JSON.stringify({ 
       id: created.id, 
