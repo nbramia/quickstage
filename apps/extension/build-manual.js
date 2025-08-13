@@ -28,28 +28,19 @@ async function buildManual() {
     
     // Create extension manifest to be placed INSIDE extension/ folder
     const manifest = {
-      name: "quickstage",
-      displayName: "QuickStage",
-      description: "Stage and share static prototypes privately in 1 click.",
+      name: packageJson.name,
+      displayName: packageJson.displayName,
+      description: packageJson.description,
       version: version,
-      publisher: "quickstage",
-      private: true,
-      license: "SEE LICENSE IN LICENSE",
-      engines: {
-        vscode: "^1.85.0"
-      },
-      categories: ["Other"],
-      activationEvents: ["onStartupFinished"],
+      publisher: packageJson.publisher,
+      private: packageJson.private,
+      license: packageJson.license,
+      engines: packageJson.engines,
+      categories: packageJson.categories,
+      activationEvents: packageJson.activationEvents,
       // main is relative to this package.json location (extension/)
       main: "extension.js",
-      contributes: {
-        commands: [
-          { command: "quickstage.stage", title: "QuickStage: Stage" },
-          { command: "quickstage.stageManual", title: "QuickStage: Stage (Manual output…)" },
-          { command: "quickstage.openDashboard", title: "QuickStage: Open Dashboard" },
-          { command: "quickstage.settings", title: "QuickStage: Settings" }
-        ]
-      }
+      contributes: packageJson.contributes
     };
     
     // Write the manifest inside extension/ as package.json

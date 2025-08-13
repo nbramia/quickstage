@@ -19,12 +19,20 @@ async function releaseWorkflow() {
     execSync('npm run build', { stdio: 'inherit' });
     console.log('✅ Extension built successfully\n');
 
-    // Step 3: Package extension
-    console.log('3️⃣ Packaging extension...\n');
+    // Step 3: Clean up old VSIX files first
+    console.log('3️⃣ Cleaning up old VSIX files...\n');
+    const oldVsixFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.vsix'));
+    oldVsixFiles.forEach(file => {
+      fs.unlinkSync(path.join(__dirname, file));
+      console.log(`🗑️ Removed old VSIX: ${file}`);
+    });
+    
+    // Step 4: Package extension
+    console.log('4️⃣ Packaging extension...\n');
     execSync('npm run package', { stdio: 'inherit' });
     console.log('✅ Extension packaged successfully\n');
 
-    // Step 3.5: Wait for file to be fully written and verify
+    // Step 4.5: Wait for file to be fully written and verify
     console.log('⏳ Waiting for VSIX file to be fully written...\n');
     await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
     
@@ -32,12 +40,13 @@ async function releaseWorkflow() {
     const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
     const version = packageJson.version;
     
-    // Find the VSIX file that was just created
-    const vsixFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.vsix'));
-    if (vsixFiles.length === 0) {
-      throw new Error('No VSIX file found after packaging');
+    // Find the specific VSIX file that matches current version
+    const expectedVsixName = `quickstage-${version}.vsix`;
+    const vsixSource = path.join(__dirname, expectedVsixName);
+    
+    if (!fs.existsSync(vsixSource)) {
+      throw new Error(`Expected VSIX file not found: ${expectedVsixName}`);
     }
-    const vsixSource = path.join(__dirname, vsixFiles[0]);
     
     // Verify the VSIX is valid before copying
     console.log('🔍 Verifying local VSIX structure...\n');
@@ -55,8 +64,8 @@ async function releaseWorkflow() {
       throw new Error('Local VSIX structure is incorrect - cannot proceed');
     }
 
-    // Step 4: Copy VSIX to web app public directory for direct serving
-    console.log('4️⃣ Copying VSIX to web app for direct serving...\n');
+    // Step 5: Copy VSIX to web app public directory for direct serving
+    console.log('5️⃣ Copying VSIX to web app for direct serving...\n');
     const webPublicDir = path.join(__dirname, '../web/public');
     
     // Create public directory if it doesn't exist
@@ -74,7 +83,7 @@ async function releaseWorkflow() {
     console.log('✅ VSIX copied to web app public directory\n');
     console.log(`📦 Files created: quickstage.vsix and ${versionedFilename}\n`);
 
-    // Step 4.5: Verify VSIX structure before proceeding
+    // Step 5.5: Verify VSIX structure before proceeding
     console.log('🔍 Verifying VSIX structure...\n');
     
     try {
@@ -94,8 +103,8 @@ async function releaseWorkflow() {
       throw new Error('VSIX structure is incorrect - cannot proceed with deployment');
     }
 
-    // Step 5: Update web app version info
-    console.log('5️⃣ Updating web app version info...\n');
+    // Step 6: Update web app version info
+    console.log('6️⃣ Updating web app version info...\n');
     
     // Update web app's version info file
     const webVersionFile = path.join(__dirname, '../web/src/version.ts');
@@ -111,8 +120,8 @@ export const EXTENSION_BUILD_TIME = '${timestamp}';
     fs.writeFileSync(webVersionFile, versionContent);
     console.log('✅ Web app version info updated\n');
 
-    // Step 6: Update worker version info
-    console.log('6️⃣ Updating worker version info...\n');
+    // Step 7: Update worker version info
+    console.log('7️⃣ Updating worker version info...\n');
     
     // Update worker's version info file
     const workerVersionFile = path.join(__dirname, '../worker/src/version-info.ts');

@@ -2,7 +2,7 @@
   "name": "quickstage",
   "displayName": "QuickStage",
   "description": "Stage and share static prototypes privately in 1 click.",
-  "version": "0.0.9",
+  "version": "0.0.13",
   "publisher": "quickstage",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -13,7 +13,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onCommand:quickstage.stage",
+    "onCommand:quickstage.stageManual",
+    "onCommand:quickstage.openDashboard",
+    "onCommand:quickstage.settings"
   ],
   "main": "dist/extension.js",
   "contributes": {

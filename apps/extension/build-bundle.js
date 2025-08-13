@@ -17,7 +17,7 @@ async function build() {
         'process.env.NODE_ENV': '"production"'
       },
       // Force bundling of all dependencies
-      packages: 'external',
+      packages: 'bundle',
       // Ensure proper module resolution
       mainFields: ['module', 'main'],
       // Bundle all node_modules

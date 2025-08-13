@@ -3,10 +3,10 @@ import { cors } from 'hono/cors';
 import { getCookie, setCookie } from 'hono/cookie';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
 import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
-import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
+import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
-import { VSIX_EXTENSION_BASE64 } from './constants';
+import { getExtensionVersion } from './version-info';
 // Passkeys (WebAuthn)
 // @ts-ignore
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse, } from '@simplewebauthn/server';
@@ -1121,11 +1121,12 @@ app.get('/api/s/:id/*', async (c) => {
 // Add extension version endpoint
 app.get('/api/extensions/version', async (c) => {
     try {
+        const versionInfo = getExtensionVersion();
         return c.json({
-            version: '0.0.1',
-            buildDate: '2025-01-27T00:00:00Z',
-            checksum: await sha256Hex(VSIX_EXTENSION_BASE64),
-            downloadUrl: '/api/extensions/quickstage.vsix',
+            version: versionInfo.version,
+            buildDate: versionInfo.buildDate,
+            checksum: 'direct-serve', // No longer serving VSIX content
+            downloadUrl: '/quickstage.vsix', // Direct from web app
             filename: 'quickstage.vsix'
         });
     }
@@ -1134,29 +1135,37 @@ app.get('/api/extensions/version', async (c) => {
         return c.json({ error: 'version_info_unavailable' }, 500);
     }
 });
-// Add extension download endpoint
-app.get('/api/extensions/quickstage.vsix', async (c) => {
+// Backup VSIX download endpoint with explicit headers
+app.get('/api/extensions/download', async (c) => {
     try {
-        // Base64-encoded VSIX file content (quickstage.vsix)
-        const vsixBase64 = VSIX_EXTENSION_BASE64;
-        // Convert base64 to binary
-        const vsixBinary = Uint8Array.from(atob(vsixBase64), c => c.charCodeAt(0));
-        const response = new Response(vsixBinary, {
-            headers: {
-                'Content-Type': 'application/octet-stream',
-                'Content-Disposition': 'attachment; filename="quickstage.vsix"',
-                'Cache-Control': 'no-cache',
-                'Last-Modified': 'Mon, 27 Jan 2025 00:00:00 GMT',
-                'ETag': '"quickstage-v0.0.1"'
-            }
-        });
-        return response;
+        // Fetch the VSIX from the web app's public directory
+        const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
+        const response = await fetch(vsixUrl);
+        if (!response.ok) {
+            console.error('Failed to fetch VSIX from web app:', response.status);
+            return c.json({ error: 'download_unavailable' }, 500);
+        }
+        const vsixData = await response.arrayBuffer();
+        // Get version for dynamic filename
+        const versionInfo = getExtensionVersion();
+        const filename = `quickstage-${versionInfo.version}.vsix`;
+        // Serve with explicit headers to ensure proper download
+        const headers = new Headers();
+        headers.set('Content-Type', 'application/octet-stream');
+        headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+        headers.set('Content-Length', vsixData.byteLength.toString());
+        headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        headers.set('Pragma', 'no-cache');
+        headers.set('Expires', '0');
+        return new Response(vsixData, { headers });
     }
     catch (error) {
-        console.error('Error serving VSIX file:', error);
-        return c.json({ error: 'extension_not_found' }, 404);
+        console.error('Error serving VSIX download:', error);
+        return c.json({ error: 'download_failed' }, 500);
     }
 });
+// Original web app serving (keep as primary)
+// Extension is served directly from web app public directory
 async function purgeExpired(env) {
     let cursor = undefined;
     do {
