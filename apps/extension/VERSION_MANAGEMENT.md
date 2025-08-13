@@ -1,298 +1,155 @@
 # QuickStage Extension Version Management
 
-This document explains how to manage extension versions automatically using our new version management system.
+This document outlines the complete process for building, packaging, and deploying new versions of the QuickStage VS Code/Cursor extension.
 
-## 🎯 **Why Version Management Matters**
+## 🎯 **New Simplified Workflow (v0.0.6+)**
 
-- **User Experience**: Users need to know when updates are available
-- **Consistency**: Version numbers should match across all files
-- **Automation**: Reduces manual errors and saves time
-- **Deployment**: Ensures Worker and extension versions stay in sync
+The extension deployment process has been simplified and no longer requires embedding the VSIX in the Worker. Instead, the extension is served directly from the web app's public directory.
 
-## 🚀 **Available Commands**
+### **What Changed**
+- ❌ **Removed**: VSIX embedding in Worker constants
+- ❌ **Removed**: Base64 conversion and storage
+- ❌ **Removed**: Worker deployment for extension updates
+- ✅ **Added**: Direct VSIX serving from web app public directory
+- ✅ **Added**: Automatic version tracking in web app
+- ✅ **Added**: Cleaner deployment process
 
-### **Version Bump Only**
+### **Benefits of New Approach**
+1. **Faster Updates**: No worker deployment needed for extension changes
+2. **Cleaner Code**: No more base64 constants or file copying
+3. **Better Performance**: Direct file serving instead of base64 decoding
+4. **Easier Debugging**: VSIX files are directly accessible
+5. **Version Consistency**: Web app and extension versions stay in sync
+
+## 🚀 **Complete Release Workflow**
+
+### **Step 1: Run Release Workflow**
 ```bash
-npm run version:bump
-```
-- Increments patch version (0.0.1 → 0.0.2)
-- Updates `package.json` and `package-lock.json`
-- Updates version references in `README.md`
-- Updates build scripts with new version
-
-### **Basic Release**
-```bash
-npm run release
-```
-- Bumps version
-- Builds extension
-- Packages into VSIX file
-
-### **Full Release Workflow**
-```bash
-npm run release:full
-```
-- Complete automated release process
-- Updates all version references
-- Copies VSIX to worker directory
-- Converts to base64
-- Updates worker constants
-- Prepares for deployment
-
-## 📋 **Release Workflow Steps**
-
-The `release:full` command automates these steps:
-
-1. **Version Bump**: Increment version number
-2. **Build**: Compile TypeScript to JavaScript using esbuild bundler
-3. **Package**: Create VSIX file using manual packaging script
-4. **Copy**: Move VSIX to worker directory
-5. **Convert**: Convert VSIX to base64
-6. **Update Worker**: Update version info and constants
-7. **Deploy Ready**: Extension ready for deployment
-
-## 🔄 **Version Numbering Strategy**
-
-We use **Semantic Versioning** (SemVer):
-
-- **Major** (X.0.0): Breaking changes, major rewrites
-- **Minor** (0.X.0): New features, backward compatible
-- **Patch** (0.0.X): Bug fixes, small improvements
-
-**Current Strategy**: We're in early development, so we increment patch versions for now.
-
-## 📁 **Files Updated Automatically**
-
-When you run version management commands, these files are updated:
-
-- `package.json` - Extension version
-- `package-lock.json` - Lock file version
-- `README.md` - Version references
-- `build-manual.js` - Build script version
-- `src/version-info.ts` - Worker version info
-- `src/constants.ts` - VSIX base64 content
-
-## 🚀 **Complete Release Process**
-
-### **Step 1: Run Full Release Workflow**
-```bash
+cd apps/extension
 npm run release:full
 ```
 
-### **Step 2: Deploy Worker**
-```bash
-cd ../../infra
-npx wrangler deploy
-```
+This command automatically:
+1. Bumps the version number
+2. Builds the extension with esbuild bundler
+3. Packages it into a VSIX file
+4. Copies the VSIX to the web app's public directory
+5. Updates the web app's version information
 
-### **Step 3: Deploy Web App**
+### **Step 2: Build and Deploy Web App**
 ```bash
-cd apps/web
+cd ../web
 pnpm build
 cd ../../infra
-npx wrangler pages deploy dist --project-name=quickstage
+npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
-### **Step 4: Test**
-- Download new extension from dashboard
-- Verify version number is correct
-- Test extension functionality
+### **Step 3: Test the Update**
+1. Visit the QuickStage dashboard
+2. Check that the extension version shows as updated
+3. Download and test the new extension
 
-## 🔧 **Extension Build System**
+## 🔧 **Manual Build Commands**
 
-### **Build Process**
-Our extension uses **esbuild** to bundle all dependencies into a single file:
+If you need to run individual steps:
 
-1. **Source**: `src/extension.ts` (TypeScript with external imports)
-2. **Bundler**: `build-bundle.js` (esbuild configuration)
-3. **Output**: `dist/extension.js` (Single bundled JavaScript file)
-4. **Packaging**: `build-manual.js` (Manual VSIX creation)
-
-### **Why esbuild?**
-- **Dependencies**: Bundles all npm packages into single file
-- **No Missing Modules**: Eliminates "Cannot find module" errors
-- **Performance**: Faster builds than webpack
-- **Reliability**: Avoids vsce packaging issues
-
-### **Build Commands**
 ```bash
+cd apps/extension
+
 # Build bundled extension
-npm run build          # Runs build-bundle.js
+npm run build          # Runs build-bundle.js (esbuild bundler)
 
 # Package into VSIX
-npm run package        # Runs build-manual.js
+npm run package        # Runs build-manual.js (manual packaging)
 
-# Complete workflow
-npm run release:full   # Bump → Build → Package → Update Worker
+# Complete release workflow
+npm run release:full   # Bump version → Build → Package → Update Web App
 ```
 
-## 🌐 **Deployment Architecture**
+## 📁 **File Locations**
 
-### **System Components**
-1. **Extension Source** (`apps/extension/`) - VS Code/Cursor extension
-2. **Cloudflare Worker** (`apps/worker/`) - Backend API + VSIX serving
-3. **Web Dashboard** (`apps/web/`) - User interface + extension download
-4. **Infrastructure** (`infra/`) - Deployment configuration
+### **Extension Build Output**
+- **Source**: `apps/extension/src/extension.ts`
+- **Bundled**: `apps/extension/dist/extension.js`
+- **VSIX Package**: `apps/extension/quickstage-{version}.vsix` (temporary)
 
-### **Deployment Flow**
-```
-Extension Build → VSIX Package → Worker Update → Deploy Worker → Deploy Web App
-```
+### **Web App Integration**
+- **Public VSIX**: `apps/web/public/quickstage.vsix`
+- **Version Info**: `apps/web/src/version.ts` (auto-generated)
+- **Build Output**: `apps/web/dist/` (deployed to Cloudflare Pages)
 
-### **Critical Deployment Order**
-**ALWAYS deploy in this order:**
-1. **Worker First** - Contains the new VSIX file
-2. **Web App Second** - Serves the dashboard that downloads the extension
+## 🌐 **Extension Download URLs**
 
-**Why this order matters:**
-- Web app downloads extension from Worker
-- If Worker isn't updated first, users get old version
-- Deployment order is critical for version consistency
+### **Direct Download**
+- **URL**: `https://quickstage.tech/quickstage.vsix`
+- **Source**: Web app public directory
+- **Caching**: Standard Cloudflare Pages caching
 
-## 📋 **Complete Deployment Checklist**
+### **Version Information**
+- **URL**: `https://quickstage.tech/api/extensions/version`
+- **Source**: Worker API endpoint
+- **Purpose**: Check for updates and version info
 
-### **Before Deployment**
-- [ ] Run `npm run release:full` in `apps/extension/`
-- [ ] Verify new VSIX was created and copied to worker
-- [ ] Verify `apps/worker/src/constants.ts` was updated
-- [ ] Check that version numbers match across all files
+## 🔄 **Deployment Scenarios**
 
-### **Deployment Steps**
-- [ ] Deploy Worker: `cd infra && npx wrangler deploy`
-- [ ] Build Web App: `cd apps/web && pnpm build`
-- [ ] Deploy Web App: `cd ../../infra && npx wrangler pages deploy dist --project-name=quickstage`
-
-### **After Deployment**
-- [ ] Test extension download from dashboard
-- [ ] Verify new version is detected
-- [ ] Test extension functionality in VS Code/Cursor
-- [ ] Check that update notifications work correctly
-
-## 🔍 **Manual Version Updates**
-
-If you need to manually update versions:
-
-### **Update Extension Version**
+### **Extension Updates Only**
 ```bash
-# Edit package.json
-"version": "0.0.2"
-
-# Then run
-npm run version:bump
+# Only need to deploy web app
+cd apps/extension && npm run release:full
+cd ../web && pnpm build
+cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
-### **Update Worker Version**
+### **Worker Changes (API updates, etc.)**
 ```bash
-# Edit apps/worker/src/version-info.ts
-version: '0.0.2'
+# Deploy worker first, then web app if needed
+cd infra && npx wrangler deploy
+cd apps/web && pnpm build
+cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
-### **Update Constants**
+### **Full System Update**
 ```bash
-# Convert new VSIX to base64
-cd apps/worker
-base64 -i quickstage-0.0.2.vsix > vsix_base64_new.txt
-
-# Update constants.ts with new content
+# Update everything in correct order
+cd apps/extension && npm run release:full
+cd ../web && pnpm build
+cd ../../infra
+npx wrangler deploy
+npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
-## ⚠️ **Important Notes**
+## 🚨 **Troubleshooting**
 
-1. **Always run `npm run release:full`** before deploying
-2. **Deploy Worker first**, then Web App
-3. **Test the new version** after deployment
-4. **Version numbers must match** between extension and worker
-5. **Build order matters** - extension must be built before worker deployment
+### **VSIX Not Found After Release**
+- Check that `apps/web/public/` directory exists
+- Verify VSIX was copied successfully
+- Ensure web app build includes public directory
 
-## 🐛 **Troubleshooting**
+### **Version Mismatch**
+- Run `npm run release:full` again to sync versions
+- Check `apps/web/src/version.ts` is up to date
+- Verify web app deployment was successful
 
-### **Version Mismatch Errors**
-- Ensure you ran `npm run release:full`
-- Check that worker and extension versions match
-- Verify constants.ts was updated
+### **Extension Download Fails**
+- Check Cloudflare Pages deployment status
+- Verify `/quickstage.vsix` is accessible
+- Check browser console for errors
 
-### **Build Failures**
-- Check TypeScript compilation errors
-- Ensure all dependencies are installed
-- Verify build scripts are updated
+## 📊 **Version History**
 
-### **Deployment Issues**
-- Deploy Worker before Web App
-- Check Cloudflare deployment logs
-- Verify environment variables are set
+### **Recent Updates**
+- **v0.0.6**: Simplified deployment workflow, direct VSIX serving
+- **v0.0.5**: Fixed build and packaging issues
+- **v0.0.4**: Improved release workflow automation
+- **v0.0.3**: Initial esbuild bundling implementation
 
-### **Extension Not Working**
-- Verify VSIX was properly bundled
-- Check that all dependencies are included
-- Ensure activation events are correct
+### **Breaking Changes**
+- **v0.0.6**: Removed VSIX embedding from Worker, now served directly from web app
+- **v0.0.3**: Switched from TypeScript compilation to esbuild bundling
 
-## 📚 **Best Practices**
+## 🔮 **Future Improvements**
 
-1. **Use `npm run release:full`** for all releases
-2. **Test locally** before deploying
-3. **Deploy in order**: Worker → Web App
-4. **Verify versions** after deployment
-5. **Document changes** in commit messages
-6. **Test extension functionality** after each deployment
-
-## 🔮 **Future Enhancements**
-
-- **Git integration**: Automatic version bumping on release tags
-- **Changelog generation**: Automatic changelog updates
-- **Release notes**: Integration with GitHub releases
-- **Rollback support**: Easy version rollback if issues arise
-- **Automated testing**: CI/CD pipeline for extension validation
-- **Deployment automation**: Single command for complete deployment
-
-## 🚨 **Emergency Procedures**
-
-### **If Extension Breaks After Deployment**
-1. **Immediate Rollback**: Deploy previous Worker version
-2. **Investigate**: Check build logs and extension activation
-3. **Fix**: Resolve the issue in extension code
-4. **Redeploy**: Run complete release process again
-
-### **If Worker Deployment Fails**
-1. **Check Logs**: Review Cloudflare deployment logs
-2. **Verify Configuration**: Check wrangler.toml settings
-3. **Environment Variables**: Ensure all required env vars are set
-4. **Retry**: Attempt deployment again
-
-### **If Web App Deployment Fails**
-1. **Build Issues**: Check for TypeScript compilation errors
-2. **Dependencies**: Verify all packages are installed
-3. **Configuration**: Check Vite and build configuration
-4. **Retry**: Rebuild and redeploy
-
-## 📞 **Support & Resources**
-
-### **Key Files to Know**
-- `apps/extension/package.json` - Extension configuration
-- `apps/extension/build-bundle.js` - Build configuration
-- `apps/worker/src/constants.ts` - VSIX content
-- `infra/wrangler.toml` - Cloudflare configuration
-
-### **Useful Commands**
-```bash
-# Check current versions
-grep -r "version.*0.0" apps/extension/package.json apps/worker/src/version-info.ts
-
-# Verify VSIX content
-cd apps/worker && ls -la *.vsix
-
-# Check Worker deployment status
-cd infra && npx wrangler tail
-
-# View build output
-cd apps/extension && npm run build
-```
-
-### **Common Issues & Solutions**
-- **Missing modules**: Run `npm run build` to bundle dependencies
-- **Version mismatch**: Use `npm run release:full` to sync versions
-- **Deployment failures**: Check Cloudflare logs and environment variables
-- **Extension not working**: Verify VSIX was properly bundled and deployed
-
----
-
-**Remember**: The deployment order is critical. Always deploy Worker first, then Web App. This ensures users get the correct extension version when they download from the dashboard.
+- **Automated Testing**: Add extension installation tests
+- **Rollback Support**: Quick rollback to previous versions
+- **CDN Integration**: Serve VSIX from Cloudflare R2 for better performance
+- **Version Signing**: Cryptographic verification of extension authenticity

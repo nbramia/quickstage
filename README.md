@@ -97,7 +97,7 @@ Your Worker is configured with these routes:
 - `GET /api/s/:id/*` - Web dashboard file serving
 
 ##### **Extension Download Endpoints**
-- `GET /api/extensions/quickstage.vsix` - Download QuickStage VSIX extension (consistent naming)
+- `GET /quickstage.vsix` - Download QuickStage VSIX extension (served directly from web app)
 - `GET /api/extensions/version` - Get extension version information and update status
 
 ### 🔐 **Authentication & Security Flow**
@@ -496,27 +496,35 @@ The system now supports three authentication methods:
 ## Deployment
 
 ### Critical Deployment Order
-**ALWAYS deploy in this order:**
-1. **Worker First** - Contains the new VSIX file
-2. **Web App Second** - Serves the dashboard that downloads the extension
+**For extension updates, only deploy the web app:**
+1. **Web App Only** - Extension is served directly from web app's public directory
 
-**Why this order matters:**
-- Web app downloads extension from Worker
-- If Worker isn't updated first, users get old version
-- Deployment order is critical for version consistency
+**For worker changes (API updates, etc.):**
+1. **Worker First** - Contains API logic and business rules
+2. **Web App Second** - Serves the dashboard and extension
+
+**Why this matters:**
+- Extension downloads now come directly from web app (`/quickstage.vsix`)
+- Worker only handles API endpoints, not file serving
+- Extension updates only require web app deployment
 
 ### Complete Deployment Process
 ```bash
-# 1. Run release workflow (in apps/extension/)
-npm run release:full
-
-# 2. Deploy Worker (in infra/)
-npx wrangler deploy
-
-# 3. Build and deploy Web App (in infra/)
-cd apps/web && pnpm build
+# For extension updates only:
+cd apps/extension
+npm run release:full    # Creates VSIX and copies to web app public directory
+cd ../web
+pnpm build             # Builds web app with new extension
 cd ../../infra
-npx wrangler pages deploy dist --project-name=quickstage
+npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
+
+# For worker changes:
+cd infra
+npx wrangler deploy    # Deploy worker changes
+cd apps/web
+pnpm build             # Build web app if needed
+cd ../../infra
+npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
 ### Extension Build Commands

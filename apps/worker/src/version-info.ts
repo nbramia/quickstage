@@ -5,7 +5,7 @@ export function getExtensionVersion() {
   // For now, return hardcoded version - in production this could read from a file
   // or be injected during build time
   return {
-    version: '0.0.2', // This should match the extension's package.json version
+    version: '0.0.3', // This should match the extension's package.json version
     buildDate: new Date().toISOString(),
     filename: 'quickstage.vsix'
   };

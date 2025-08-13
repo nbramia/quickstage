@@ -7,7 +7,6 @@ import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PRE
 import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
-import { VSIX_EXTENSION_BASE64 } from './constants';
 import { getExtensionVersion } from './version-info';
 // Passkeys (WebAuthn)
 // @ts-ignore
@@ -1200,9 +1199,9 @@ app.get('/api/extensions/version', async (c: any) => {
     return c.json({
       version: versionInfo.version,
       buildDate: versionInfo.buildDate,
-      checksum: await sha256Hex(VSIX_EXTENSION_BASE64),
-      downloadUrl: '/api/extensions/quickstage.vsix',
-      filename: versionInfo.filename
+      checksum: 'direct-serve', // No longer serving VSIX content
+      downloadUrl: '/quickstage.vsix', // Direct from web app
+      filename: 'quickstage.vsix'
     });
   } catch (error) {
     console.error('Error serving version info:', error);
@@ -1210,31 +1209,8 @@ app.get('/api/extensions/version', async (c: any) => {
   }
 });
 
-// Add extension download endpoint
-app.get('/api/extensions/quickstage.vsix', async (c: any) => {
-  try {
-    // Base64-encoded VSIX file content (quickstage.vsix)
-    const vsixBase64 = VSIX_EXTENSION_BASE64;
-    
-    // Convert base64 to binary
-    const vsixBinary = Uint8Array.from(atob(vsixBase64), c => c.charCodeAt(0));
-    
-    const response = new Response(vsixBinary, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Disposition': 'attachment; filename="quickstage.vsix"',
-        'Cache-Control': 'no-cache',
-        'Last-Modified': 'Mon, 27 Jan 2025 00:00:00 GMT',
-        'ETag': `"quickstage-v${getExtensionVersion().version}"`
-      }
-    });
-    
-    return response;
-  } catch (error) {
-    console.error('Error serving VSIX file:', error);
-    return c.json({ error: 'extension_not_found' }, 404);
-  }
-});
+// Extension is now served directly from web app public directory
+// No need for VSIX serving endpoint here
 
 async function purgeExpired(env: Bindings) {
   let cursor: string | undefined = undefined;

@@ -6,8 +6,12 @@ async function buildManual() {
   try {
     console.log('🔨 Building extension manually...');
     
+    // Read version from package.json
+    const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    const version = packageJson.version;
+    
     // Create package directory
-    const packageDir = 'quickstage-0.0.1';
+    const packageDir = `quickstage-${version}`;
     if (fs.existsSync(packageDir)) {
       fs.rmSync(packageDir, { recursive: true });
     }
@@ -24,7 +28,7 @@ async function buildManual() {
       name: "quickstage",
       displayName: "QuickStage",
       description: "Stage and share static prototypes privately in 1 click.",
-      version: "0.0.1",
+      version: version,
       publisher: "quickstage",
       private: true,
       license: "SEE LICENSE IN LICENSE",
@@ -60,12 +64,12 @@ async function buildManual() {
     
     // Create VSIX package
     console.log('📦 Creating VSIX package...');
-    execSync(`cd ${packageDir} && zip -r ../quickstage-0.0.1.vsix .`, { stdio: 'inherit' });
+    execSync(`cd ${packageDir} && zip -r ../quickstage-${version}.vsix .`, { stdio: 'inherit' });
     
     // Clean up
     fs.rmSync(packageDir, { recursive: true });
     
-    console.log('✅ Extension packaged successfully as quickstage-0.0.1.vsix!');
+    console.log(`✅ Extension packaged successfully as quickstage-${version}.vsix!`);
   } catch (error) {
     console.error('❌ Build failed:', error);
     process.exit(1);

@@ -15,7 +15,15 @@ async function build() {
       minify: false,
       define: {
         'process.env.NODE_ENV': '"production"'
-      }
+      },
+      // Force bundling of all dependencies
+      packages: 'external',
+      // Ensure proper module resolution
+      mainFields: ['module', 'main'],
+      // Bundle all node_modules
+      bundle: true,
+      // Don't externalize any packages except vscode
+      external: ['vscode']
     });
     
     console.log('✅ Extension bundled successfully!');
