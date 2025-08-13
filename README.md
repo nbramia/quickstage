@@ -143,11 +143,33 @@ snapshots/
 
 ### 🚀 **Extension Installation & Usage**
 
+#### **Extension Build System**
+Our extension uses **esbuild** to bundle all dependencies into a single file:
+
+```bash
+cd apps/extension
+
+# Build bundled extension
+npm run build          # Runs build-bundle.js (esbuild bundler)
+
+# Package into VSIX
+npm run package        # Runs build-manual.js (manual packaging)
+
+# Complete release workflow
+npm run release:full   # Bump version → Build → Package → Update Worker
+```
+
+#### **Why esbuild Bundling?**
+- **Dependencies**: Bundles all npm packages into single file
+- **No Missing Modules**: Eliminates "Cannot find module" errors
+- **Performance**: Faster builds than webpack
+- **Reliability**: Avoids vsce packaging issues
+
 #### **VSIX Package Generation**
 ```bash
 cd apps/extension
-pnpm build          # Compile TypeScript
-pnpm package        # Generate .vsix file
+npm run build          # Compile TypeScript with esbuild bundler
+npm run package        # Generate .vsix file using manual packaging
 ```
 
 #### **Enhanced Extension Download System**
@@ -175,7 +197,7 @@ Users can download the QuickStage extension directly from the web dashboard with
 - **Preference Persistence**: User's location choice and version info remembered across sessions
 
 #### **Extension Installation**
-1. Download `quickstage-0.0.1.vsix` from the dashboard
+1. Download `quickstage.vsix` from the dashboard
 2. In VS Code/Cursor: Extensions → Install from VSIX
 3. Extension appears in Extensions panel
 4. Command "QuickStage: Stage" available in Command Palette
@@ -293,6 +315,13 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - Ensure Node.js 18+ with corepack enabled
 - Check TypeScript compilation errors
 - Verify all dependencies are installed
+- Run `npm run build` to bundle with esbuild
+
+#### **Extension Not Working After Installation**
+- Verify VSIX was properly bundled with esbuild
+- Check that all dependencies are included in single file
+- Ensure activation events are set to `onStartupFinished`
+- Reload VS Code/Cursor window
 
 #### **File Upload Failures**
 - Check R2 credentials are correct
@@ -332,6 +361,14 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - Advanced security features
 
 ## Recent Updates
+
+### Extension Build System Overhaul (2025-01-27)
+- **esbuild Bundling**: Replaced TypeScript compilation with esbuild bundler that includes all dependencies
+- **Manual VSIX Packaging**: Created custom packaging script to avoid vsce dependency issues
+- **Single File Output**: Extension now bundles into single `extension.js` file with all dependencies included
+- **No More Missing Modules**: Eliminated "Cannot find module" errors by bundling all npm packages
+- **Build Commands**: Added `npm run build`, `npm run package`, and `npm run release:full` commands
+- **Deployment Workflow**: Streamlined deployment process with automated version management
 
 ### Enhanced Extension Download System (2025-01-27)
 - **Location Selection**: Added dropdown for choosing save location (Downloads, VS Code, Cursor, Custom)
@@ -379,7 +416,7 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 ```
 /quickstage
 ├── apps/
-│   ├── extension/     # VS Code extension
+│   ├── extension/     # VS Code extension (esbuild bundled)
 │   ├── web/          # Dashboard & viewer (React + Vite)
 │   └── worker/       # Cloudflare Worker API
 ├── packages/
@@ -418,7 +455,9 @@ pnpm dev
 pnpm build
 
 # Package extension
-pnpm package
+cd apps/extension
+npm run build          # Bundle with esbuild
+npm run package        # Create VSIX file
 ```
 
 ### Authentication Testing
@@ -453,3 +492,45 @@ The system now supports three authentication methods:
 - **Passkey Management**: Add/remove passkeys
 - **Session Management**: Secure logout and session handling
 - **Multi-Provider Linking**: Link multiple authentication methods to one account
+
+## Deployment
+
+### Critical Deployment Order
+**ALWAYS deploy in this order:**
+1. **Worker First** - Contains the new VSIX file
+2. **Web App Second** - Serves the dashboard that downloads the extension
+
+**Why this order matters:**
+- Web app downloads extension from Worker
+- If Worker isn't updated first, users get old version
+- Deployment order is critical for version consistency
+
+### Complete Deployment Process
+```bash
+# 1. Run release workflow (in apps/extension/)
+npm run release:full
+
+# 2. Deploy Worker (in infra/)
+npx wrangler deploy
+
+# 3. Build and deploy Web App (in infra/)
+cd apps/web && pnpm build
+cd ../../infra
+npx wrangler pages deploy dist --project-name=quickstage
+```
+
+### Extension Build Commands
+```bash
+cd apps/extension
+
+# Build bundled extension
+npm run build          # Runs build-bundle.js (esbuild bundler)
+
+# Package into VSIX
+npm run package        # Runs build-manual.js (manual packaging)
+
+# Complete release workflow
+npm run release:full   # Bump version → Build → Package → Update Worker
+```
+
+For detailed deployment instructions, see [VERSION_MANAGEMENT.md](apps/extension/VERSION_MANAGEMENT.md).

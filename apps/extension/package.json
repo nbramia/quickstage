@@ -13,10 +13,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:quickstage.stage",
-    "onCommand:quickstage.stageManual",
-    "onCommand:quickstage.openDashboard",
-    "onCommand:quickstage.settings"
+    "onStartupFinished"
   ],
   "main": "dist/extension.js",
   "contributes": {
@@ -40,18 +37,21 @@
     ]
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "node build-bundle.js",
     "dev": "tsc -b -w",
     "lint": "eslint . --ext .ts",
-    "package": "vsce package --no-dependencies --allow-missing-repository"
+    "package": "node build-manual.js",
+    "version:bump": "node version-bump.js",
+    "release": "npm run version:bump && npm run build && npm run package",
+    "release:full": "node release-workflow.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
     "eslint": "^8.57.0",
-    "typescript": "^5.4.3",
-    "vsce": "^2.15.0"
+    "typescript": "^5.4.3"
   },
   "dependencies": {
     "globby": "^14.0.1",

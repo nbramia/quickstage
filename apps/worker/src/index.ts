@@ -8,6 +8,7 @@ import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, rand
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
 import { VSIX_EXTENSION_BASE64 } from './constants';
+import { getExtensionVersion } from './version-info';
 // Passkeys (WebAuthn)
 // @ts-ignore
 import {
@@ -1195,12 +1196,13 @@ app.get('/api/s/:id/*', async (c: any) => {
 // Add extension version endpoint
 app.get('/api/extensions/version', async (c: any) => {
   try {
+    const versionInfo = getExtensionVersion();
     return c.json({
-      version: '0.0.1',
-      buildDate: '2025-01-27T00:00:00Z',
+      version: versionInfo.version,
+      buildDate: versionInfo.buildDate,
       checksum: await sha256Hex(VSIX_EXTENSION_BASE64),
       downloadUrl: '/api/extensions/quickstage.vsix',
-      filename: 'quickstage.vsix'
+      filename: versionInfo.filename
     });
   } catch (error) {
     console.error('Error serving version info:', error);
@@ -1223,7 +1225,7 @@ app.get('/api/extensions/quickstage.vsix', async (c: any) => {
         'Content-Disposition': 'attachment; filename="quickstage.vsix"',
         'Cache-Control': 'no-cache',
         'Last-Modified': 'Mon, 27 Jan 2025 00:00:00 GMT',
-        'ETag': '"quickstage-v0.0.1"'
+        'ETag': `"quickstage-v${getExtensionVersion().version}"`
       }
     });
     
