@@ -129,16 +129,18 @@ export default function Dashboard() {
   };
 
   const handleDownloadExtension = () => {
-    // Download the VSIX file from the API
-    const url = `${window.location.origin}/api/extensions/quickstage.vsix`;
+    // Primary download URL: direct from web app public directory
+    const primaryUrl = `${window.location.origin}/quickstage.vsix`;
+    // Backup download URL: through Worker API with explicit headers
+    const backupUrl = `${window.location.origin}/api/extensions/download`;
     
     // Try to use File System Access API if available and custom location selected
     if (saveLocation === 'custom' && customPath && 'showSaveFilePicker' in window) {
       // Use modern file picker API
-      downloadToCustomLocation(url, customPath);
+      downloadToCustomLocation(primaryUrl, customPath, backupUrl);
     } else {
       // Fallback to traditional download
-      downloadToDefaultLocation(url);
+      downloadToDefaultLocation(primaryUrl, backupUrl);
     }
     
     // Show instructions after delay
@@ -151,15 +153,31 @@ export default function Dashboard() {
     setShowInstallInstructions(true);
   };
 
-  const downloadToCustomLocation = async (url: string, path: string) => {
+  const downloadToCustomLocation = async (primaryUrl: string, path: string, backupUrl: string) => {
     try {
-      const response = await fetch(url);
+      let response = await fetch(primaryUrl);
+      
+      // If primary fails, try backup
+      if (!response.ok) {
+        console.warn('Primary download failed, trying backup URL');
+        response = await fetch(backupUrl);
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+      
       const blob = await response.blob();
+      
+      // Validate file size (should be > 5KB for a valid VSIX)
+      if (blob.size < 5000) {
+        throw new Error('Downloaded file appears to be corrupted (too small)');
+      }
       
       // Use File System Access API
       if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({
-          suggestedName: 'quickstage.vsix',
+          suggestedName: `quickstage-${currentVersion}.vsix`,
           types: [{
             description: 'VS Code Extension',
             accept: { 'application/octet-stream': ['.vsix'] }
@@ -182,23 +200,50 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Failed to save to custom location:', error);
       // Fallback to default download
-      downloadToDefaultLocation(url);
+      downloadToDefaultLocation(primaryUrl, backupUrl);
     }
   };
   
-  const downloadToDefaultLocation = (url: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'quickstage.vsix';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    
-    // Track version when downloading
-    if (currentVersion) {
-      localStorage.setItem('quickstage-downloaded-version', currentVersion);
-      setLastDownloadedVersion(currentVersion);
-      setNeedsUpdate(false);
+  const downloadToDefaultLocation = async (primaryUrl: string, backupUrl?: string) => {
+    try {
+      // First try to validate the primary URL
+      const response = await fetch(primaryUrl, { method: 'HEAD' });
+      
+      let downloadUrl = primaryUrl;
+      
+      // If primary fails and backup available, use backup
+      if (!response.ok && backupUrl) {
+        console.warn('Primary download URL failed, using backup');
+        const backupResponse = await fetch(backupUrl, { method: 'HEAD' });
+        if (backupResponse.ok) {
+          downloadUrl = backupUrl;
+        }
+      }
+      
+      // Perform the download
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `quickstage-${currentVersion}.vsix`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      // Track version when downloading
+      if (currentVersion) {
+        localStorage.setItem('quickstage-downloaded-version', currentVersion);
+        setLastDownloadedVersion(currentVersion);
+        setNeedsUpdate(false);
+      }
+      
+    } catch (error) {
+      console.error('Download failed:', error);
+      // If all else fails, try the primary URL anyway (browser might handle it)
+      const a = document.createElement('a');
+      a.href = primaryUrl;
+      a.download = `quickstage-${currentVersion}.vsix`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     }
   };
 
@@ -564,7 +609,7 @@ export default function Dashboard() {
                       <div className="flex items-start space-x-3">
                         <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">4</div>
                         <div>
-                          <p className="text-sm text-gray-700">Navigate to and select the downloaded <code className="bg-gray-200 px-1 rounded text-xs">quickstage-0.0.1.vsix</code> file</p>
+                          <p className="text-sm text-gray-700">Navigate to and select the downloaded <code className="bg-gray-200 px-1 rounded text-xs">quickstage-{currentVersion}.vsix</code> file</p>
                         </div>
                       </div>
                       <div className="flex items-start space-x-3">

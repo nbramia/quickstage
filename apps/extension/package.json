@@ -2,7 +2,7 @@
   "name": "quickstage",
   "displayName": "QuickStage",
   "description": "Stage and share static prototypes privately in 1 click.",
-  "version": "0.0.6",
+  "version": "0.0.9",
   "publisher": "quickstage",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -49,6 +49,7 @@
     "@types/node": "^20.11.30",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.6.0",
+    "archiver": "^7.0.1",
     "esbuild": "^0.25.9",
     "eslint": "^8.57.0",
     "typescript": "^5.4.3"

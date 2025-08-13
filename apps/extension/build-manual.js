@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const archiver = require('archiver');
 
 async function buildManual() {
   try {
@@ -17,13 +17,16 @@ async function buildManual() {
     }
     fs.mkdirSync(packageDir);
     
-    // Copy extension files
-    console.log('📁 Copying extension files...');
-    fs.copyFileSync('dist/extension.js', `${packageDir}/extension.js`);
-    fs.copyFileSync('package.json', `${packageDir}/package.json`);
-    fs.copyFileSync('LICENSE', `${packageDir}/LICENSE`);
+    // Create extension subdirectory (VS Code expects this structure)
+    const extensionDir = path.join(packageDir, 'extension');
+    fs.mkdirSync(extensionDir);
     
-    // Create extension manifest
+    // Copy extension files to the extension subdirectory
+    console.log('📁 Copying extension files...');
+    fs.copyFileSync('dist/extension.js', path.join(extensionDir, 'extension.js'));
+    fs.copyFileSync('LICENSE', path.join(extensionDir, 'LICENSE'));
+    
+    // Create extension manifest to be placed INSIDE extension/ folder
     const manifest = {
       name: "quickstage",
       displayName: "QuickStage",
@@ -37,39 +40,39 @@ async function buildManual() {
       },
       categories: ["Other"],
       activationEvents: ["onStartupFinished"],
+      // main is relative to this package.json location (extension/)
       main: "extension.js",
       contributes: {
         commands: [
-          {
-            command: "quickstage.stage",
-            title: "QuickStage: Stage"
-          },
-          {
-            command: "quickstage.stageManual",
-            title: "QuickStage: Stage (Manual output…)"
-          },
-          {
-            command: "quickstage.openDashboard",
-            title: "QuickStage: Open Dashboard"
-          },
-          {
-            command: "quickstage.settings",
-            title: "QuickStage: Settings"
-          }
+          { command: "quickstage.stage", title: "QuickStage: Stage" },
+          { command: "quickstage.stageManual", title: "QuickStage: Stage (Manual output…)" },
+          { command: "quickstage.openDashboard", title: "QuickStage: Open Dashboard" },
+          { command: "quickstage.settings", title: "QuickStage: Settings" }
         ]
       }
     };
     
-    fs.writeFileSync(`${packageDir}/package.json`, JSON.stringify(manifest, null, 2));
+    // Write the manifest inside extension/ as package.json
+    fs.writeFileSync(path.join(extensionDir, 'package.json'), JSON.stringify(manifest, null, 2));
     
-    // Create VSIX package
+    // Create VSIX package using archiver
     console.log('📦 Creating VSIX package...');
-    execSync(`cd ${packageDir} && zip -r ../quickstage-${version}.vsix .`, { stdio: 'inherit' });
+    const output = fs.createWriteStream(`quickstage-${version}.vsix`);
+    const archive = archiver('zip', { zlib: { level: 6 } });
     
-    // Clean up
-    fs.rmSync(packageDir, { recursive: true });
+    output.on('close', () => {
+      console.log(`✅ Extension packaged successfully as quickstage-${version}.vsix!`);
+      console.log(`📦 Archive size: ${(archive.pointer() / 1024).toFixed(2)} KB`);
+      // Clean up
+      fs.rmSync(packageDir, { recursive: true });
+    });
     
-    console.log(`✅ Extension packaged successfully as quickstage-${version}.vsix!`);
+    archive.on('error', (err) => { throw err; });
+    
+    archive.pipe(output);
+    archive.directory(packageDir, false);
+    await archive.finalize();
+    
   } catch (error) {
     console.error('❌ Build failed:', error);
     process.exit(1);

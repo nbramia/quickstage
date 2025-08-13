@@ -1209,8 +1209,43 @@ app.get('/api/extensions/version', async (c: any) => {
   }
 });
 
-// Extension is now served directly from web app public directory
-// No need for VSIX serving endpoint here
+// Backup VSIX download endpoint with explicit headers
+app.get('/api/extensions/download', async (c: any) => {
+  try {
+    // Fetch the VSIX from the web app's public directory
+    const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
+    
+    const response = await fetch(vsixUrl);
+    if (!response.ok) {
+      console.error('Failed to fetch VSIX from web app:', response.status);
+      return c.json({ error: 'download_unavailable' }, 500);
+    }
+    
+    const vsixData = await response.arrayBuffer();
+    
+    // Get version for dynamic filename
+    const versionInfo = getExtensionVersion();
+    const filename = `quickstage-${versionInfo.version}.vsix`;
+    
+    // Serve with explicit headers to ensure proper download
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/octet-stream');
+    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+    headers.set('Content-Length', vsixData.byteLength.toString());
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    
+    return new Response(vsixData, { headers });
+    
+  } catch (error) {
+    console.error('Error serving VSIX download:', error);
+    return c.json({ error: 'download_failed' }, 500);
+  }
+});
+
+// Original web app serving (keep as primary)
+// Extension is served directly from web app public directory
 
 async function purgeExpired(env: Bindings) {
   let cursor: string | undefined = undefined;
