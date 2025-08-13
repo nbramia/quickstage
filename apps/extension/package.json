@@ -2,7 +2,7 @@
   "name": "quickstage",
   "displayName": "QuickStage",
   "description": "Stage and share static prototypes privately in 1 click.",
-  "version": "0.0.16",
+  "version": "0.0.19",
   "publisher": "quickstage",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",

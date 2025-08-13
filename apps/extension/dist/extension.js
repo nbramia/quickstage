@@ -7977,9 +7977,6 @@ function activate(context) {
     vscode.commands.registerCommand("quickstage.openDashboard", async () => {
       vscode.env.openExternal(vscode.Uri.parse("https://quickstage.tech"));
     }),
-    vscode.commands.registerCommand("quickstage.login", async () => {
-      await authenticateUser(context, output);
-    }),
     vscode.commands.registerCommand("quickstage.settings", async () => {
       var _a;
       const ws = (_a = vscode.workspace.workspaceFolders) == null ? void 0 : _a[0];
@@ -8034,41 +8031,38 @@ function deactivate() {
 async function authenticateUser(context, output) {
   output.show(true);
   output.appendLine("\u{1F510} QuickStage Authentication Required");
-  output.appendLine("To use QuickStage, you need to authenticate first.");
+  output.appendLine("Opening dashboard for authentication...");
+  vscode.env.openExternal(vscode.Uri.parse("https://quickstage.tech/dashboard"));
+  await new Promise((resolve) => setTimeout(resolve, 2e3));
   const action = await vscode.window.showInformationMessage(
-    "QuickStage requires authentication. Please log in to your account.",
-    "Open Dashboard to Login",
-    "Enter Session Token Manually",
+    `Dashboard opened! Please log in to QuickStage, then return here and click "I'm Logged In"`,
+    "I'm Logged In",
     "Cancel"
   );
-  if (action === "Open Dashboard to Login") {
-    vscode.env.openExternal(vscode.Uri.parse("https://quickstage.tech/dashboard"));
-    await new Promise((resolve) => setTimeout(resolve, 2e3));
-    const token = await vscode.window.showInputBox({
-      prompt: "Please copy your session token from the dashboard and paste it here:",
-      placeHolder: "Paste your session token...",
-      password: true
-    });
-    if (token) {
-      await context.secrets.store("quickstage-session-token", token);
-      output.appendLine("\u2705 Session token stored successfully!");
-      vscode.window.showInformationMessage("Authentication successful! You can now use QuickStage.");
-      return true;
-    }
-  } else if (action === "Enter Session Token Manually") {
-    const token = await vscode.window.showInputBox({
-      prompt: "Enter your QuickStage session token:",
-      placeHolder: "Paste your session token...",
-      password: true
-    });
-    if (token) {
-      await context.secrets.store("quickstage-session-token", token);
-      output.appendLine("\u2705 Session token stored successfully!");
-      vscode.window.showInformationMessage("Authentication successful! You can now use QuickStage.");
-      return true;
+  if (action === "I'm Logged In") {
+    output.appendLine("\u2705 User confirmed login. Getting session token...");
+    try {
+      const token = await vscode.window.showInputBox({
+        prompt: "Please get your session token from the dashboard and paste it here:",
+        placeHolder: "Paste your session token...",
+        password: true
+      });
+      if (token) {
+        await context.secrets.store("quickstage-session-token", token);
+        output.appendLine("\u2705 Session token stored successfully!");
+        vscode.window.showInformationMessage("Authentication successful! You can now use QuickStage.");
+        return true;
+      } else {
+        output.appendLine("\u274C No session token provided.");
+        return false;
+      }
+    } catch (error) {
+      output.appendLine(`\u274C Authentication failed: ${error}`);
+      vscode.window.showErrorMessage("Authentication failed. Please try again.");
+      return false;
     }
   }
-  output.appendLine("\u274C Authentication cancelled or failed");
+  output.appendLine("\u274C Authentication cancelled");
   return false;
 }
 async function getSessionToken(context) {
@@ -8080,12 +8074,17 @@ async function getSessionToken(context) {
 }
 async function stage(root, opts, output, context) {
   output.show(true);
-  const sessionToken = await getSessionToken(context);
+  let sessionToken = await getSessionToken(context);
   if (!sessionToken) {
-    output.appendLine("\u274C No session token found. Please authenticate first.");
+    output.appendLine("\u274C No session token found. Opening dashboard for login...");
     const authenticated = await authenticateUser(context, output);
     if (!authenticated) {
       output.appendLine("\u274C Authentication required to continue.");
+      return;
+    }
+    sessionToken = await getSessionToken(context);
+    if (!sessionToken) {
+      output.appendLine("\u274C Failed to get session token after authentication.");
       return;
     }
   }
@@ -8100,68 +8099,34 @@ async function stage(root, opts, output, context) {
   if (!outDir) return;
   const scan = await scanFiles(outDir, settings, output);
   if (!scan.ok) return;
-  const freshToken = await getSessionToken(context);
-  if (!freshToken) {
-    output.appendLine("\u274C Session token expired. Please authenticate again.");
-    const authenticated = await authenticateUser(context, output);
-    if (!authenticated) {
-      output.appendLine("\u274C Authentication required to continue.");
-      return;
-    }
-    const newToken = await getSessionToken(context);
-    if (!newToken) {
-      output.appendLine("\u274C Failed to get new session token.");
-      return;
-    }
-    await stage(root, opts, output, context);
-    return;
-  }
+  output.appendLine("\u{1F4E4} Creating snapshot...");
   const createRes = await fetch(`${API_BASE}/snapshots/create`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${freshToken}`
+      "Authorization": `Bearer ${sessionToken}`
     },
     body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public })
   });
   if (!createRes.ok) {
     if (createRes.status === 401) {
-      output.appendLine("\u274C Session token expired or invalid. Please authenticate again.");
+      output.appendLine("\u274C Session token expired. Please authenticate again.");
       await context.secrets.delete("quickstage-session-token");
       const authenticated = await authenticateUser(context, output);
       if (!authenticated) {
         output.appendLine("\u274C Authentication required to continue.");
         return;
       }
-      const newToken = await getSessionToken(context);
-      if (!newToken) {
-        output.appendLine("\u274C Failed to get new session token.");
-        return;
-      }
-      const retryRes = await fetch(`${API_BASE}/snapshots/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${newToken}`
-        },
-        body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public })
-      });
-      if (!retryRes.ok) {
-        output.appendLine(`\u274C Create snapshot failed: ${retryRes.status} ${retryRes.statusText}`);
-        vscode.window.showErrorMessage("Create snapshot failed");
-        return;
-      }
-      const created = await retryRes.json();
-      await uploadAndFinalize(created, scan, outDir, output, newToken, context);
+      await stage(root, opts, output, context);
+      return;
     } else {
       output.appendLine(`\u274C Create snapshot failed: ${createRes.status} ${createRes.statusText}`);
       vscode.window.showErrorMessage("Create snapshot failed");
       return;
     }
-  } else {
-    const created = await createRes.json();
-    await uploadAndFinalize(created, scan, outDir, output, freshToken, context);
   }
+  const created = await createRes.json();
+  await uploadAndFinalize(created, scan, outDir, output, sessionToken, context);
 }
 async function uploadAndFinalize(created, scan, outDir, output, sessionToken, context) {
   const limit = pLimit(8);
@@ -8188,7 +8153,8 @@ async function uploadAndFinalize(created, scan, outDir, output, sessionToken, co
         const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
         const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${sessionToken}` }
+          credentials: "include"
+          // Use browser's cookies
         });
         if (!up.ok) throw new Error(`Failed to get upload URL for ${rel}`);
         const { url: url2 } = await up.json();
