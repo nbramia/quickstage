@@ -406,7 +406,7 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
     return;
   }
 
-  const url = `${API_BASE}/s/${created.id}`;
+  const url = `https://quickstage.tech/s/${created.id}`;
   vscode.env.clipboard.writeText(`${url}\npassword: ${created.password}`);
   output.appendLine(`🎉 Staged successfully! ${url}`);
   output.appendLine(`📋 URL and password copied to clipboard`);

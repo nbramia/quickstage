@@ -559,6 +559,7 @@ app.post('/snapshots/create', async (c: any) => {
   const realPassword = password ?? generatePassword(20);
   const saltHex = randomHex(8);
   const passwordHash = await hashPasswordArgon2id(realPassword, saltHex);
+  console.log('Creating snapshot with caps:', DEFAULT_CAPS);
   const meta = {
     id,
     ownerUid: uid,
@@ -574,6 +575,7 @@ app.post('/snapshots/create', async (c: any) => {
     status: 'creating' as const,
     gateVersion: 1,
   };
+  console.log('Snapshot metadata to store:', JSON.stringify(meta, null, 2));
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
   return c.json({ id, password: realPassword, expiryDays, caps: DEFAULT_CAPS });
 });
@@ -600,6 +602,19 @@ app.post('/upload-url', async (c: any) => {
   if (!metaRaw) return c.json({ error: 'not_found' }, 404);
   const meta = JSON.parse(metaRaw);
   if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  
+  // Defensive check for caps property
+  if (!meta.caps || typeof meta.caps !== 'object') {
+    console.error('Missing or invalid caps in snapshot metadata:', { id: meta.id, caps: meta.caps });
+    // Fallback to default caps if missing
+    meta.caps = {
+      maxBytes: 20 * 1024 * 1024,
+      maxFile: 5 * 1024 * 1024,
+      maxDays: 14,
+    };
+    console.log('Applied fallback caps:', meta.caps);
+  }
+  
   if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large' }, 400);
   if (!ALLOW_MIME_PREFIXES.some((x) => String(ct).startsWith(x))) return c.json({ error: 'type_not_allowed' }, 400);
   const url = await presignR2PutURL({
@@ -637,6 +652,19 @@ app.put('/upload', async (c: any) => {
   if (!metaRaw) return c.json({ error: 'not_found' }, 404);
   const meta = JSON.parse(metaRaw);
   if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  
+  // Defensive check for caps property
+  if (!meta.caps || typeof meta.caps !== 'object') {
+    console.error('Missing or invalid caps in snapshot metadata:', { id: meta.id, caps: meta.caps });
+    // Fallback to default caps if missing
+    meta.caps = {
+      maxBytes: 20 * 1024 * 1024,
+      maxFile: 5 * 1024 * 1024,
+      maxDays: 14,
+    };
+    console.log('Applied fallback caps:', meta.caps);
+  }
+  
   if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large' }, 400);
   if (!ALLOW_MIME_PREFIXES.some((prefix) => ct.startsWith(prefix))) return c.json({ error: 'type_not_allowed' }, 400);
   const objectKey = `snap/${id}/${p}`;
@@ -654,44 +682,71 @@ app.put('/upload', async (c: any) => {
 
 // API version of upload endpoint for extension
 app.put('/api/upload', async (c: any) => {
-  let uid = await getUidFromSession(c);
-  if (!uid) {
-    // Try PAT authentication as fallback
-    const authHeader = c.req.header('authorization') || c.req.header('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
-      uid = await getUidFromPAT(c, token);
-    }
-  }
-  if (!uid) return c.json({ error: 'unauthorized' }, 401);
-  
-  const id = c.req.query('id');
-  const p = c.req.query('path');
-  const ct = c.req.header('content-type') || 'application/octet-stream';
-  const sz = Number(c.req.header('content-length') || '0');
-  const h = c.req.query('h') || '';
-  
-  if (!id || !p) return c.json({ error: 'bad_request' }, 400);
-  if (p.includes('..')) return c.json({ error: 'bad_path' }, 400);
-  
-  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
-  
-  const meta = JSON.parse(metaRaw);
-  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
-  if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large' }, 400);
-  if (!ALLOW_MIME_PREFIXES.some((prefix) => ct.startsWith(prefix))) return c.json({ error: 'type_not_allowed' }, 400);
-  
-  const objectKey = `snap/${id}/${p}`;
-  const body = c.req.raw.body;
-  if (!body) return c.json({ error: 'no_body' }, 400);
-  
   try {
-    await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
-    return c.json({ ok: true });
+    console.log('API upload endpoint called');
+    
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+      // Try PAT authentication as fallback
+      const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        uid = await getUidFromPAT(c, token);
+      }
+    }
+    if (!uid) return c.json({ error: 'unauthorized' }, 401);
+    
+    const id = c.req.query('id');
+    const p = c.req.query('path');
+    const ct = c.req.header('content-type') || 'application/octet-stream';
+    const sz = Number(c.req.header('content-length') || '0');
+    const h = c.req.query('h') || '';
+    
+    console.log('Upload params:', { id, path: p, contentType: ct, size: sz });
+    
+    if (!id || !p) return c.json({ error: 'bad_request', details: 'Missing id or path' }, 400);
+    if (p.includes('..')) return c.json({ error: 'bad_path', details: 'Path contains invalid characters' }, 400);
+    
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw) return c.json({ error: 'not_found', details: 'Snapshot not found' }, 404);
+    
+    console.log('Raw snapshot data from KV:', metaRaw);
+    const meta = JSON.parse(metaRaw);
+    console.log('Parsed snapshot meta:', { id: meta.id, ownerUid: meta.ownerUid, caps: meta.caps, hasCaps: !!meta.caps, capsType: typeof meta.caps });
+    
+    if (meta.ownerUid !== uid) return c.json({ error: 'forbidden', details: 'Not owner of snapshot' }, 403);
+    // Defensive check for caps property
+    if (!meta.caps || typeof meta.caps !== 'object') {
+      console.error('Missing or invalid caps in snapshot metadata:', { id: meta.id, caps: meta.caps });
+      // Fallback to default caps if missing
+      meta.caps = {
+        maxBytes: 20 * 1024 * 1024,
+        maxFile: 5 * 1024 * 1024,
+        maxDays: 14,
+      };
+      console.log('Applied fallback caps:', meta.caps);
+    }
+    
+    if (sz > meta.caps.maxFile) return c.json({ error: 'file_too_large', details: `File size ${sz} exceeds limit ${meta.caps.maxFile}` }, 400);
+    if (!ALLOW_MIME_PREFIXES.some((prefix) => ct.startsWith(prefix))) return c.json({ error: 'type_not_allowed', details: `Content type ${ct} not allowed` }, 400);
+    
+    const objectKey = `snap/${id}/${p}`;
+    const body = c.req.raw.body;
+    if (!body) return c.json({ error: 'no_body', details: 'No request body' }, 400);
+    
+    console.log('Attempting R2 upload to:', objectKey);
+    
+    try {
+      await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
+      console.log('R2 upload successful');
+      return c.json({ ok: true });
+    } catch (error) {
+      console.error('R2 upload failed:', error);
+      return c.json({ error: 'upload_failed', details: String(error) }, 500);
+    }
   } catch (error) {
-    console.error('R2 upload failed:', error);
-    return c.json({ error: 'upload_failed', details: String(error) }, 500);
+    console.error('Unexpected error in upload endpoint:', error);
+    return c.json({ error: 'internal_error', details: String(error) }, 500);
   }
 });
 
@@ -821,16 +876,36 @@ app.post('/snapshots/:id/rotate-password', async (c: any) => {
   return c.json({ password: newPass });
 });
 
-// Serve viewer shell (redirect to Pages handled app) or simple shell
-app.get('/s/:id', async (c: any) => {
+// API version of snapshot details endpoint (for Viewer component)
+app.get('/api/snapshots/:id', async (c: any) => {
   const id = c.req.param('id');
   const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.json({ error: 'gone' }, 410);
+  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
+  
   const meta = JSON.parse(metaRaw);
-  if (meta.status === 'expired' || meta.expiresAt < nowMs()) return c.json({ error: 'gone' }, 410);
-  // Let Pages app handle viewer route
-  return c.redirect(`${c.env.PUBLIC_BASE_URL}/app/s/${id}`);
+  if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+    return c.json({ error: 'gone' }, 410);
+  }
+  
+  // Check if user is authenticated and owns this snapshot
+  const uid = await getUidFromSession(c);
+  if (uid && meta.ownerUid === uid) {
+    // Owner can see full details
+    return c.json({ snapshot: meta });
+  }
+  
+  // For non-owners, check if public or password protected
+  if (meta.public) {
+    // Public snapshots can be viewed without authentication
+    return c.json({ snapshot: meta });
+  } else {
+    // Password protected snapshots require authentication
+    return c.json({ error: 'unauthorized' }, 401);
+  }
 });
+
+// Note: /s/:id route is handled by Pages app, not worker
+// Worker only handles /s/:id/* for serving snapshot files
 
 // Asset serving with password gate
 app.get('/s/:id/*', async (c: any) => {

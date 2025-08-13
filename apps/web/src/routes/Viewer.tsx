@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 
 type Comment = {
@@ -27,7 +27,6 @@ type Snapshot = {
 };
 
 export function Viewer() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -40,7 +39,7 @@ export function Viewer() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
-  const snapshotId = searchParams.get('id');
+  const { id: snapshotId } = useParams();
 
   useEffect(() => {
     if (!snapshotId) {

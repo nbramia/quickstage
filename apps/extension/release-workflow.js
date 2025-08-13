@@ -140,15 +140,35 @@ export function getExtensionVersion() {
     fs.writeFileSync(workerVersionFile, workerVersionContent);
     console.log('✅ Worker version info updated\n');
 
+    // Step 8: Build worker with new version
+    console.log('8️⃣ Building worker with new version...\n');
+    try {
+      execSync('cd ../worker && pnpm build', { stdio: 'inherit' });
+      console.log('✅ Worker built successfully\n');
+    } catch (error) {
+      console.error('❌ Worker build failed:', error.message);
+      throw new Error('Worker build failed - cannot proceed');
+    }
+
+    // Step 9: Deploy worker automatically
+    console.log('9️⃣ Deploying worker with new version...\n');
+    try {
+      execSync('cd ../../infra && npx wrangler deploy', { stdio: 'inherit' });
+      console.log('✅ Worker deployed successfully\n');
+    } catch (error) {
+      console.error('❌ Worker deployment failed:', error.message);
+      throw new Error('Worker deployment failed - cannot proceed');
+    }
+
     console.log('🎉 Release workflow completed successfully!');
-    console.log(`📦 Extension v${version} is ready for deployment\n`);
+    console.log(`📦 Extension v${version} is ready and worker is deployed\n`);
     
-    console.log('📋 Next steps:');
-    console.log('1. Deploy the worker: cd infra && npx wrangler deploy');
-    console.log('2. Build the web app: cd apps/web && pnpm build');
-    console.log('3. Deploy the web app: cd ../../infra && npx wrangler pages deploy dist --project-name=quickstage');
-    console.log('4. Test the new extension download from the dashboard');
-    console.log(`5. The new version ${version} will be automatically detected by users`);
+    console.log('📋 Final step:');
+    console.log('1. Build the web app: cd apps/web && pnpm build');
+    console.log('2. Deploy the web app: cd ../../infra && npx wrangler pages deploy dist --project-name=quickstage');
+    console.log('3. Test the new extension download from the dashboard');
+    console.log(`4. The new version ${version} will be automatically detected by users`);
+    console.log('5. Worker is already deployed with the new version!');
 
   } catch (error) {
     console.error('❌ Release workflow failed:', error);
