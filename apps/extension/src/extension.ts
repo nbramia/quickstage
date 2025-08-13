@@ -38,6 +38,10 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech'));
     }),
 
+    vscode.commands.registerCommand('quickstage.login', async () => {
+      await authenticateUser(context, output);
+    }),
+
     vscode.commands.registerCommand('quickstage.settings', async () => {
       const ws = vscode.workspace.workspaceFolders?.[0];
       if (!ws) {
@@ -74,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!folderUris || folderUris.length === 0) return;
       const folderUri = folderUris[0];
       if (!folderUri) return;
-      await stage(folderUri.fsPath, { manual: true }, output);
+      await stage(folderUri.fsPath, { manual: true }, output, context);
     }),
 
     vscode.commands.registerCommand('quickstage.stage', async () => {
@@ -83,15 +87,85 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage('Open a workspace first.');
         return;
       }
-      await stage(ws.uri.fsPath, { manual: false }, output);
+      await stage(ws.uri.fsPath, { manual: false }, output, context);
     }),
   );
 }
 
 export function deactivate() {}
 
-async function stage(root: string, opts: { manual: boolean }, output: vscode.OutputChannel) {
+async function authenticateUser(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<boolean> {
   output.show(true);
+  output.appendLine('🔐 QuickStage Authentication Required');
+  output.appendLine('To use QuickStage, you need to authenticate first.');
+  
+  const action = await vscode.window.showInformationMessage(
+    'QuickStage requires authentication. Please log in to your account.',
+    'Open Dashboard to Login',
+    'Enter Session Token Manually',
+    'Cancel'
+  );
+
+  if (action === 'Open Dashboard to Login') {
+    // Open the dashboard for the user to log in
+    vscode.env.openExternal(vscode.Uri.parse('https://quickstage.tech/dashboard'));
+    
+    // Wait a moment, then prompt for the session token
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const token = await vscode.window.showInputBox({
+      prompt: 'Please copy your session token from the dashboard and paste it here:',
+      placeHolder: 'Paste your session token...',
+      password: true
+    });
+    
+    if (token) {
+      await context.secrets.store('quickstage-session-token', token);
+      output.appendLine('✅ Session token stored successfully!');
+      vscode.window.showInformationMessage('Authentication successful! You can now use QuickStage.');
+      return true;
+    }
+  } else if (action === 'Enter Session Token Manually') {
+    const token = await vscode.window.showInputBox({
+      prompt: 'Enter your QuickStage session token:',
+      placeHolder: 'Paste your session token...',
+      password: true
+    });
+    
+    if (token) {
+      await context.secrets.store('quickstage-session-token', token);
+      output.appendLine('✅ Session token stored successfully!');
+      vscode.window.showInformationMessage('Authentication successful! You can now use QuickStage.');
+      return true;
+    }
+  }
+  
+  output.appendLine('❌ Authentication cancelled or failed');
+  return false;
+}
+
+async function getSessionToken(context: vscode.ExtensionContext): Promise<string | null> {
+  try {
+    return await context.secrets.get('quickstage-session-token') || null;
+  } catch {
+    return null;
+  }
+}
+
+async function stage(root: string, opts: { manual: boolean }, output: vscode.OutputChannel, context: vscode.ExtensionContext) {
+  output.show(true);
+  
+  // Check authentication first
+  const sessionToken = await getSessionToken(context);
+  if (!sessionToken) {
+    output.appendLine('❌ No session token found. Please authenticate first.');
+    const authenticated = await authenticateUser(context, output);
+    if (!authenticated) {
+      output.appendLine('❌ Authentication required to continue.');
+      return;
+    }
+  }
+  
   const settings = await readSettings(root);
   if (!opts.manual) {
     const pre = await preflight(root, output);
@@ -104,20 +178,80 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
   const scan = await scanFiles(outDir, settings, output);
   if (!scan.ok) return;
 
-  const createRes = await fetch(`${API_BASE}/snapshots/create`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public }),
-  });
-  if (!createRes.ok) {
-    vscode.window.showErrorMessage('Create snapshot failed');
+  // Get fresh session token
+  const freshToken = await getSessionToken(context);
+  if (!freshToken) {
+    output.appendLine('❌ Session token expired. Please authenticate again.');
+    const authenticated = await authenticateUser(context, output);
+    if (!authenticated) {
+      output.appendLine('❌ Authentication required to continue.');
+      return;
+    }
+    // Get the new token after authentication
+    const newToken = await getSessionToken(context);
+    if (!newToken) {
+      output.appendLine('❌ Failed to get new session token.');
+      return;
+    }
+    // Retry the entire process with the new token
+    await stage(root, opts, output, context);
     return;
   }
-  const created = await createRes.json();
 
+  const createRes = await fetch(`${API_BASE}/snapshots/create`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${freshToken}`
+    },
+    body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public }),
+  });
+  
+  if (!createRes.ok) {
+    if (createRes.status === 401) {
+      output.appendLine('❌ Session token expired or invalid. Please authenticate again.');
+      await context.secrets.delete('quickstage-session-token');
+      const authenticated = await authenticateUser(context, output);
+      if (!authenticated) {
+        output.appendLine('❌ Authentication required to continue.');
+        return;
+      }
+      // Retry with new token
+      const newToken = await getSessionToken(context);
+      if (!newToken) {
+        output.appendLine('❌ Failed to get new session token.');
+        return;
+      }
+      const retryRes = await fetch(`${API_BASE}/snapshots/create`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${newToken}`
+        },
+        body: JSON.stringify({ expiryDays: settings.expiryDays, public: settings.public }),
+      });
+      if (!retryRes.ok) {
+        output.appendLine(`❌ Create snapshot failed: ${retryRes.status} ${retryRes.statusText}`);
+        vscode.window.showErrorMessage('Create snapshot failed');
+        return;
+      }
+      const created = await retryRes.json();
+      await uploadAndFinalize(created, scan, outDir, output, newToken, context);
+    } else {
+      output.appendLine(`❌ Create snapshot failed: ${createRes.status} ${createRes.statusText}`);
+      vscode.window.showErrorMessage('Create snapshot failed');
+      return;
+    }
+  } else {
+    const created = await createRes.json();
+    await uploadAndFinalize(created, scan, outDir, output, freshToken, context);
+  }
+}
+
+async function uploadAndFinalize(created: any, scan: { ok: true; files: string[] }, outDir: string, output: vscode.OutputChannel, sessionToken: string, context: vscode.ExtensionContext) {
   const limit = pLimit(8);
   let uploadedBytes = 0;
+  
   async function sha256FileHex(filePath: string): Promise<string> {
     const { createHash } = await import('node:crypto');
     const hash = createHash('sha256');
@@ -129,6 +263,9 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
     });
     return hash.digest('hex');
   }
+  
+  output.appendLine('📤 Uploading files...');
+  
   await Promise.all(
     scan.files.map((f) =>
       limit(async () => {
@@ -137,26 +274,50 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
         const ct = mime.getType(f) || 'application/octet-stream';
         const h = await sha256FileHex(f);
         const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
-        const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, { method: 'POST', credentials: 'include' });
+        const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, { 
+          method: 'POST', 
+          headers: { 'Authorization': `Bearer ${sessionToken}` }
+        });
         if (!up.ok) throw new Error(`Failed to get upload URL for ${rel}`);
         const { url } = await up.json();
         const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': ct }, body: fs.createReadStream(f) as any });
         if (!res.ok) throw new Error(`Upload failed ${rel}`);
         uploadedBytes += stat.size;
+        output.appendLine(`  ✅ Uploaded: ${rel}`);
       }),
     ),
   );
 
-  await fetch(`${API_BASE}/snapshots/finalize`, {
+  output.appendLine('🔧 Finalizing snapshot...');
+  
+  const finalizeRes = await fetch(`${API_BASE}/snapshots/finalize`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ id: created.id, totalBytes: uploadedBytes, files: await Promise.all(scan.files.map(async (f) => ({ p: path.relative(outDir, f).replace(/\\/g, '/'), ct: mime.getType(f) || 'application/octet-stream', sz: (await fs.promises.stat(f)).size, h: await sha256FileHex(f) }))) }),
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    },
+    body: JSON.stringify({ 
+      id: created.id, 
+      totalBytes: uploadedBytes, 
+      files: await Promise.all(scan.files.map(async (f) => ({ 
+        p: path.relative(outDir, f).replace(/\\/g, '/'), 
+        ct: mime.getType(f) || 'application/octet-stream', 
+        sz: (await fs.promises.stat(f)).size, 
+        h: await sha256FileHex(f) 
+      }))) 
+    }),
   });
+  
+  if (!finalizeRes.ok) {
+    output.appendLine(`❌ Finalize failed: ${finalizeRes.status} ${finalizeRes.statusText}`);
+    vscode.window.showErrorMessage('Failed to finalize snapshot');
+    return;
+  }
 
   const url = `${API_BASE}/s/${created.id}`;
   vscode.env.clipboard.writeText(`${url}\npassword: ${created.password}`);
-  output.appendLine(`Staged ✓ ${url}`);
+  output.appendLine(`🎉 Staged successfully! ${url}`);
+  output.appendLine(`📋 URL and password copied to clipboard`);
   vscode.window.showInformationMessage('Staged ✓', 'Open', 'Copy').then((act) => {
     if (act === 'Open') vscode.env.openExternal(vscode.Uri.parse(url));
     if (act === 'Copy') vscode.env.clipboard.writeText(`${url}\npassword: ${created.password}`);
