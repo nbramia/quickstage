@@ -724,8 +724,15 @@ app.post('/snapshots/finalize', async (c) => {
         return c.json({ error: 'forbidden' }, 403);
     if (totalBytes > meta.caps.maxBytes)
         return c.json({ error: 'bundle_too_large' }, 400);
-    meta.totalBytes = totalBytes;
-    meta.files = files;
+    // Normalize file metadata shape for the viewer
+    const normalizedFiles = (files || []).map((f) => ({
+        name: f.name || f.p,
+        size: typeof f.size === 'number' ? f.size : Number(f.sz || 0),
+        type: f.type || f.ct || 'application/octet-stream',
+        hash: f.hash || f.h,
+    }));
+    meta.totalBytes = typeof totalBytes === 'number' ? totalBytes : Number(totalBytes || 0);
+    meta.files = normalizedFiles;
     meta.status = 'active';
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
     // Append to user index
@@ -754,6 +761,18 @@ app.get('/snapshots/:id', async (c) => {
     const meta = JSON.parse(metaRaw);
     if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
         return c.json({ error: 'gone' }, 410);
+    }
+    // Normalize legacy file entries for viewer compatibility
+    if (Array.isArray(meta.files)) {
+        meta.files = meta.files.map((f) => ({
+            name: f?.name || f?.p || '',
+            size: typeof f?.size === 'number' ? f.size : Number(f?.sz || 0),
+            type: f?.type || f?.ct || 'application/octet-stream',
+            hash: f?.hash || f?.h,
+        }));
+    }
+    else {
+        meta.files = [];
     }
     // Check if user is authenticated and owns this snapshot
     const uid = await getUidFromSession(c);
@@ -829,6 +848,32 @@ app.post('/snapshots/:id/rotate-password', async (c) => {
     meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
     return c.json({ password: newPass });
+});
+// API version of snapshot details endpoint (for Viewer component)
+app.get('/api/snapshots/:id', async (c) => {
+    const id = c.req.param('id');
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+        return c.json({ error: 'gone' }, 410);
+    }
+    // Check if user is authenticated and owns this snapshot
+    const uid = await getUidFromSession(c);
+    if (uid && meta.ownerUid === uid) {
+        // Owner can see full details
+        return c.json({ snapshot: meta });
+    }
+    // For non-owners, check if public or password protected
+    if (meta.public) {
+        // Public snapshots can be viewed without authentication
+        return c.json({ snapshot: meta });
+    }
+    else {
+        // Password protected snapshots require authentication
+        return c.json({ error: 'unauthorized' }, 401);
+    }
 });
 // Note: /s/:id route is handled by Pages app, not worker
 // Worker only handles /s/:id/* for serving snapshot files
@@ -1145,7 +1190,7 @@ app.post('/api/snapshots/create', async (c) => {
         createdAt: now,
         expiresAt,
         password,
-        isPublic,
+        public: Boolean(isPublic),
         viewCount: 0,
         commentsCount: 0,
         status: 'uploading'
@@ -1307,10 +1352,15 @@ app.post('/api/snapshots/finalize', async (c) => {
     const meta = JSON.parse(metaRaw);
     if (meta.ownerUid !== uid)
         return c.json({ error: 'unauthorized' }, 401);
-    // Update snapshot metadata
+    // Update snapshot metadata with normalized files
     meta.status = 'ready';
-    meta.totalBytes = totalBytes;
-    meta.files = files;
+    meta.totalBytes = typeof totalBytes === 'number' ? totalBytes : Number(totalBytes || 0);
+    meta.files = (files || []).map((f) => ({
+        name: f.name || f.p,
+        size: typeof f.size === 'number' ? f.size : Number(f.sz || 0),
+        type: f.type || f.ct || 'application/octet-stream',
+        hash: f.hash || f.h,
+    }));
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
     return c.json({ ok: true });
 });

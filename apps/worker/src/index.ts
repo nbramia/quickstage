@@ -771,8 +771,15 @@ app.post('/snapshots/finalize', async (c: any) => {
   const meta = JSON.parse(metaRaw);
   if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
   if (totalBytes > meta.caps.maxBytes) return c.json({ error: 'bundle_too_large' }, 400);
-  meta.totalBytes = totalBytes;
-  meta.files = files;
+  // Normalize file metadata shape for the viewer
+  const normalizedFiles = (files || []).map((f: any) => ({
+    name: f.name || f.p,
+    size: typeof f.size === 'number' ? f.size : Number(f.sz || 0),
+    type: f.type || f.ct || 'application/octet-stream',
+    hash: f.hash || f.h,
+  }));
+  meta.totalBytes = typeof totalBytes === 'number' ? totalBytes : Number(totalBytes || 0);
+  meta.files = normalizedFiles;
   meta.status = 'active';
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
   // Append to user index
@@ -804,6 +811,17 @@ app.get('/snapshots/:id', async (c: any) => {
   const meta = JSON.parse(metaRaw);
   if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
     return c.json({ error: 'gone' }, 410);
+  }
+  // Normalize legacy file entries for viewer compatibility
+  if (Array.isArray(meta.files)) {
+    meta.files = meta.files.map((f: any) => ({
+      name: f?.name || f?.p || '',
+      size: typeof f?.size === 'number' ? f.size : Number(f?.sz || 0),
+      type: f?.type || f?.ct || 'application/octet-stream',
+      hash: f?.hash || f?.h,
+    }));
+  } else {
+    meta.files = [];
   }
   
   // Check if user is authenticated and owns this snapshot
@@ -1237,7 +1255,7 @@ app.post('/api/snapshots/create', async (c: any) => {
     createdAt: now,
     expiresAt,
     password,
-    isPublic,
+    public: Boolean(isPublic),
     viewCount: 0,
     commentsCount: 0,
     status: 'uploading'
@@ -1421,10 +1439,15 @@ app.post('/api/snapshots/finalize', async (c: any) => {
   const meta = JSON.parse(metaRaw);
   if (meta.ownerUid !== uid) return c.json({ error: 'unauthorized' }, 401);
   
-  // Update snapshot metadata
+  // Update snapshot metadata with normalized files
   meta.status = 'ready';
-  meta.totalBytes = totalBytes;
-  meta.files = files;
+  meta.totalBytes = typeof totalBytes === 'number' ? totalBytes : Number(totalBytes || 0);
+  meta.files = (files || []).map((f: any) => ({
+    name: f.name || f.p,
+    size: typeof f.size === 'number' ? f.size : Number(f.sz || 0),
+    type: f.type || f.ct || 'application/octet-stream',
+    hash: f.hash || f.h,
+  }));
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
   
   return c.json({ ok: true });

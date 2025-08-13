@@ -38,6 +38,7 @@ export function Viewer() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [iframeSrc, setIframeSrc] = useState<string>('');
 
   const { id: snapshotId } = useParams();
 
@@ -65,6 +66,8 @@ export function Viewer() {
       if (response.snapshot.files.length > 0) {
         setSelectedFile(response.snapshot.files[0].name);
       }
+      // Default to rendering the app's index.html in an iframe
+      setIframeSrc(`/s/${snapshotId}/index.html`);
     } catch (error: any) {
       if (error.message.includes('401')) {
         setShowPasswordForm(true);
@@ -89,13 +92,20 @@ export function Viewer() {
   const handlePasswordSubmit = async () => {
     try {
       setError(null);
-      const response = await api.post(`/snapshots/${snapshotId}/gate`, { password });
-      setSnapshot(response.snapshot);
+      // Gate cookie is set by this non-API endpoint
+      const res = await fetch(`/s/${snapshotId}/gate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (!res.ok) throw new Error(res.status.toString());
       setShowPasswordForm(false);
-      if (response.snapshot.files.length > 0) {
-        setSelectedFile(response.snapshot.files[0].name);
-      }
+      // Refresh snapshot details (now accessible) and comments
+      await fetchSnapshot();
       fetchComments();
+      // Ensure iframe renders
+      setIframeSrc(`/s/${snapshotId}/index.html`);
     } catch (error: any) {
       console.error('Password verification failed:', error);
       setError(error.message || 'Invalid password');
@@ -272,7 +282,7 @@ export function Viewer() {
                 {snapshot.files.map((file) => (
                   <button
                     key={file.name}
-                    onClick={() => setSelectedFile(file.name)}
+                    onClick={() => { setSelectedFile(file.name); setIframeSrc(`/s/${snapshotId}/${file.name}`); }}
                     className={`w-full text-left p-3 rounded-lg border transition-colors ${
                       selectedFile === file.name 
                         ? 'bg-blue-50 border-blue-200 text-blue-900' 
@@ -289,27 +299,18 @@ export function Viewer() {
             </div>
           </div>
 
-          {/* File Content */}
+          {/* Live App Preview */}
           <div className="lg:col-span-6">
-            <div className="bg-white rounded-lg shadow p-6 min-h-[600px]">
-              {currentFile ? (
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">{currentFile.name}</h3>
-                  {currentFile.content ? (
-                                      <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-auto text-sm font-mono">
-                    <code>{currentFile.content}</code>
-                  </pre>
-                  ) : (
-                    <div className="flex items-center justify-center h-64 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                      File content not available
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-64 text-gray-500">
-                  Select a file to view
-                </div>
-              )}
+            <div className="bg-white rounded-lg shadow p-2 min-h-[600px]">
+              <div className="flex items-center justify-between px-4 py-2 border-b">
+                <h3 className="text-lg font-medium text-gray-900">Preview</h3>
+                <a href={iframeSrc || `/s/${snapshotId}/index.html`} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open in new tab</a>
+              </div>
+              <iframe
+                key={iframeSrc}
+                src={iframeSrc || `/s/${snapshotId}/index.html`}
+                className="w-full h-[70vh] border-0"
+              />
             </div>
           </div>
 
