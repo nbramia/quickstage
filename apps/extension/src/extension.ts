@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS: Required<Omit<Settings, 'outputDir' | 'ignore'>> & Pick<
   public: false,
 };
 
-const API_BASE = process.env.QUICKSTAGE_API || 'https://quickstage.tech';
+const API_BASE = process.env.QUICKSTAGE_API || 'https://quickstage.tech/api';
 
 export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel('QuickStage');
@@ -251,7 +251,13 @@ async function stage(root: string, opts: { manual: boolean }, output: vscode.Out
               }
               
               const created = await createRes.json();
-              await uploadAndFinalize(created, scan, outDir, output, pat, context);
+              try {
+                await uploadAndFinalize(created, scan, outDir, output, pat, context);
+              } catch (error) {
+                output.appendLine(`❌ Staging process failed: ${error}`);
+                vscode.window.showErrorMessage(`Staging failed: ${error}`);
+                return;
+              }
 }
 
 async function uploadAndFinalize(created: any, scan: { ok: true; files: string[] }, outDir: string, output: vscode.OutputChannel, pat: string, context: vscode.ExtensionContext) {
@@ -272,27 +278,107 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
   
   output.appendLine('📤 Uploading files...');
   
-  await Promise.all(
-    scan.files.map((f) =>
-      limit(async () => {
-        const rel = path.relative(outDir, f).replace(/\\/g, '/');
-        const stat = await fs.promises.stat(f);
-        const ct = mime.getType(f) || 'application/octet-stream';
-        const h = await sha256FileHex(f);
-        const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
-        const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, { 
-          method: 'POST', 
-          headers: { 'Authorization': `Bearer ${pat}` }
-        });
-        if (!up.ok) throw new Error(`Failed to get upload URL for ${rel}`);
-        const { url } = await up.json();
-        const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': ct }, body: fs.createReadStream(f) as any });
-        if (!res.ok) throw new Error(`Upload failed ${rel}`);
-        uploadedBytes += stat.size;
-        output.appendLine(`  ✅ Uploaded: ${rel}`);
-      }),
-    ),
-  );
+  try {
+    await Promise.all(
+      scan.files.map((f) =>
+        limit(async () => {
+          try {
+            const rel = path.relative(outDir, f).replace(/\\/g, '/');
+            const stat = await fs.promises.stat(f);
+            const ct = mime.getType(f) || 'application/octet-stream';
+            const h = await sha256FileHex(f);
+            
+            output.appendLine(`  📤 Getting upload URL for: ${rel}`);
+            const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
+            const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, { 
+              method: 'POST', 
+              headers: { 'Authorization': `Bearer ${pat}` }
+            });
+            
+            if (!up.ok) {
+              const errorText = await up.text();
+              throw new Error(`Failed to get upload URL for ${rel}: ${up.status} ${up.statusText} - ${errorText}`);
+            }
+            
+            const { url } = await up.json();
+            output.appendLine(`  🔗 Upload URL received for: ${rel}`);
+            
+            output.appendLine(`  📤 Uploading file: ${rel} (${(stat.size / 1024).toFixed(1)}KB)`);
+            
+            // Try direct upload to R2 first, fallback to worker upload if it fails
+            let uploadSuccess = false;
+            let directError: any = null;
+            
+            try {
+              const res = await fetch(url, { 
+                method: 'PUT', 
+                headers: { 'Content-Type': ct }, 
+                body: fs.createReadStream(f) as any,
+                duplex: 'half'
+              } as any);
+              
+              if (res.ok) {
+                uploadSuccess = true;
+                output.appendLine(`  ✅ Direct upload to R2 succeeded: ${rel}`);
+              } else {
+                const errorText = await res.text();
+                output.appendLine(`  ⚠️ Direct upload failed, trying worker upload: ${res.status} ${res.statusText}`);
+              }
+            } catch (error) {
+              directError = error;
+              output.appendLine(`  ⚠️ Direct upload failed with error, trying worker upload: ${error}`);
+            }
+            
+            // Fallback: Upload through worker
+            if (!uploadSuccess) {
+              try {
+                output.appendLine(`  🔄 Uploading through worker: ${rel}`);
+                
+                // Read file into buffer for worker upload
+                const fileBuffer = await fs.promises.readFile(f);
+                
+                const workerUploadRes = await fetch(`${API_BASE}/upload?id=${created.id}&path=${encodeURIComponent(rel)}`, {
+                  method: 'PUT',
+                  headers: { 
+                    'Content-Type': ct,
+                    'Authorization': `Bearer ${pat}`,
+                    'Content-Length': String(stat.size)
+                  },
+                  body: fileBuffer
+                });
+                
+                if (!workerUploadRes.ok) {
+                  const errorText = await workerUploadRes.text();
+                  throw new Error(`Worker upload failed for ${rel}: ${workerUploadRes.status} ${workerUploadRes.statusText} - ${errorText}`);
+                }
+                
+                uploadSuccess = true;
+                output.appendLine(`  ✅ Worker upload succeeded: ${rel}`);
+              } catch (workerError) {
+                const errorMessage = directError 
+                  ? `Both direct and worker upload failed for ${rel}. Direct error: ${directError}, Worker error: ${workerError}`
+                  : `Worker upload failed for ${rel}: ${workerError}`;
+                throw new Error(errorMessage);
+              }
+            }
+            
+            if (!uploadSuccess) {
+              throw new Error(`Upload failed for ${rel} - no upload method succeeded`);
+            }
+            
+            uploadedBytes += stat.size;
+            output.appendLine(`  ✅ Uploaded: ${rel}`);
+          } catch (error) {
+            output.appendLine(`  ❌ Failed to upload ${f}: ${error}`);
+            throw error;
+          }
+        }),
+      ),
+    );
+  } catch (error) {
+    output.appendLine(`❌ File upload process failed: ${error}`);
+    throw error;
+  }
 
   output.appendLine('🔧 Finalizing snapshot...');
   

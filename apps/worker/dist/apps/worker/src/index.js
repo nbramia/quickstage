@@ -474,7 +474,15 @@ app.post('/billing/webhook', async (c) => {
 });
 // Create snapshot
 app.post('/snapshots/create', async (c) => {
-    const uid = await getUidFromSession(c);
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+        // Try PAT authentication as fallback
+        const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.slice(7);
+            uid = await getUidFromPAT(c, token);
+        }
+    }
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
     const body = await c.req.json();
@@ -513,7 +521,15 @@ app.post('/snapshots/create', async (c) => {
 });
 // Presign upload URL for direct R2 PUT
 app.post('/upload-url', async (c) => {
-    const uid = await getUidFromSession(c);
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+        // Try PAT authentication as fallback
+        const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.slice(7);
+            uid = await getUidFromPAT(c, token);
+        }
+    }
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
     const id = c.req.query('id');
@@ -547,7 +563,15 @@ app.post('/upload-url', async (c) => {
 });
 // Upload via Worker (streaming) to R2; path query is required
 app.put('/upload', async (c) => {
-    const uid = await getUidFromSession(c);
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+        // Try PAT authentication as fallback
+        const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.slice(7);
+            uid = await getUidFromPAT(c, token);
+        }
+    }
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
     const id = c.req.query('id');
@@ -576,9 +600,56 @@ app.put('/upload', async (c) => {
     await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
     return c.json({ ok: true });
 });
+// API version of upload endpoint for extension
+app.put('/api/upload', async (c) => {
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+        // Try PAT authentication as fallback
+        const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.slice(7);
+            uid = await getUidFromPAT(c, token);
+        }
+    }
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const id = c.req.query('id');
+    const p = c.req.query('path');
+    const ct = c.req.header('content-type') || 'application/octet-stream';
+    const sz = Number(c.req.header('content-length') || '0');
+    const h = c.req.query('h') || '';
+    if (!id || !p)
+        return c.json({ error: 'bad_request' }, 400);
+    if (p.includes('..'))
+        return c.json({ error: 'bad_path' }, 400);
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'forbidden' }, 403);
+    if (sz > meta.caps.maxFile)
+        return c.json({ error: 'file_too_large' }, 400);
+    if (!ALLOW_MIME_PREFIXES.some((prefix) => ct.startsWith(prefix)))
+        return c.json({ error: 'type_not_allowed' }, 400);
+    const objectKey = `snap/${id}/${p}`;
+    const body = c.req.raw.body;
+    if (!body)
+        return c.json({ error: 'no_body' }, 400);
+    await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
+    return c.json({ ok: true });
+});
 // Finalize snapshot
 app.post('/snapshots/finalize', async (c) => {
-    const uid = await getUidFromSession(c);
+    let uid = await getUidFromSession(c);
+    if (!uid) {
+        // Try PAT authentication as fallback
+        const authHeader = c.req.header('authorization') || c.req.header('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.slice(7);
+            uid = await getUidFromPAT(c, token);
+        }
+    }
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
     const body = await c.req.json();
@@ -1110,6 +1181,7 @@ app.delete('/api/tokens/:tokenId', async (c) => {
     await c.env.KV_USERS.delete(`pat:${fullToken}`);
     // Remove from user's PAT list
     const patListJson = await c.env.KV_USERS.get(`user:${uid}:pats`) || '[]';
+    const patIds = JSON.parse(patListJson);
     const updatedPatIds = patIds.filter(id => id !== fullToken);
     await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(updatedPatIds));
     return c.json({ message: 'PAT revoked successfully' });

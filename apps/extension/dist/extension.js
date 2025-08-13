@@ -7970,7 +7970,7 @@ var DEFAULT_SETTINGS = {
   spaFallback: true,
   public: false
 };
-var API_BASE = process.env.QUICKSTAGE_API || "https://quickstage.tech";
+var API_BASE = process.env.QUICKSTAGE_API || "https://quickstage.tech/api";
 function activate(context) {
   const output = vscode.window.createOutputChannel("QuickStage");
   context.subscriptions.push(
@@ -8164,7 +8164,13 @@ async function stage(root, opts, output, context) {
     }
   }
   const created = await createRes.json();
-  await uploadAndFinalize(created, scan, outDir, output, pat, context);
+  try {
+    await uploadAndFinalize(created, scan, outDir, output, pat, context);
+  } catch (error) {
+    output.appendLine(`\u274C Staging process failed: ${error}`);
+    vscode.window.showErrorMessage(`Staging failed: ${error}`);
+    return;
+  }
 }
 async function uploadAndFinalize(created, scan, outDir, output, pat, context) {
   const limit = pLimit(8);
@@ -8181,27 +8187,88 @@ async function uploadAndFinalize(created, scan, outDir, output, pat, context) {
     return hash.digest("hex");
   }
   output.appendLine("\u{1F4E4} Uploading files...");
-  await Promise.all(
-    scan.files.map(
-      (f) => limit(async () => {
-        const rel = path2.relative(outDir, f).replace(/\\/g, "/");
-        const stat = await fs4.promises.stat(f);
-        const ct = src_default.getType(f) || "application/octet-stream";
-        const h = await sha256FileHex(f);
-        const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
-        const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${pat}` }
-        });
-        if (!up.ok) throw new Error(`Failed to get upload URL for ${rel}`);
-        const { url: url2 } = await up.json();
-        const res = await fetch(url2, { method: "PUT", headers: { "Content-Type": ct }, body: fs4.createReadStream(f) });
-        if (!res.ok) throw new Error(`Upload failed ${rel}`);
-        uploadedBytes += stat.size;
-        output.appendLine(`  \u2705 Uploaded: ${rel}`);
-      })
-    )
-  );
+  try {
+    await Promise.all(
+      scan.files.map(
+        (f) => limit(async () => {
+          try {
+            const rel = path2.relative(outDir, f).replace(/\\/g, "/");
+            const stat = await fs4.promises.stat(f);
+            const ct = src_default.getType(f) || "application/octet-stream";
+            const h = await sha256FileHex(f);
+            output.appendLine(`  \u{1F4E4} Getting upload URL for: ${rel}`);
+            const q = new URLSearchParams({ id: created.id, path: rel, ct, sz: String(stat.size), h });
+            const up = await fetch(`${API_BASE}/upload-url?${q.toString()}`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${pat}` }
+            });
+            if (!up.ok) {
+              const errorText = await up.text();
+              throw new Error(`Failed to get upload URL for ${rel}: ${up.status} ${up.statusText} - ${errorText}`);
+            }
+            const { url: url2 } = await up.json();
+            output.appendLine(`  \u{1F517} Upload URL received for: ${rel}`);
+            output.appendLine(`  \u{1F4E4} Uploading file: ${rel} (${(stat.size / 1024).toFixed(1)}KB)`);
+            let uploadSuccess = false;
+            let directError = null;
+            try {
+              const res = await fetch(url2, {
+                method: "PUT",
+                headers: { "Content-Type": ct },
+                body: fs4.createReadStream(f),
+                duplex: "half"
+              });
+              if (res.ok) {
+                uploadSuccess = true;
+                output.appendLine(`  \u2705 Direct upload to R2 succeeded: ${rel}`);
+              } else {
+                const errorText = await res.text();
+                output.appendLine(`  \u26A0\uFE0F Direct upload failed, trying worker upload: ${res.status} ${res.statusText}`);
+              }
+            } catch (error) {
+              directError = error;
+              output.appendLine(`  \u26A0\uFE0F Direct upload failed with error, trying worker upload: ${error}`);
+            }
+            if (!uploadSuccess) {
+              try {
+                output.appendLine(`  \u{1F504} Uploading through worker: ${rel}`);
+                const fileBuffer = await fs4.promises.readFile(f);
+                const workerUploadRes = await fetch(`${API_BASE}/upload?id=${created.id}&path=${encodeURIComponent(rel)}`, {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": ct,
+                    "Authorization": `Bearer ${pat}`,
+                    "Content-Length": String(stat.size)
+                  },
+                  body: fileBuffer
+                });
+                if (!workerUploadRes.ok) {
+                  const errorText = await workerUploadRes.text();
+                  throw new Error(`Worker upload failed for ${rel}: ${workerUploadRes.status} ${workerUploadRes.statusText} - ${errorText}`);
+                }
+                uploadSuccess = true;
+                output.appendLine(`  \u2705 Worker upload succeeded: ${rel}`);
+              } catch (workerError) {
+                const errorMessage = directError ? `Both direct and worker upload failed for ${rel}. Direct error: ${directError}, Worker error: ${workerError}` : `Worker upload failed for ${rel}: ${workerError}`;
+                throw new Error(errorMessage);
+              }
+            }
+            if (!uploadSuccess) {
+              throw new Error(`Upload failed for ${rel} - no upload method succeeded`);
+            }
+            uploadedBytes += stat.size;
+            output.appendLine(`  \u2705 Uploaded: ${rel}`);
+          } catch (error) {
+            output.appendLine(`  \u274C Failed to upload ${f}: ${error}`);
+            throw error;
+          }
+        })
+      )
+    );
+  } catch (error) {
+    output.appendLine(`\u274C File upload process failed: ${error}`);
+    throw error;
+  }
   output.appendLine("\u{1F527} Finalizing snapshot...");
   const finalizeRes = await fetch(`${API_BASE}/snapshots/finalize`, {
     method: "POST",
