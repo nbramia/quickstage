@@ -2,9 +2,19 @@
 
 This document outlines the complete process for building, packaging, and deploying new versions of the QuickStage VS Code/Cursor extension.
 
-## 🎯 **Enhanced Workflow (v0.0.9+)**
+## 🎯 **Enhanced Workflow (v0.0.14+)**
 
-The extension deployment process has been significantly improved with automatic version synchronization and versioned filenames.
+The extension deployment process has been significantly improved with automatic version synchronization, versioned filenames, and enhanced project detection.
+
+### **What Changed in v0.0.14+**
+- ✅ **Added**: Universal project detection for monorepos, static sites, and unusual structures
+- ✅ **Added**: Smart fallbacks with descriptive error messages for AI-assisted debugging
+- ✅ **Added**: Enhanced monorepo support with automatic web app discovery
+- ✅ **Added**: Static site detection without requiring build process
+- ✅ **Added**: AI instructions modal in dashboard for copy-pasteable prompts
+- ✅ **Added**: One-click copy functionality for AI assistant instructions
+- ✅ **Improved**: Release workflow automatically cleans old VSIX files
+- ✅ **Improved**: Better error handling and user guidance throughout
 
 ### **What Changed in v0.0.9+**
 - ✅ **Added**: Versioned download filenames (`quickstage-0.0.9.vsix`)
@@ -29,6 +39,10 @@ The extension deployment process has been significantly improved with automatic 
 4. **No Manual Updates**: Version sync is completely automated
 5. **Better Performance**: Direct file serving with proper caching headers
 6. **Easier Debugging**: Clear version tracking and file naming
+7. **Universal Compatibility**: Works with any project structure automatically
+8. **AI Integration**: Ready-to-use prompts for AI-assisted prototyping
+9. **Non-Technical User Focus**: Designed for product managers and designers
+10. **Smart Error Handling**: Descriptive messages perfect for AI-assisted debugging
 
 ## 🚀 **Complete Release Workflow**
 
@@ -41,11 +55,12 @@ npm run release:full
 This command automatically:
 1. Bumps the version number in `package.json`
 2. Builds the extension with esbuild bundler
-3. Packages it into a VSIX file with versioned filename
-4. Copies the VSIX to the web app's public directory
-5. Updates the web app's version information (`apps/web/src/version.ts`)
-6. **NEW**: Updates the worker's version information (`apps/worker/src/version-info.ts`)
-7. Verifies VSIX structure integrity
+3. **NEW**: Cleans up old VSIX files to prevent conflicts
+4. Packages it into a VSIX file with versioned filename
+5. Copies the VSIX to the web app's public directory
+6. Updates the web app's version information (`apps/web/src/version.ts`)
+7. Updates the worker's version information (`apps/worker/src/version-info.ts`)
+8. Verifies VSIX structure integrity
 
 ### **Step 2: Deploy Worker (Required for Version Updates)**
 ```bash
@@ -83,6 +98,37 @@ npm run package        # Runs build-manual.js (manual packaging)
 # Complete release workflow
 npm run release:full   # Bump version → Build → Package → Update Web App + Worker
 ```
+
+## 🧠 **Enhanced Project Detection (v0.0.14+)**
+
+### **Universal Project Support**
+The extension now automatically detects and handles various project structures:
+
+**Monorepo Detection:**
+- Automatically finds web apps in `apps/*/dist`, `packages/*/dist` patterns
+- Handles multiple build outputs intelligently
+- Lets users choose when multiple options exist
+- Perfect for complex project structures like QuickStage itself
+
+**Static Site Detection:**
+- Identifies projects with `index.html` in root directory
+- Checks for CSS/JS assets to confirm complete sites
+- No build process required for static projects
+- Ideal for hand-built prototypes or AI-generated sites
+
+**Framework Auto-Detection:**
+- Vite: Looks for `dist/` with `index.html`
+- Next.js: Checks for `out/` or `build/` with static export
+- SvelteKit: Finds `.svelte-kit/output/prerendered/`
+- CRA: Looks for `build/` directory
+- Custom builds: Allows user-defined output locations
+
+### **Smart Fallbacks & Error Handling**
+- **Descriptive Error Messages**: Shows exactly what the extension looked for
+- **Project Structure Summary**: Displays project contents for debugging
+- **AI-Friendly Formatting**: Errors are formatted for easy copy-paste to AI assistants
+- **Manual Selection**: Always allows users to specify output folder
+- **Verification**: Checks selected folders have the right structure
 
 ## 📁 **File Locations**
 
@@ -122,7 +168,7 @@ npm run release:full   # Bump version → Build → Package → Update Web App +
 
 ## 🔄 **Deployment Scenarios**
 
-### **Extension Updates Only (v0.0.9+)**
+### **Extension Updates Only (v0.0.14+)**
 ```bash
 # Now requires both worker and web app deployment for version sync
 cd apps/extension && npm run release:full
@@ -210,6 +256,11 @@ quickstage-0.0.8.vsix
 ## 📊 **Version History**
 
 ### **Recent Updates**
+- **v0.0.14**: Enhanced project detection, AI instructions modal, universal compatibility
+- **v0.0.13**: Fixed release workflow file cleanup, improved VSIX handling
+- **v0.0.12**: Fixed esbuild bundling configuration, proper dependency inclusion
+- **v0.0.11**: Fixed activation events, improved command registration
+- **v0.0.10**: Fixed VSIX packaging structure and reliability
 - **v0.0.9**: Added versioned filenames, automatic version sync, backup download endpoint
 - **v0.0.8**: Fixed VSIX packaging reliability, replaced zip command with archiver library
 - **v0.0.7**: Fixed VSIX packaging structure, corrected file paths and package.json
@@ -219,11 +270,42 @@ quickstage-0.0.8.vsix
 - **v0.0.3**: Initial esbuild bundling implementation
 
 ### **Breaking Changes**
+- **v0.0.14**: Enhanced project detection with improved error handling (no breaking changes, just improvements)
+- **v0.0.13**: Fixed release workflow file cleanup (no breaking changes, just fixes)
+- **v0.0.12**: Fixed esbuild bundling configuration (no breaking changes, just fixes)
+- **v0.0.11**: Fixed activation events and command registration (no breaking changes, just fixes)
+- **v0.0.10**: Fixed VSIX packaging structure (no breaking changes, just fixes)
 - **v0.0.9**: Worker deployment now required for extension updates (version sync)
 - **v0.0.8**: Improved VSIX packaging reliability (no breaking changes, just fixes)
 - **v0.0.7**: Fixed VSIX package structure (no breaking changes, just fixes)
 - **v0.0.6**: Removed VSIX embedding from Worker, now served directly from web app
 - **v0.0.3**: Switched from TypeScript compilation to esbuild bundling
+
+## 🎯 **AI Assistant Integration (v0.0.14+)**
+
+### **Dashboard AI Instructions Modal**
+The web dashboard now includes a comprehensive AI instructions modal:
+
+**Features:**
+- **Copy-Paste Instructions**: Ready-to-use prompts for AI assistants
+- **Comprehensive Templates**: Covers project goals, features, and technical requirements
+- **QuickStage Context**: Ensures AI understands deployment and sharing requirements
+- **One-Click Copy**: Copy complete instruction template to clipboard
+- **Pro Tips**: Guidance for effective AI collaboration
+- **Non-Technical Focus**: Designed for product managers and designers
+
+**Instruction Template Includes:**
+- Project goal and target users
+- Key features and design preferences
+- Technical requirements for QuickStage compatibility
+- Expected output specifications
+- Step-by-step creation guidance
+
+### **Perfect for Non-Technical Users**
+- **Product Managers**: Create prototypes to communicate with engineering teams
+- **Designers**: Build interactive mockups for stakeholder review
+- **AI Users**: Leverage AI assistants to create working prototypes
+- **Stakeholders**: Share functional prototypes instead of static mockups
 
 ## 🔮 **Future Improvements**
 
@@ -233,3 +315,5 @@ quickstage-0.0.8.vsix
 - **Version Signing**: Cryptographic verification of extension authenticity
 - **Runtime Version Sync**: Read extension version from uploaded VSIX metadata
 - **Automatic Deployment**: Trigger Worker/Web deployments from release workflow
+- **AI Template Library**: More specialized instruction templates for different use cases
+- **Project Type Detection**: Even smarter detection of project structures and frameworks

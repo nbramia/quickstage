@@ -184,7 +184,8 @@ Users can download the QuickStage extension directly from the web dashboard with
 3. **Download Extension**: Click "Download Extension" button
 4. **Automatic Instructions**: Installation instructions appear automatically after download
 5. **Manual Instructions**: Click "View Instructions" button for detailed steps
-6. **Preference Persistence**: User's location choice is remembered across sessions
+6. **AI Instructions**: Click "AI Instructions" button for copy-pasteable AI assistant prompts
+7. **Preference Persistence**: User's location choice is remembered across sessions
 
 **Features:**
 - **Consistent Naming**: All downloads use `quickstage.vsix` filename
@@ -195,12 +196,39 @@ Users can download the QuickStage extension directly from the web dashboard with
 - **Fallback Support**: Gracefully falls back to traditional download for older browsers
 - **Smart Defaults**: Automatically detects and suggests common extension paths
 - **Preference Persistence**: User's location choice and version info remembered across sessions
+- **AI Integration**: Ready-to-use prompts for AI-assisted prototyping
 
 #### **Extension Installation**
 1. Download `quickstage.vsix` from the dashboard
 2. In VS Code/Cursor: Extensions → Install from VSIX
 3. Extension appears in Extensions panel
 4. Command "QuickStage: Stage" available in Command Palette
+
+#### **Enhanced Project Detection**
+The extension now automatically detects and handles various project structures:
+
+**Monorepo Detection:**
+- Automatically finds web apps in `apps/*/dist`, `packages/*/dist` patterns
+- Handles multiple build outputs intelligently
+- Lets users choose when multiple options exist
+
+**Static Site Detection:**
+- Identifies projects with `index.html` in root directory
+- Checks for CSS/JS assets to confirm complete sites
+- No build process required for static projects
+
+**Framework Auto-Detection:**
+- Vite: Looks for `dist/` with `index.html`
+- Next.js: Checks for `out/` or `build/` with static export
+- SvelteKit: Finds `.svelte-kit/output/prerendered/`
+- CRA: Looks for `build/` directory
+- Custom builds: Allows user-defined output locations
+
+**Smart Fallbacks:**
+- Provides clear error messages when auto-detection fails
+- Shows project structure summary for debugging
+- Offers manual folder selection as backup
+- Formats errors for easy copy-paste to AI assistants
 
 #### **Extension Configuration**
 Extension reads these settings from `package.json`:
@@ -230,6 +258,14 @@ Extension reads these settings from `package.json`:
 - Turnstile anti-spam protection
 - Anonymous posting with optional handles
 - Persistent storage in Durable Objects
+
+#### **AI Assistant Integration**
+- **Copy-Paste Instructions**: Ready-to-use prompts for AI assistants
+- **Comprehensive Templates**: Covers project goals, features, and technical requirements
+- **QuickStage Context**: Ensures AI understands deployment and sharing requirements
+- **One-Click Copy**: Copy complete instruction template to clipboard
+- **Pro Tips**: Guidance for effective AI collaboration
+- **Non-Technical Focus**: Designed for product managers and designers
 
 ### 🔧 **Development & Deployment**
 
@@ -362,6 +398,15 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 
 ## Recent Updates
 
+### Enhanced Project Detection & AI Instructions (2025-08-13)
+- **Universal Project Detection**: Extension now automatically detects monorepos, static sites, and unusual project structures
+- **Monorepo Support**: Automatically finds web apps in `apps/*/dist`, `packages/*/dist` patterns
+- **Static Site Detection**: Identifies and stages projects with `index.html` without requiring build process
+- **Smart Fallbacks**: Provides intelligent suggestions when auto-detection fails
+- **AI Assistant Integration**: New dashboard modal with copy-pasteable instructions for AI-assisted prototyping
+- **One-Click Copy**: Copy comprehensive AI prompt template to clipboard for perfect AI collaboration
+- **Non-Technical User Focus**: Designed for product managers using AI to create prototypes
+
 ### Extension Build System Overhaul (2025-01-27)
 - **esbuild Bundling**: Replaced TypeScript compilation with esbuild bundler that includes all dependencies
 - **Manual VSIX Packaging**: Created custom packaging script to avoid vsce dependency issues
@@ -401,8 +446,10 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 ## Features
 
 - **One-Click Staging**: VS Code extension with single "Stage" command
+- **Universal Project Detection**: Automatically detects monorepos, static sites, and unusual project structures
 - **Local Build Execution**: Runs your project's build script using corepack
 - **Framework Support**: Vite (React/Vue/Svelte), CRA, SvelteKit (static), Next.js (export)
+- **AI Assistant Integration**: Copy-pasteable instructions for AI-assisted prototyping
 - **Secure Sharing**: Per-snapshot auto-generated passwords, editable, private by default
 - **Real-time Comments**: Inline sidebar with Turnstile anti-spam protection
 - **Cloudflare Stack**: Pages, Workers, R2, KV, Durable Objects, Turnstile

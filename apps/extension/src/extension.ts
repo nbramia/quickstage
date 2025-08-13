@@ -252,19 +252,110 @@ async function runBuild(root: string, pm: 'pnpm' | 'yarn' | 'npm', output: vscod
 }
 
 async function discoverOutputDir(root: string, settings: Settings, output: vscode.OutputChannel): Promise<string | null> {
-  if (settings.outputDir && fs.existsSync(path.join(root, settings.outputDir))) return path.join(root, settings.outputDir);
-  const candidates = ['dist', 'build', '.svelte-kit/output/prerendered', 'out'];
-  for (const c of candidates) {
-    const p = path.join(root, c);
-    if (fs.existsSync(path.join(p, 'index.html'))) return p;
+  // First check if user specified a custom output directory
+  if (settings.outputDir && fs.existsSync(path.join(root, settings.outputDir))) {
+    output.appendLine(`✅ Using custom output directory: ${settings.outputDir}`);
+    return path.join(root, settings.outputDir);
   }
-  const pick = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, title: 'Select output folder' });
+
+  // Check for common output directories in current project
+  const localCandidates = ['dist', 'build', '.svelte-kit/output/prerendered', 'out', 'public'];
+  for (const c of localCandidates) {
+    const p = path.join(root, c);
+    if (fs.existsSync(path.join(p, 'index.html'))) {
+      output.appendLine(`✅ Found output directory: ${c}`);
+      return p;
+    }
+  }
+
+  // Check if this is a monorepo and look for web apps
+  output.appendLine('🔍 Checking for monorepo structure...');
+  const monorepoOutputs = await findMonorepoOutputs(root, output);
+  if (monorepoOutputs.length > 0) {
+    if (monorepoOutputs.length === 1) {
+      const outputPath = monorepoOutputs[0];
+      if (outputPath) {
+        output.appendLine(`✅ Found monorepo output: ${outputPath}`);
+        return outputPath;
+      }
+    } else {
+      // Multiple outputs found, let user choose
+      const choice = await vscode.window.showQuickPick(
+        monorepoOutputs.map(p => ({ label: path.basename(p), description: p, value: p })),
+        { placeHolder: 'Multiple build outputs found. Choose one:' }
+      );
+      if (choice?.value) {
+        output.appendLine(`✅ Using output directory: ${choice.value}`);
+        return choice.value;
+      }
+      // User cancelled the selection
+      output.appendLine('❌ User cancelled output directory selection');
+      return null;
+    }
+  }
+
+  // Check for static sites that don't need building
+  output.appendLine('🔍 Checking for static site files...');
+  const staticSite = await findStaticSite(root, output);
+  if (staticSite) {
+    output.appendLine(`✅ Found static site: ${staticSite}`);
+    return staticSite;
+  }
+
+  // If we get here, we need user input
+  output.appendLine('❌ Could not automatically find build output');
+  const pick = await vscode.window.showOpenDialog({ 
+    canSelectFiles: false, 
+    canSelectFolders: true, 
+    canSelectMany: false, 
+    title: 'Select build output folder',
+    openLabel: 'Select Output Folder'
+  });
+  
   if (!pick || pick.length === 0) {
-    vscode.window.showErrorMessage('Build finished but output folder not found. Expected at dist/. Select manually?');
+    const errorMessage = `Build completed but QuickStage couldn't find your project's output files.
+
+🔍 What QuickStage looked for:
+• Standard build directories: dist/, build/, out/, public/
+• Monorepo web apps: apps/*/dist, packages/*/dist
+• Static site files: index.html in project root
+
+💡 To fix this, you can:
+1. Copy this error message to your AI assistant
+2. Ask it to help you find where your project builds to
+3. Or manually select the folder containing your built files
+
+📁 Your project structure:
+${await getProjectStructureSummary(root)}`;
+
+    vscode.window.showErrorMessage(errorMessage);
     return null;
   }
+  
   const picked = pick[0];
   if (!picked) return null;
+  
+  // Verify the selected folder has the right structure
+  if (!fs.existsSync(path.join(picked.fsPath, 'index.html'))) {
+    const warningMessage = `⚠️ The selected folder doesn't contain index.html.
+
+This might not be the right build output folder. Make sure you're selecting the folder that contains your built HTML, CSS, and JavaScript files.
+
+Selected folder: ${picked.fsPath}
+Contents: ${fs.readdirSync(picked.fsPath).join(', ')}`;
+
+    const continueAnyway = await vscode.window.showWarningMessage(
+      warningMessage,
+      'Continue Anyway',
+      'Select Different Folder'
+    );
+    
+    if (continueAnyway === 'Select Different Folder') {
+      return await discoverOutputDir(root, settings, output);
+    }
+  }
+  
+  output.appendLine(`✅ Using manually selected output: ${picked.fsPath}`);
   return picked.fsPath;
 }
 
@@ -292,6 +383,97 @@ async function scanFiles(outDir: string, settings: Settings, output: vscode.Outp
     return { ok: false };
   }
   return { ok: true, files };
+}
+
+// Helper function to find monorepo outputs
+async function findMonorepoOutputs(root: string, output: vscode.OutputChannel): Promise<string[]> {
+  const outputs: string[] = [];
+  
+  // Check for common monorepo patterns
+  const monorepoPatterns = [
+    'apps/*/dist',
+    'apps/*/build', 
+    'apps/*/out',
+    'apps/*/public',
+    'packages/*/dist',
+    'packages/*/build',
+    'packages/*/out',
+    'packages/*/public'
+  ];
+  
+  for (const pattern of monorepoPatterns) {
+    try {
+      const { globby } = await import('globby');
+      const matches = await globby(pattern, { 
+        cwd: root, 
+        absolute: true, 
+        onlyDirectories: true,
+        ignore: ['**/node_modules/**']
+      });
+      
+      for (const match of matches) {
+        if (fs.existsSync(path.join(match, 'index.html'))) {
+          outputs.push(match);
+          output.appendLine(`  📁 Found: ${match}`);
+        }
+      }
+    } catch (error) {
+      // Continue if globby fails for this pattern
+      continue;
+    }
+  }
+  
+  return outputs;
+}
+
+// Helper function to find static sites
+async function findStaticSite(root: string, output: vscode.OutputChannel): Promise<string | null> {
+  // Check if root contains index.html (static site)
+  if (fs.existsSync(path.join(root, 'index.html'))) {
+    // Verify it's a complete static site
+    const hasAssets = fs.existsSync(path.join(root, 'css')) || 
+                     fs.existsSync(path.join(root, 'js')) || 
+                     fs.existsSync(path.join(root, 'assets')) ||
+                     fs.existsSync(path.join(root, 'styles')) ||
+                     fs.existsSync(path.join(root, 'scripts'));
+    
+    if (hasAssets || fs.readdirSync(root).some(f => f.endsWith('.css') || f.endsWith('.js'))) {
+      output.appendLine('  📁 Found static site in project root');
+      return root;
+    }
+  }
+  
+  // Check for static site in common directories
+  const staticDirs = ['public', 'static', 'site', 'www'];
+  for (const dir of staticDirs) {
+    const staticPath = path.join(root, dir);
+    if (fs.existsSync(staticPath) && fs.existsSync(path.join(staticPath, 'index.html'))) {
+      output.appendLine(`  📁 Found static site in: ${dir}`);
+      return staticPath;
+    }
+  }
+  
+  return null;
+}
+
+// Helper function to get project structure summary
+async function getProjectStructureSummary(root: string): Promise<string> {
+  try {
+    const items = await fs.promises.readdir(root);
+    const summary = items
+      .filter(item => !item.startsWith('.') && item !== 'node_modules')
+      .slice(0, 10) // Limit to first 10 items
+      .map(item => {
+        const fullPath = path.join(root, item);
+        const stat = fs.statSync(fullPath);
+        return stat.isDirectory() ? `${item}/` : item;
+      })
+      .join(', ');
+    
+    return summary + (items.length > 10 ? '...' : '');
+  } catch (error) {
+    return 'Unable to read project structure';
+  }
 }
 
 
