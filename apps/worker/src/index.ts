@@ -1053,6 +1053,7 @@ app.get('/s/:id', async (c: any) => {
             <a href="https://quickstage.tech" target="_blank">Powered by QuickStage</a>
         </div>
     </div>
+    
     <script>
         async function submitPassword(event) {
             event.preventDefault();
@@ -1118,6 +1119,159 @@ app.get('/s/:id', async (c: any) => {
       return match; // Keep original if not an asset
     }
   );
+  
+  // Inject the QuickStage commenting overlay
+  const commentsOverlay = `
+    <!-- QuickStage Comments Overlay -->
+    <div id="quickstage-comments-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <!-- Comments Button -->
+      <div id="quickstage-comments-button" style="position: fixed; top: 20px; right: 20px; pointer-events: auto; background: #007bff; color: white; border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.2s ease;">
+        💬 Comments
+      </div>
+      
+      <!-- Comments Side Panel -->
+      <div id="quickstage-comments-panel" style="position: fixed; top: 0; right: -400px; width: 400px; height: 100%; background: white; box-shadow: -4px 0 20px rgba(0,0,0,0.1); pointer-events: auto; transition: right 0.3s ease; display: flex; flex-direction: column;">
+        <!-- Panel Header -->
+        <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+          <h3 style="margin: 0; color: #333; font-size: 18px;">💬 Comments</h3>
+          <button id="quickstage-close-panel" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">×</button>
+        </div>
+        
+        <!-- Comment Form -->
+        <div style="padding: 20px; border-bottom: 1px solid #eee;">
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 500; color: #555;">Your Name:</label>
+            <input type="text" id="quickstage-comment-name" placeholder="Anonymous" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+          </div>
+          <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: 500; color: #555;">Comment:</label>
+            <textarea id="quickstage-comment-text" placeholder="Share your thoughts..." rows="3" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+          </div>
+          <button id="quickstage-submit-comment" style="background: #007bff; color: white; border: none; border-radius: 4px; padding: 10px 20px; font-size: 14px; cursor: pointer; width: 100%; transition: background 0.2s ease;">Post Comment</button>
+        </div>
+        
+        <!-- Comments List -->
+        <div id="quickstage-comments-list" style="flex: 1; overflow-y: auto; padding: 20px;">
+          <div id="quickstage-loading" style="text-align: center; color: #666; padding: 20px;">Loading comments...</div>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      (function() {
+        const overlay = document.getElementById('quickstage-comments-overlay');
+        const button = document.getElementById('quickstage-comments-button');
+        const panel = document.getElementById('quickstage-comments-panel');
+        const closeBtn = document.getElementById('quickstage-close-panel');
+        const commentForm = document.getElementById('quickstage-submit-comment');
+        const nameInput = document.getElementById('quickstage-comment-name');
+        const textInput = document.getElementById('quickstage-comment-text');
+        const commentsList = document.getElementById('quickstage-comments-list');
+        const loading = document.getElementById('quickstage-loading');
+        
+        const snapshotId = '${id}';
+        
+        // Toggle panel
+        button.addEventListener('click', () => {
+          panel.style.right = '0';
+          loadComments();
+        });
+        
+        closeBtn.addEventListener('click', () => {
+          panel.style.right = '-400px';
+        });
+        
+        // Close panel when clicking outside
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            panel.style.right = '-400px';
+          }
+        });
+        
+        // Load comments
+        async function loadComments() {
+          try {
+            loading.style.display = 'block';
+            const response = await fetch(\`/comments/\${snapshotId}\`);
+            const data = await response.json();
+            
+            if (data.comments && data.comments.length > 0) {
+              loading.style.display = 'none';
+              commentsList.innerHTML = data.comments.map(comment => \`
+                <div style="padding: 15px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 15px; background: #f9f9f9;">
+                  <div style="font-weight: 500; color: #333; margin-bottom: 5px;">\${comment.author || 'Anonymous'}</div>
+                  <div style="color: #555; line-height: 1.4;">\${comment.text}</div>
+                  <div style="font-size: 12px; color: #999; margin-top: 8px;">\${new Date(comment.createdAt).toLocaleString()}</div>
+                </div>
+              \`).join('');
+            } else {
+              loading.style.display = 'none';
+              commentsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No comments yet. Be the first to comment!</div>';
+            }
+          } catch (error) {
+            loading.style.display = 'none';
+            commentsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Error loading comments.</div>';
+          }
+        }
+        
+        // Submit comment
+        commentForm.addEventListener('click', async () => {
+          const name = nameInput.value.trim() || 'Anonymous';
+          const text = textInput.value.trim();
+          
+          if (!text) {
+            alert('Please enter a comment.');
+            return;
+          }
+          
+          try {
+            commentForm.disabled = true;
+            commentForm.textContent = 'Posting...';
+            
+            const response = await fetch(\`/comments/\${snapshotId}\`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, author: name })
+            });
+            
+            if (response.ok) {
+              nameInput.value = '';
+              textInput.value = '';
+              loadComments();
+              commentForm.textContent = 'Comment Posted!';
+              setTimeout(() => {
+                commentForm.textContent = 'Post Comment';
+                commentForm.disabled = false;
+              }, 2000);
+            } else {
+              throw new Error('Failed to post comment');
+            }
+          } catch (error) {
+            commentForm.textContent = 'Error - Try Again';
+            commentForm.disabled = false;
+            setTimeout(() => {
+              commentForm.textContent = 'Post Comment';
+            }, 2000);
+          }
+        });
+        
+        // Enter key to submit
+        textInput.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            commentForm.click();
+          }
+        });
+      })();
+    </script>
+  `;
+  
+  // Insert the overlay before the closing </body> tag, or at the end if no body tag
+  if (htmlContent.includes('</body>')) {
+    htmlContent = htmlContent.replace('</body>', commentsOverlay + '</body>');
+  } else {
+    htmlContent += commentsOverlay;
+  }
   
   console.log(`🔍 HTML content after replacement:`, htmlContent.substring(0, 500));
   console.log(`🔍 Asset path replacements made:`, {
@@ -1891,6 +2045,74 @@ app.get('/api/extensions/download', async (c: any) => {
   } catch (error) {
     console.error('Error serving VSIX download:', error);
     return c.json({ error: 'download_failed' }, 500);
+  }
+});
+
+// Comments endpoints
+app.get('/comments/:snapshotId', async (c: any) => {
+  try {
+    const snapshotId = c.req.param('snapshotId');
+    console.log(`💬 Getting comments for snapshot: ${snapshotId}`);
+    
+    // Get the Durable Object for this snapshot
+    const id = c.env.COMMENTS_DO.idFromName(snapshotId);
+    const obj = c.env.COMMENTS_DO.get(id);
+    
+    // Call the getComments method
+    const response = await obj.fetch('https://dummy.com/comments', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      console.error(`❌ Failed to get comments for snapshot: ${snapshotId}`);
+      return c.json({ error: 'failed_to_get_comments' }, 500);
+    }
+    
+    const data = await response.json();
+    console.log(`✅ Retrieved ${data.comments?.length || 0} comments for snapshot: ${snapshotId}`);
+    return c.json(data);
+    
+  } catch (error) {
+    console.error('❌ Error getting comments:', error);
+    return c.json({ error: 'internal_error' }, 500);
+  }
+});
+
+app.post('/comments/:snapshotId', async (c: any) => {
+  try {
+    const snapshotId = c.req.param('snapshotId');
+    const { text, author = 'Anonymous' } = await c.req.json();
+    
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return c.json({ error: 'invalid_comment' }, 400);
+    }
+    
+    console.log(`💬 Adding comment to snapshot: ${snapshotId}, author: ${author}`);
+    
+    // Get the Durable Object for this snapshot
+    const id = c.env.COMMENTS_DO.idFromName(snapshotId);
+    const obj = c.env.COMMENTS_DO.get(id);
+    
+    // Call the addComment method
+    const response = await obj.fetch('https://dummy.com/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.trim(), author: author.trim() || 'Anonymous' })
+    });
+    
+    if (!response.ok) {
+      console.error(`❌ Failed to add comment to snapshot: ${snapshotId}`);
+      return c.json({ error: 'failed_to_add_comment' }, 500);
+    }
+    
+    const data = await response.json();
+    console.log(`✅ Comment added successfully to snapshot: ${snapshotId}`);
+    return c.json(data);
+    
+  } catch (error) {
+    console.error('❌ Error adding comment:', error);
+    return c.json({ error: 'internal_error' }, 500);
   }
 });
 

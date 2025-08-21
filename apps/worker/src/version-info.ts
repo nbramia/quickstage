@@ -3,7 +3,7 @@
 
 export function getExtensionVersion() {
   return {
-    version: '0.0.29', // Synced from extension/package.json
+    version: '0.0.31', // Synced from extension/package.json
     buildDate: new Date().toISOString(),
     filename: 'quickstage.vsix'
   };

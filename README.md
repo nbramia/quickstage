@@ -67,6 +67,14 @@ For each file in the build output:
 - Copies URL + password to clipboard
 - User can now share the URL with others
 
+#### **Step 7: Universal Commenting System**
+- Every staged prototype automatically includes a commenting overlay
+- Blue "💬 Comments" button appears in top-right corner
+- Clicking opens a sliding side panel with comment form and list
+- Comments are stored in Durable Objects and shared across all visitors
+- Users can add their name or remain anonymous
+- Real-time collaboration on any prototype regardless of framework
+
 ### 🌐 **API Endpoints & Routing Architecture**
 
 #### **Cloudflare Worker Routes Configuration**
@@ -169,6 +177,12 @@ npm run package        # Runs build-manual.js (manual packaging)
 # Complete release workflow
 npm run release:full   # Bump version → Build → Package → Update Worker
 ```
+
+**Version Management**: Every release automatically increments the version number:
+- **Automatic Version Bumping**: `npm run release:full` automatically bumps from `0.0.29` → `0.0.30` → `0.0.31`
+- **Versioned VSIX Files**: Each release creates `quickstage-{version}.vsix` (e.g., `quickstage-0.0.31.vsix`)
+- **Cache Busting**: Both `quickstage.vsix` (generic) and `quickstage-{version}.vsix` (versioned) are served
+- **Automatic Updates**: Users always get the latest version when downloading from the dashboard
 
 #### **Why esbuild Bundling?**
 - **Dependencies**: Bundles all npm packages into single file
@@ -436,8 +450,19 @@ The `/s/*` routing issue has been resolved with a multi-layered approach:
 
 ## Recent Updates
 
-### Routing Fixes & Multi-Layer Architecture (2025-08-21)
-- **Fixed /s/* Routing Issue**: Resolved critical issue where staged snapshots weren't displaying correctly
+### Universal Commenting System (2025-08-21)
+- **Added Universal Comments Overlay**: Every staged prototype now includes a commenting system
+- **Top-Right Comments Button**: Blue "💬 Comments" button appears on all staged prototypes
+- **Sliding Side Panel**: 400px wide panel slides in from the right with comment form and list
+- **Real-Time Comments**: Comments are stored in Durable Objects and shared across all visitors
+- **Anonymous Commenting**: Users can add their name or remain anonymous
+- **Universal Compatibility**: Works on any HTML prototype regardless of framework or structure
+
+### Asset Path & Routing Fixes (2025-08-21)
+- **Fixed Asset Path Issues**: Resolved critical problem where CSS/JS files weren't loading
+- **Hono Wildcard Parameter Fix**: Fixed issue with `c.req.param('*')` returning empty strings
+- **Manual Path Extraction**: Added fallback URL parsing when Hono wildcard fails
+- **Asset Path Replacement**: HTML content is modified to use correct snapshot-scoped asset paths
 - **Multi-Layer Routing**: Implemented `_redirects`, `_routes.json`, and `_worker.js` for reliable routing
 - **Automated Deployment**: Created `deploy-fix.sh` script for easy deployment of routing fixes
 - **Comprehensive Testing**: Added test-routing.html for debugging routing issues
@@ -494,6 +519,7 @@ The `/s/*` routing issue has been resolved with a multi-layered approach:
 - **Universal Project Detection**: Automatically detects monorepos, static sites, and unusual project structures
 - **AI Assistant Integration**: Copy-pasteable instructions for AI-assisted prototyping
 - **Secure Sharing**: Per-snapshot auto-generated passwords, editable, private by default
+- **Universal Commenting System**: Every staged prototype includes a commenting overlay with real-time collaboration
 - **Real-time Comments**: Inline sidebar with Turnstile anti-spam protection
 - **Cloudflare Stack**: Pages, Workers, R2, KV, Durable Objects, Turnstile
 - **Billing Integration**: Stripe Checkout for Pro tier upgrades

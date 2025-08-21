@@ -290,8 +290,6 @@ quickstage-0.0.8.vsix
 3. Uses the `archiver` library instead of the `zip` command for reliable packaging
 4. Ensures the VSIX structure matches VS Code's expectations
 
-**Note**: The small file size (6-7KB) is normal due to efficient compression. The important thing is that all required files are present and the structure is correct.
-
 #### **"Cannot find module" Errors**
 - Ensure you're using `npm run build` (esbuild bundler) not `tsc`
 - Check that all dependencies are properly bundled
@@ -300,20 +298,23 @@ quickstage-0.0.8.vsix
 ## 📊 **Version History**
 
 ### **Recent Updates**
-- **v0.0.14**: Enhanced project detection, AI instructions modal, universal compatibility
-- **v0.0.13**: Fixed release workflow file cleanup, improved VSIX handling
-- **v0.0.12**: Fixed esbuild bundling configuration, proper dependency inclusion
-- **v0.0.11**: Fixed activation events, improved command registration
-- **v0.0.10**: Fixed VSIX packaging structure and reliability
-- **v0.0.9**: Added versioned filenames, automatic version sync, backup download endpoint
-- **v0.0.8**: Fixed VSIX packaging reliability, replaced zip command with archiver library
-- **v0.0.7**: Fixed VSIX packaging structure, corrected file paths and package.json
-- **v0.0.6**: Simplified deployment workflow, direct VSIX serving
-- **v0.0.5**: Fixed build and packaging issues
-- **v0.0.4**: Improved release workflow automation
-- **v0.0.3**: Initial esbuild bundling implementation
+- **v0.0.31**: Fixed version incrementing, comments overlay only on prototype pages (not password page)
+- **v0.0.30**: Universal commenting system, asset path fixes, Hono wildcard parameter resolution
+- **v0.0.29**: Enhanced project detection, AI instructions modal, universal compatibility
+- **v0.0.28**: Fixed release workflow file cleanup, improved VSIX handling
+- **v0.0.27**: Fixed esbuild bundling configuration, proper dependency inclusion
+- **v0.0.26**: Fixed activation events, improved command registration
+- **v0.0.25**: Fixed VSIX packaging structure and reliability
+- **v0.0.24**: Added versioned filenames, automatic version sync, backup download endpoint
+- **v0.0.23**: Fixed VSIX packaging reliability, replaced zip command with archiver library
+- **v0.0.22**: Fixed VSIX packaging structure, corrected file paths and package.json
+- **v0.0.21**: Simplified deployment workflow, direct VSIX serving
+- **v0.0.20**: Fixed build and packaging issues
+- **v0.0.19**: Improved release workflow automation
+- **v0.0.18**: Initial esbuild bundling implementation
 
 ### **Breaking Changes**
+- **v0.0.15**: Universal commenting system added to all staged prototypes (no breaking changes, just new functionality)
 - **v0.0.14**: Enhanced project detection with improved error handling (no breaking changes, just improvements)
 - **v0.0.13**: Fixed release workflow file cleanup (no breaking changes, just fixes)
 - **v0.0.12**: Fixed esbuild bundling configuration (no breaking changes, just fixes)
@@ -351,6 +352,35 @@ The web dashboard now includes a comprehensive AI instructions modal:
 - **AI Users**: Leverage AI assistants to create working prototypes
 - **Stakeholders**: Share functional prototypes instead of static mockups
 
+## 🔢 **Version Management & Incrementing (NEW - 2025-08-21)**
+
+### **Automatic Version Incrementing**
+Every release now automatically increments the version number to ensure unique VSIX filenames:
+
+**How It Works:**
+1. **Automatic Bumping**: `npm run release:full` runs `version:bump.js` first
+2. **Patch Increment**: Version goes from `0.0.29` → `0.0.30` → `0.0.31`
+3. **Unique Filenames**: Each release creates `quickstage-{version}.vsix`
+4. **Cache Busting**: Both generic and versioned filenames are served
+
+**Version Bump Process:**
+```bash
+# Before: version 0.0.29
+npm run release:full
+
+# During: version automatically bumped to 0.0.30
+# Creates: quickstage-0.0.30.vsix
+
+# Next run: version automatically bumped to 0.0.31
+# Creates: quickstage-0.0.31.vsix
+```
+
+**Benefits:**
+- **No More Duplicate Downloads**: Each version has a unique filename
+- **Automatic Updates**: Users always get the latest version
+- **Version Tracking**: Clear history of all releases
+- **Cache Busting**: Browsers download new versions immediately
+
 ## 🛠️ **Routing & Infrastructure (NEW - 2025-01-27)**
 
 ### **Multi-Layer Routing Architecture**
@@ -385,6 +415,56 @@ The build script now copies all routing configuration files:
 - **Logging**: Comprehensive logging in all routing methods
 - **Error Handling**: Graceful fallbacks and helpful error messages
 - **Deployment Script**: `deploy-fix.sh` for automated deployment
+
+## 💬 **Universal Commenting System (NEW - 2025-08-21)**
+
+### **Overview**
+Every staged prototype now automatically includes a comprehensive commenting system that works regardless of the underlying framework or structure.
+
+### **Features**
+- **Universal Overlay**: Automatically injected into any HTML prototype
+- **Top-Right Button**: Blue "💬 Comments" button in fixed position
+- **Sliding Side Panel**: 400px wide panel slides in from the right
+- **Real-Time Comments**: Stored in Durable Objects and shared across all visitors
+- **Anonymous Support**: Users can add their name or remain anonymous
+- **Framework Agnostic**: Works on Vite, Next.js, SvelteKit, or any static HTML
+
+### **Technical Implementation**
+- **HTML Injection**: Comments overlay is injected during HTML processing in the Worker
+- **Durable Objects**: Each snapshot gets its own comments room for isolation
+- **Universal Endpoints**: `/comments/:snapshotId` for reading and posting comments
+- **CSS-in-JS**: All styling is inline to avoid conflicts with prototype styles
+- **Event Handling**: Comprehensive click, keyboard, and outside-click handling
+
+### **User Experience**
+- **One-Click Access**: Single button to open comments panel
+- **Intuitive Form**: Simple name and comment fields with validation
+- **Real-Time Updates**: Comments appear immediately after posting
+- **Responsive Design**: Panel adapts to different screen sizes
+- **Keyboard Support**: Enter key to submit comments
+
+### **Comment Data Structure**
+```typescript
+interface Comment {
+  id: string;
+  text: string;
+  author: string;
+  createdAt: number;
+  file?: string;
+  line?: number;
+}
+```
+
+### **API Endpoints**
+- **GET** `/comments/:snapshotId` - Retrieve all comments for a snapshot
+- **POST** `/comments/:snapshotId` - Add a new comment to a snapshot
+
+### **Benefits**
+- **Collaboration**: Teams can discuss prototypes in real-time
+- **Feedback**: Stakeholders can provide immediate feedback
+- **Iteration**: Designers can iterate based on comments
+- **Documentation**: Comments serve as living documentation
+- **Universal**: Works on any prototype without modification
 
 ## 🔮 **Future Improvements**
 
