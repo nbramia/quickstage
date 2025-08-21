@@ -1098,7 +1098,24 @@ app.get('/s/:id', async (c: any) => {
     return c.text('Snapshot index not found', 404);
   }
   
-  // Return the HTML with proper headers
+  // Read and modify the HTML content to fix asset paths
+  let htmlContent = await indexObj.text();
+  
+  // Replace absolute asset paths with relative ones scoped to this snapshot
+  htmlContent = htmlContent.replace(
+    /href="\/assets\//g, 
+    `href="/s/${id}/assets/`
+  );
+  htmlContent = htmlContent.replace(
+    /src="\/assets\//g, 
+    `src="/s/${id}/assets/`
+  );
+  htmlContent = htmlContent.replace(
+    /"\/assets\//g, 
+    `"/s/${id}/assets/`
+  );
+  
+  // Return the modified HTML with proper headers
   const headers: Record<string, string> = {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-cache',
@@ -1107,7 +1124,7 @@ app.get('/s/:id', async (c: any) => {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
   };
   
-  return new Response(indexObj.body, { headers });
+  return new Response(htmlContent, { headers });
 });
 
 // Asset serving with password gate - for individual files (CSS, JS, images, etc.)
@@ -1488,7 +1505,9 @@ app.post('/api/snapshots/create', async (c: any) => {
   
   const { expiryDays = 7, public: isPublic = false } = await c.req.json();
   const id = generateIdBase62(16);
-  const password = generatePassword(8);
+  const realPassword = generatePassword(8);
+  const saltHex = randomHex(8);
+  const passwordHash = await hashPasswordArgon2id(realPassword, saltHex);
   const now = Date.now();
   const expiresAt = now + (expiryDays * 24 * 60 * 60 * 1000);
   
@@ -1497,11 +1516,15 @@ app.post('/api/snapshots/create', async (c: any) => {
     ownerUid: uid,
     createdAt: now,
     expiresAt,
-    password,
-    public: Boolean(isPublic),
-    viewCount: 0,
+    passwordHash,
+    totalBytes: 0,
+    files: [],
+    views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
     commentsCount: 0,
-    status: 'uploading'
+    public: Boolean(isPublic),
+    caps: DEFAULT_CAPS,
+    status: 'uploading' as const,
+    gateVersion: 1,
   };
   
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(snapshot));
@@ -1512,7 +1535,7 @@ app.post('/api/snapshots/create', async (c: any) => {
   ids.push(id);
   await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
   
-  return c.json({ id, password });
+  return c.json({ id, password: realPassword });
 });
 
 // PAT (Personal Access Token) endpoints for extension authentication
