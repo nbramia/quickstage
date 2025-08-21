@@ -1101,19 +1101,41 @@ app.get('/s/:id', async (c: any) => {
   // Read and modify the HTML content to fix asset paths
   let htmlContent = await indexObj.text();
   
+  console.log(`🔍 Original HTML content preview:`, htmlContent.substring(0, 500));
+  
   // Replace absolute asset paths with relative ones scoped to this snapshot
+  const beforeReplace = htmlContent;
+  
+  // More comprehensive regex patterns to catch all asset references
   htmlContent = htmlContent.replace(
-    /href="\/assets\//g, 
+    /href=["']\/assets\//g, 
     `href="/s/${id}/assets/`
   );
   htmlContent = htmlContent.replace(
-    /src="\/assets\//g, 
+    /src=["']\/assets\//g, 
     `src="/s/${id}/assets/`
   );
   htmlContent = htmlContent.replace(
-    /"\/assets\//g, 
+    /["']\/assets\//g, 
     `"/s/${id}/assets/`
   );
+  
+  // Also handle other common asset patterns
+  htmlContent = htmlContent.replace(
+    /href=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
+    `href="/s/${id}/$1`
+  );
+  htmlContent = htmlContent.replace(
+    /src=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
+    `src="/s/${id}/$1`
+  );
+  
+  console.log(`🔍 HTML content after replacement:`, htmlContent.substring(0, 500));
+  console.log(`🔍 Asset path replacements made:`, {
+    before: beforeReplace.includes('/assets/'),
+    after: htmlContent.includes(`/s/${id}/assets/`),
+    id: id
+  });
   
   // Return the modified HTML with proper headers
   const headers: Record<string, string> = {
@@ -1141,10 +1163,14 @@ app.get('/s/:id/*', async (c: any) => {
     const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
     if (!gateCookie || gateCookie !== 'ok') return c.json({ error: 'unauthorized' }, 401);
   }
+  
+  console.log(`🔍 Looking for asset: snap/${id}/${path}`);
   const r2obj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/${path}`);
   if (!r2obj) {
+    console.log(`❌ Asset not found: snap/${id}/${path}`);
     return c.text('Not found', 404);
   }
+  console.log(`✅ Asset found: snap/${id}/${path}, size: ${r2obj.size}, type: ${r2obj.httpMetadata?.contentType}`);
   const headers: Record<string, string> = {
     'Cache-Control': 'public, max-age=3600',
     'X-Content-Type-Options': 'nosniff',
