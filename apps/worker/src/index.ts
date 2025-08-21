@@ -1106,28 +1106,17 @@ app.get('/s/:id', async (c: any) => {
   // Replace absolute asset paths with relative ones scoped to this snapshot
   const beforeReplace = htmlContent;
   
-  // More comprehensive regex patterns to catch all asset references
+  // Use a single, more precise replacement to avoid double-replacement
+  // Replace href="/assets/..." and src="/assets/..." patterns
   htmlContent = htmlContent.replace(
-    /href=["']\/assets\//g, 
-    `href="/s/${id}/assets/`
-  );
-  htmlContent = htmlContent.replace(
-    /src=["']\/assets\//g, 
-    `src="/s/${id}/assets/`
-  );
-  htmlContent = htmlContent.replace(
-    /["']\/assets\//g, 
-    `"/s/${id}/assets/`
+    /(href|src)=["']\/(assets\/[^"']*)/g,
+    `$1="/s/${id}/$2`
   );
   
-  // Also handle other common asset patterns
+  // Also handle other root-level assets like /chess-icon.svg
   htmlContent = htmlContent.replace(
-    /href=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
-    `href="/s/${id}/$1`
-  );
-  htmlContent = htmlContent.replace(
-    /src=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
-    `src="/s/${id}/$1`
+    /(href|src)=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
+    `$1="/s/${id}/$2`
   );
   
   console.log(`🔍 HTML content after replacement:`, htmlContent.substring(0, 500));
@@ -1252,21 +1241,70 @@ app.get('/snap/:id', async (c: any) => {
 
 // Gate
 app.post('/s/:id/gate', async (c: any) => {
-  const id = c.req.param('id');
-  const body: any = await c.req.json();
-  const password: string = String(body?.password || '');
-  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.json({ error: 'not_found' }, 404);
-  const meta = JSON.parse(metaRaw);
-  const ok = await verifyPasswordHash(password, meta.passwordHash);
-  if (!ok) return c.json({ error: 'forbidden' }, 403);
-  setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
-    secure: isSecureRequest(c),
-    sameSite: 'Lax',
-    path: `/s/${id}`,
-    maxAge: 60 * 60,
-  });
-  return c.json({ ok: true });
+  try {
+    const id = c.req.param('id');
+    console.log(`🔐 Gate endpoint called for snapshot: ${id}`);
+    
+    const body: any = await c.req.json();
+    const password: string = String(body?.password || '');
+    console.log(`🔐 Password received: ${password ? '***' : 'empty'}`);
+    
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw) {
+      console.log(`❌ Snapshot metadata not found for: ${id}`);
+      return c.json({ error: 'not_found' }, 404);
+    }
+    
+    const meta = JSON.parse(metaRaw);
+    console.log(`🔐 Snapshot metadata found:`, { 
+      id: meta.id, 
+      hasPasswordHash: !!meta.passwordHash,
+      passwordHashLength: meta.passwordHash?.length || 0
+    });
+    
+    // Handle both old and new metadata structures
+    let passwordToVerify = meta.passwordHash;
+    let isLegacy = false;
+    
+    if (!passwordToVerify && meta.password) {
+      // Legacy structure - use plain text password
+      passwordToVerify = meta.password;
+      isLegacy = true;
+      console.log(`🔐 Using legacy password structure for: ${id}`);
+    }
+    
+    if (!passwordToVerify) {
+      console.log(`❌ No password found in metadata (neither passwordHash nor password)`);
+      return c.json({ error: 'no_password_set' }, 400);
+    }
+    
+    let ok = false;
+    if (isLegacy) {
+      // Legacy: direct string comparison
+      ok = password === passwordToVerify;
+      console.log(`🔐 Legacy password verification result: ${ok}`);
+    } else {
+      // New: hash verification
+      ok = await verifyPasswordHash(password, passwordToVerify);
+      console.log(`🔐 Hash password verification result: ${ok}`);
+    }
+    
+    if (!ok) return c.json({ error: 'forbidden' }, 403);
+    
+    setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
+      secure: isSecureRequest(c),
+      sameSite: 'Lax',
+      path: `/s/${id}`,
+      maxAge: 60 * 60,
+    });
+    
+    console.log(`✅ Password verified, cookie set for: ${id}`);
+    return c.json({ ok: true });
+    
+  } catch (error) {
+    console.error(`❌ Error in gate endpoint:`, error);
+    return c.json({ error: 'internal_error', details: String(error) }, 500);
+  }
 });
 
 // Snapshot comments endpoints
