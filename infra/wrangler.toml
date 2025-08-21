@@ -3,7 +3,7 @@ main = "../apps/worker/src/index.ts"
 compatibility_date = "2024-05-12"
 
 # Custom domain for clean snapshot URLs
-[[custom_domains]]
+[triggers.custom_domains]
 domain = "snap.quickstage.tech"
 zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6" 
 
