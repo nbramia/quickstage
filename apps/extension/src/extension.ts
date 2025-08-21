@@ -407,9 +407,9 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
   }
 
   const url = `https://quickstage-worker.nbramia.workers.dev/s/${created.id}`;
-  vscode.env.clipboard.writeText(`${url}\npassword: ${created.password}`);
+  vscode.env.clipboard.writeText(created.password);
   output.appendLine(`🎉 Staged successfully! ${url}`);
-  output.appendLine(`📋 URL and password copied to clipboard`);
+  output.appendLine(`📋 Password copied to clipboard: ${created.password}`);
   vscode.window.showInformationMessage('Staged ✓', 'Open', 'Copy').then((act) => {
     if (act === 'Open') vscode.env.openExternal(vscode.Uri.parse(url));
     if (act === 'Copy') vscode.env.clipboard.writeText(`${url}\npassword: ${created.password}`);

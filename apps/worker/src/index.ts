@@ -1101,7 +1101,78 @@ app.get('/s/:id', async (c: any) => {
   if (!meta.public) {
     const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
     if (!gateCookie || gateCookie !== 'ok') {
-      return c.text('Password required', 401);
+      // Serve a password prompt page instead of 401
+      const passwordPromptHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enter Password - QuickStage</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
+        h1 { margin: 0 0 1rem 0; font-size: 1.5rem; color: #333; text-align: center; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #555; }
+        input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; box-sizing: border-box; }
+        button { width: 100%; padding: 0.75rem; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .error { color: #dc3545; margin-top: 0.5rem; font-size: 0.875rem; }
+        .footer { text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Password Required</h1>
+        <form onsubmit="submitPassword(event)">
+            <div class="form-group">
+                <label for="password">Enter the password to view this snapshot:</label>
+                <input type="password" id="password" name="password" required autofocus>
+            </div>
+            <button type="submit">Access Snapshot</button>
+            <div id="error" class="error" style="display: none;"></div>
+        </form>
+        <div class="footer">
+            <a href="https://quickstage.tech" target="_blank">Powered by QuickStage</a>
+        </div>
+    </div>
+    <script>
+        async function submitPassword(event) {
+            event.preventDefault();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            
+            try {
+                const response = await fetch('/s/${id}/gate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                if (response.ok) {
+                    // Password accepted, reload page
+                    window.location.reload();
+                } else {
+                    // Password rejected
+                    errorDiv.textContent = 'Incorrect password. Please try again.';
+                    errorDiv.style.display = 'block';
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Error verifying password. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>`;
+      
+      return new Response(passwordPromptHTML, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        status: 200
+      });
     }
   }
   
