@@ -552,6 +552,28 @@ app.post('/snapshots/create', async (c: any) => {
   const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
   const activeIds: string[] = JSON.parse(listJson);
   if (activeIds.length >= 10) return c.json({ error: 'quota_exceeded' }, 403);
+  
+  // Add retry logic for KV read operations
+  const maxRetriesRead = 3;
+  let retryCountRead = 0;
+  
+  while (retryCountRead < maxRetriesRead) {
+    try {
+      const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+      const activeIds: string[] = JSON.parse(listJson);
+      if (activeIds.length >= 10) return c.json({ error: 'quota_exceeded' }, 403);
+      break; // Success, exit retry loop
+    } catch (error: any) {
+      retryCountRead++;
+      if (error.message?.includes('429') && retryCountRead < maxRetriesRead) {
+        console.log(`KV read failed with 429, retrying (${retryCountRead}/${maxRetriesRead})...`);
+        // Wait with exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountRead - 1) * 1000));
+        continue;
+      }
+      throw error; // Re-throw if max retries reached or non-429 error
+    }
+  }
 
   const id = generateIdBase62(16);
   const createdAt = nowMs();
@@ -576,7 +598,27 @@ app.post('/snapshots/create', async (c: any) => {
     gateVersion: 1,
   };
   console.log('Snapshot metadata to store:', JSON.stringify(meta, null, 2));
-  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  
+  // Add retry logic for KV operations to handle rate limiting
+  const maxRetriesCreate = 3;
+  let retryCountCreate = 0;
+  
+  while (retryCountCreate < maxRetriesCreate) {
+    try {
+      await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+      break; // Success, exit retry loop
+    } catch (error: any) {
+      retryCountCreate++;
+      if (error.message?.includes('429') && retryCountCreate < maxRetriesCreate) {
+        console.log(`KV write failed with 429, retrying (${retryCountCreate}/${maxRetriesCreate})...`);
+        // Wait with exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountCreate - 1) * 1000));
+        continue;
+      }
+      throw error; // Re-throw if max retries reached or non-429 error
+    }
+  }
+  
   return c.json({ id, password: realPassword, expiryDays, caps: DEFAULT_CAPS });
 });
 
@@ -781,12 +823,48 @@ app.post('/snapshots/finalize', async (c: any) => {
   meta.totalBytes = typeof totalBytes === 'number' ? totalBytes : Number(totalBytes || 0);
   meta.files = normalizedFiles;
   meta.status = 'active';
-  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-  // Append to user index
+  
+  // Add retry logic for KV operations to handle rate limiting
+  const maxRetriesWrite = 3;
+  let retryCountWrite = 0;
+  
+  while (retryCountWrite < maxRetriesWrite) {
+    try {
+      await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+      break; // Success, exit retry loop
+    } catch (error: any) {
+      retryCountWrite++;
+      if (error.message?.includes('429') && retryCountWrite < maxRetriesWrite) {
+        console.log(`KV write failed with 429, retrying (${retryCountWrite}/${maxRetriesWrite})...`);
+        // Wait with exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountWrite - 1) * 1000));
+        continue;
+      }
+      throw error; // Re-throw if max retries reached or non-429 error
+    }
+  }
+  
+  // Append to user index with retry logic
   const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
   const ids: string[] = JSON.parse(listJson);
   ids.unshift(id);
-  await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids.slice(0, 100)));
+  
+  retryCountWrite = 0;
+  while (retryCountWrite < maxRetriesWrite) {
+    try {
+      await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids.slice(0, 100)));
+      break; // Success, exit retry loop
+    } catch (error: any) {
+      retryCountWrite++;
+      if (error.message?.includes('429') && retryCountWrite < maxRetriesWrite) {
+        console.log(`KV write failed with 429, retrying (${retryCountWrite}/${maxRetriesWrite})...`);
+        // Wait with exponential backoff: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountWrite - 1) * 1000));
+        continue;
+      }
+      throw error; // Re-throw if max retries reached or non-429 error
+    }
+  }
   return c.json({ url: `${c.env.PUBLIC_BASE_URL}/s/${id}`, password: 'hidden' });
 });
 
