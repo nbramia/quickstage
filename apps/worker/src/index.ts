@@ -1002,11 +1002,16 @@ app.get('/api/snapshots/:id', async (c: any) => {
 
 // Note: /s/:id/* routes below handle individual snapshot files
 
-// Asset serving with password gate
+// Asset serving with password gate - only for actual file paths
 app.get('/s/:id/*', async (c: any) => {
   const id = c.req.param('id');
   const path = c.req.param('*') || '';
   console.log(`🔍 Worker: /s/:id/* route hit - id: ${id}, path: ${path}`);
+  
+  // Skip this route if no actual file path (just the ID)
+  if (!path || path === '') {
+    return c.text('Not found', 404);
+  }
   
   const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
   if (!metaRaw) return c.text('Gone', 410);
