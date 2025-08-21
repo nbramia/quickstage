@@ -1106,17 +1106,17 @@ app.get('/s/:id', async (c: any) => {
   // Replace absolute asset paths with relative ones scoped to this snapshot
   const beforeReplace = htmlContent;
   
-  // Use a single, more precise replacement to avoid double-replacement
-  // Replace href="/assets/..." and src="/assets/..." patterns
+  // Use a single, comprehensive replacement that handles all cases at once
+  // This prevents double-replacement by doing everything in one pass
   htmlContent = htmlContent.replace(
-    /(href|src)=["']\/(assets\/[^"']*)/g,
-    `$1="/s/${id}/$2`
-  );
-  
-  // Also handle other root-level assets like /chess-icon.svg
-  htmlContent = htmlContent.replace(
-    /(href|src)=["']\/([^"']*\.(?:css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot))/g,
-    `$1="/s/${id}/$2`
+    /(href|src)=["']\/([^"']*)/g,
+    (match: string, attr: string, path: string) => {
+      // Only replace if it looks like an asset path
+      if (path.startsWith('assets/') || /\.(css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot)$/.test(path)) {
+        return `${attr}="/s/${id}/${path}"`;
+      }
+      return match; // Keep original if not an asset
+    }
   );
   
   console.log(`🔍 HTML content after replacement:`, htmlContent.substring(0, 500));
@@ -1141,8 +1141,21 @@ app.get('/s/:id', async (c: any) => {
 // Asset serving with password gate - for individual files (CSS, JS, images, etc.)
 app.get('/s/:id/*', async (c: any) => {
   const id = c.req.param('id');
-  const path = c.req.param('*') || '';
-  console.log(`🔍 Worker: /s/:id/* route hit - id: ${id}, path: ${path}`);
+  let path = c.req.param('*') || '';
+  
+  // If Hono wildcard fails, extract path manually from URL
+  if (!path) {
+    const url = new URL(c.req.url);
+    const pathMatch = url.pathname.match(`^/s/${id}/(.+)$`);
+    path = pathMatch ? pathMatch[1] : '';
+  }
+  
+  console.log(`🔍 Worker: /s/:id/* route hit - id: ${id}, path: "${path}", url: ${c.req.url}`);
+  
+  if (!path) {
+    console.log(`❌ No path extracted from URL: ${c.req.url}`);
+    return c.text('Not found', 404);
+  }
   
   const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
   if (!metaRaw) return c.text('Gone', 410);
