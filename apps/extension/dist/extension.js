@@ -8292,7 +8292,7 @@ async function uploadAndFinalize(created, scan, outDir, output, pat, context) {
     vscode.window.showErrorMessage("Failed to finalize snapshot");
     return;
   }
-  const url = `https://quickstage.tech/s/${created.id}`;
+  const url = `https://quickstage-worker.nbramia.workers.dev/s/${created.id}`;
   vscode.env.clipboard.writeText(`${url}
 password: ${created.password}`);
   output.appendLine(`\u{1F389} Staged successfully! ${url}`);

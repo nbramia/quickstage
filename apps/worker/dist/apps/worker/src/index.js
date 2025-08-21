@@ -875,12 +875,12 @@ app.get('/api/snapshots/:id', async (c) => {
         return c.json({ error: 'unauthorized' }, 401);
     }
 });
-// Note: /s/:id route is handled by Pages app, not worker
-// Worker only handles /s/:id/* for serving snapshot files
+// Note: /s/:id/* routes below handle individual snapshot files
 // Asset serving with password gate
 app.get('/s/:id/*', async (c) => {
     const id = c.req.param('id');
     const path = c.req.param('*') || '';
+    console.log(`🔍 Worker: /s/:id/* route hit - id: ${id}, path: ${path}`);
     const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
     if (!metaRaw)
         return c.text('Gone', 410);
@@ -918,6 +918,39 @@ app.get('/s/:id/*', async (c) => {
     if (ct)
         headers['Content-Type'] = ct;
     return new Response(r2obj.body, { headers });
+});
+// Main snapshot page route - serves the app's index.html (must come after /s/:id/*)
+app.get('/s/:id', async (c) => {
+    const id = c.req.param('id');
+    console.log(`🔍 Worker: /s/:id route hit - id: ${id}`);
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.text('Snapshot not found', 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+        return c.text('Snapshot expired', 410);
+    }
+    // Check if password protected
+    if (!meta.public) {
+        const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+        if (!gateCookie || gateCookie !== 'ok') {
+            return c.text('Password required', 401);
+        }
+    }
+    // Get the main index.html file
+    const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
+    if (!indexObj) {
+        return c.text('Snapshot index not found', 404);
+    }
+    // Return the HTML with proper headers
+    const headers = {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+        'Referrer-Policy': 'no-referrer',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+    };
+    return new Response(indexObj.body, { headers });
 });
 // Gate
 app.post('/s/:id/gate', async (c) => {

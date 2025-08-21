@@ -194,7 +194,21 @@ cd ../apps/web && pnpm build
 cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
-## 🚨 **Troubleshooting**
+### **Routing Fixes (NEW - 2025-01-27)**
+For critical routing issues like `/s/*` not working:
+
+```bash
+# Use the automated deployment script (RECOMMENDED)
+./deploy-fix.sh
+
+# Or manual deployment:
+cd apps/web && pnpm build                          # Build with routing fixes
+cd ../../infra && npx wrangler deploy              # Deploy worker first
+cd ../apps/web && pnpm build                       # Build web app
+cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
+```
+
+## 🚨 **Troubleshooting Common Issues**
 
 ### **VSIX Not Found After Release**
 - Check that `apps/web/public/` directory exists
@@ -218,6 +232,36 @@ cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quic
 - Ensure downloaded file is named `quickstage-{version}.vsix`
 - Compare downloaded file size with local VSIX (should be ~6-7KB)
 - Try both download methods: primary (web app) and backup (API)
+
+### **/s/* Routing Issues (NEW - 2025-01-27)**
+**Critical Issue**: Users see QuickStage dashboard instead of staged snapshots
+
+**Symptoms**:
+- Staging works (extension generates URLs)
+- Worker logs show no `/s/*` requests
+- Users see "No snapshot ID provided" or blank content
+- Cloudflare Pages serves React app instead of proxying to Worker
+
+**Root Cause**: Cloudflare Pages wasn't routing `/s/*` requests to the Worker
+
+**Solution**: Multi-layer routing configuration implemented
+
+**Files Added**:
+- `apps/web/public/_redirects` - Traditional redirects
+- `apps/web/public/_routes.json` - Modern routing config
+- `apps/web/public/_worker.js` - Pages Worker for routing
+- `apps/web/functions/s/[[path]].ts` - Backup routing method
+
+**To Fix**:
+1. Run `./deploy-fix.sh` (automated deployment)
+2. Or manually deploy worker first, then web app
+3. Test routing with `/test-routing.html`
+4. Check Cloudflare Pages logs for errors
+
+**Testing**:
+- Normal routes: `/test-routing.html` (should work)
+- Snapshot routes: `/s/[id]` (should now work)
+- Stage new project: Should generate working URLs
 
 ### **VSIX Installation Errors**
 
@@ -307,6 +351,41 @@ The web dashboard now includes a comprehensive AI instructions modal:
 - **AI Users**: Leverage AI assistants to create working prototypes
 - **Stakeholders**: Share functional prototypes instead of static mockups
 
+## 🛠️ **Routing & Infrastructure (NEW - 2025-01-27)**
+
+### **Multi-Layer Routing Architecture**
+QuickStage now uses a comprehensive routing strategy to ensure reliable `/s/*` routing:
+
+**Routing Layers**:
+1. **`_redirects`**: Traditional Cloudflare Pages redirects with force flag
+2. **`_routes.json`**: Modern routing configuration with explicit exclusions
+3. **`_worker.js`**: Pages Worker for programmatic routing (most reliable)
+4. **Pages Functions**: Backup routing method in `apps/web/functions/s/[[path]].ts`
+
+**Why Multi-Layer?**
+- Cloudflare Pages can be finicky about routing
+- Different routing methods work in different scenarios
+- Multiple fallbacks ensure reliability
+- At least one method should work in any environment
+
+### **Routing Configuration Files**
+- **`_redirects`**: `/s/* https://quickstage-worker.nbramia.workers.dev/s/:splat 200!`
+- **`_routes.json`**: Explicit routing with exclusions for `/s/*`
+- **`_worker.js`**: Programmatic routing with error handling and logging
+- **Pages Functions**: Backup routing with comprehensive error handling
+
+### **Build Process Updates**
+The build script now copies all routing configuration files:
+```bash
+"build": "tsc -b && vite build && cp -r functions dist/ && cp public/_worker.js dist/ && cp public/test-routing.html dist/"
+```
+
+### **Testing & Debugging**
+- **Test File**: `test-routing.html` for debugging routing issues
+- **Logging**: Comprehensive logging in all routing methods
+- **Error Handling**: Graceful fallbacks and helpful error messages
+- **Deployment Script**: `deploy-fix.sh` for automated deployment
+
 ## 🔮 **Future Improvements**
 
 - **Automated Testing**: Add extension installation tests
@@ -317,3 +396,5 @@ The web dashboard now includes a comprehensive AI instructions modal:
 - **Automatic Deployment**: Trigger Worker/Web deployments from release workflow
 - **AI Template Library**: More specialized instruction templates for different use cases
 - **Project Type Detection**: Even smarter detection of project structures and frameworks
+- **Routing Analytics**: Monitor routing performance and success rates
+- **Advanced Caching**: Implement edge caching for better performance

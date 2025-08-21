@@ -38,7 +38,6 @@ export function Viewer() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [iframeSrc, setIframeSrc] = useState<string>('');
 
   const { id: snapshotId } = useParams();
 
@@ -66,8 +65,6 @@ export function Viewer() {
       if (response.snapshot.files.length > 0) {
         setSelectedFile(response.snapshot.files[0].name);
       }
-      // Default to rendering the app's index.html in an iframe
-      setIframeSrc(`/s/${snapshotId}/index.html`);
     } catch (error: any) {
       if (error.message.includes('401')) {
         setShowPasswordForm(true);
@@ -104,8 +101,7 @@ export function Viewer() {
       // Refresh snapshot details (now accessible) and comments
       await fetchSnapshot();
       fetchComments();
-      // Ensure iframe renders
-      setIframeSrc(`/s/${snapshotId}/index.html`);
+
     } catch (error: any) {
       console.error('Password verification failed:', error);
       setError(error.message || 'Invalid password');
@@ -282,7 +278,7 @@ export function Viewer() {
                 {snapshot.files.map((file) => (
                   <button
                     key={file.name}
-                    onClick={() => { setSelectedFile(file.name); setIframeSrc(`/s/${snapshotId}/${file.name}`); }}
+                    onClick={() => setSelectedFile(file.name)}
                     className={`w-full text-left p-3 rounded-lg border transition-colors ${
                       selectedFile === file.name 
                         ? 'bg-blue-50 border-blue-200 text-blue-900' 
@@ -304,12 +300,13 @@ export function Viewer() {
             <div className="bg-white rounded-lg shadow p-2 min-h-[600px]">
               <div className="flex items-center justify-between px-4 py-2 border-b">
                 <h3 className="text-lg font-medium text-gray-900">Preview</h3>
-                <a href={iframeSrc || `/s/${snapshotId}/index.html`} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open in new tab</a>
+                <a href={`https://quickstage.tech/s/${snapshotId}/index.html`} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open in new tab</a>
               </div>
               <iframe
-                key={iframeSrc}
-                src={iframeSrc || `/s/${snapshotId}/index.html`}
+                key={snapshotId}
+                src={`https://quickstage.tech/s/${snapshotId}/index.html`}
                 className="w-full h-[70vh] border-0"
+                title="Snapshot Preview"
               />
             </div>
           </div>

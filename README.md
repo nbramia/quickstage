@@ -74,6 +74,16 @@ Your Worker is configured with these routes:
 - `quickstage.tech/api/*` → `quickstage-worker` (API endpoints)
 - `quickstage.tech/s/*` → `quickstage-worker` (Snapshot serving)
 
+#### **Multi-Layer Routing Strategy for /s/* Routes**
+To ensure reliable routing of snapshot requests, QuickStage uses a **multi-layered approach**:
+
+1. **`_redirects` File**: Traditional Cloudflare Pages redirects
+2. **`_routes.json`**: Modern routing configuration
+3. **`_worker.js`**: Pages Worker for programmatic routing
+4. **Pages Functions**: Backup routing method
+
+This ensures that `/s/*` requests are properly routed to your Worker even if one method fails.
+
 #### **API Endpoints by Component**
 
 ##### **Extension-Only Endpoints** (No `/api` prefix needed)
@@ -135,11 +145,12 @@ snapshots/
 
 #### **File Serving Flow**
 1. Request: `GET /s/abc123/index.html`
-2. Worker checks snapshot metadata in KV
-3. Verifies user has access (session or viewer cookie)
-4. Retrieves file from R2: `snap/abc123/index.html`
-5. Returns file with appropriate Content-Type headers
-6. Increments view count in metadata
+2. **Multi-layer routing** ensures request reaches Worker
+3. Worker checks snapshot metadata in KV
+4. Verifies user has access (session or viewer cookie)
+5. Retrieves file from R2: `snap/abc123/index.html`
+6. Returns file with appropriate Content-Type headers
+7. Increments view count in metadata
 
 ### 🚀 **Extension Installation & Usage**
 
@@ -300,6 +311,21 @@ TURNSTILE_SECRET_KEY=your-turnstile-key
 ```
 
 #### **Deployment Commands**
+
+##### **Quick Fix Deployment (Recommended)**
+Use the automated deployment script for routing fixes:
+
+```bash
+# Run the automated deployment script
+./deploy-fix.sh
+```
+
+This script automatically:
+1. Builds the web app with all routing fixes
+2. Deploys the worker first
+3. Deploys the web app to Cloudflare Pages
+
+##### **Manual Deployment**
 ```bash
 # Deploy Worker
 cd infra
@@ -330,9 +356,9 @@ Dashboard → GET /api/snapshots/list → Worker → KV Snapshots
 Dashboard → POST /api/snapshots/:id/expire → Worker → KV Update
 ```
 
-#### **Snapshot Serving Flow**
+#### **Snapshot Serving Flow (Fixed)**
 ```
-Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Response
+Browser → GET /s/abc123/index.html → Multi-layer Routing → Worker → KV Check → R2 Fetch → Response
 ```
 
 ### 🚨 **Troubleshooting Common Issues**
@@ -363,6 +389,18 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - Check R2 credentials are correct
 - Verify file size limits
 - Check MIME type restrictions
+
+#### **/s/* Routing Issues (Fixed)**
+The `/s/*` routing issue has been resolved with a multi-layered approach:
+
+**Symptoms**: Users see the QuickStage dashboard instead of staged snapshots
+**Root Cause**: Cloudflare Pages wasn't routing `/s/*` requests to the Worker
+**Solution**: Multi-layer routing configuration including `_redirects`, `_routes.json`, and `_worker.js`
+
+**To Fix**:
+1. Run `./deploy-fix.sh` to deploy all routing fixes
+2. Verify routing works by testing `/test-routing.html`
+3. Check Cloudflare Pages logs for any remaining issues
 
 ### 📊 **Performance & Scaling**
 
@@ -397,6 +435,13 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - Advanced security features
 
 ## Recent Updates
+
+### Routing Fixes & Multi-Layer Architecture (2025-08-21)
+- **Fixed /s/* Routing Issue**: Resolved critical issue where staged snapshots weren't displaying correctly
+- **Multi-Layer Routing**: Implemented `_redirects`, `_routes.json`, and `_worker.js` for reliable routing
+- **Automated Deployment**: Created `deploy-fix.sh` script for easy deployment of routing fixes
+- **Comprehensive Testing**: Added test-routing.html for debugging routing issues
+- **Enhanced Build Process**: Updated build scripts to include all routing configuration files
 
 ### Enhanced Project Detection & AI Instructions (2025-08-13)
 - **Universal Project Detection**: Extension now automatically detects monorepos, static sites, and unusual project structures
@@ -447,8 +492,6 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 
 - **One-Click Staging**: VS Code extension with single "Stage" command
 - **Universal Project Detection**: Automatically detects monorepos, static sites, and unusual project structures
-- **Local Build Execution**: Runs your project's build script using corepack
-- **Framework Support**: Vite (React/Vue/Svelte), CRA, SvelteKit (static), Next.js (export)
 - **AI Assistant Integration**: Copy-pasteable instructions for AI-assisted prototyping
 - **Secure Sharing**: Per-snapshot auto-generated passwords, editable, private by default
 - **Real-time Comments**: Inline sidebar with Turnstile anti-spam protection
@@ -456,6 +499,7 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 - **Billing Integration**: Stripe Checkout for Pro tier upgrades
 - **Web Dashboard**: Complete web interface for managing snapshots and settings
 - **Multi-Provider Authentication**: Email/password, Google OAuth, and passkey support
+- **Multi-Layer Routing**: Reliable /s/* routing with fallback strategies
 
 ## Architecture
 
@@ -473,7 +517,7 @@ Browser → GET /s/abc123/index.html → Worker → KV Check → R2 Fetch → Re
 
 ### Cloudflare Services
 - **Workers**: Backend API (Hono), authentication, snapshot lifecycle
-- **Pages**: Frontend hosting for dashboard and viewer
+- **Pages**: Frontend hosting for dashboard and viewer (with multi-layer routing)
 - **R2**: Object storage for snapshot assets
 - **KV**: User data, snapshot metadata, license records
 - **Durable Objects**: Real-time comments per snapshot
@@ -543,7 +587,11 @@ The system now supports three authentication methods:
 ## Deployment
 
 ### Critical Deployment Order
-**For extension updates, only deploy the web app:**
+**For routing fixes and general updates:**
+1. **Run Automated Script**: `./deploy-fix.sh` (recommended)
+2. **Or Manual Deployment**: Worker first, then web app
+
+**For extension updates only:**
 1. **Web App Only** - Extension is served directly from web app's public directory
 
 **For worker changes (API updates, etc.):**
@@ -554,24 +602,28 @@ The system now supports three authentication methods:
 - Extension downloads now come directly from web app (`/quickstage.vsix`)
 - Worker only handles API endpoints, not file serving
 - Extension updates only require web app deployment
+- Routing fixes require both worker and web app deployment
 
 ### Complete Deployment Process
+
+#### **Automated Deployment (Recommended)**
 ```bash
-# For extension updates only:
-cd apps/extension
-npm run release:full    # Creates VSIX and copies to web app public directory
-cd ../web
-pnpm build             # Builds web app with new extension
-cd ../../infra
-npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
+# Use the automated script for routing fixes
+./deploy-fix.sh
+```
+
+#### **Manual Deployment**
+```bash
+# For routing fixes and general updates:
+cd apps/extension && npm run release:full    # Creates VSIX and copies to web app public directory
+cd ../../infra && npx wrangler deploy        # Deploy worker with new version
+cd ../apps/web && pnpm build                 # Builds web app with new extension
+cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 
 # For worker changes:
-cd infra
-npx wrangler deploy    # Deploy worker changes
-cd apps/web
-pnpm build             # Build web app if needed
-cd ../../infra
-npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
+cd infra && npx wrangler deploy              # Deploy worker changes
+cd ../apps/web && pnpm build                 # Build web app if needed
+cd ../../infra && npx wrangler pages deploy ../apps/web/dist --project-name=quickstage
 ```
 
 ### Extension Build Commands
@@ -587,5 +639,17 @@ npm run package        # Runs build-manual.js (manual packaging)
 # Complete release workflow
 npm run release:full   # Bump version → Build → Package → Update Worker
 ```
+
+For detailed deployment instructions, see [VERSION_MANAGEMENT.md](apps/extension/VERSION_MANAGEMENT.md).
+
+### Routing Configuration
+The system now uses a **multi-layer routing approach** to ensure reliable `/s/*` routing:
+
+1. **`_redirects`**: Traditional Cloudflare Pages redirects
+2. **`_routes.json`**: Modern routing configuration  
+3. **`_worker.js`**: Pages Worker for programmatic routing
+4. **Pages Functions**: Backup routing method
+
+This ensures that snapshot requests are properly routed to your Worker even if one method fails.
 
 For detailed deployment instructions, see [VERSION_MANAGEMENT.md](apps/extension/VERSION_MANAGEMENT.md).

@@ -8,6 +8,6 @@ export default {
   },
   functions: {
     directory: 'apps/web/functions',
-  },
+  }
 };
 

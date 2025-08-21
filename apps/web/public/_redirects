@@ -1,0 +1,5 @@
+# Force redirect snapshot routes to the worker
+/s/* https://quickstage-worker.nbramia.workers.dev/s/:splat 200!
+
+# SPA fallback for all other routes
+/* /index.html 200

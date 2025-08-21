@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Routing Test</title>
+</head>
+<body>
+    <h1>Routing Test Page</h1>
+    <p>If you can see this page, the routing is working correctly.</p>
+    <p>This page should be accessible at: <code>/test-routing.html</code></p>
+    <p>And should NOT be accessible at: <code>/s/test-routing.html</code></p>
+    
+    <script>
+        console.log('Routing test page loaded successfully');
+        console.log('Current URL:', window.location.href);
+        console.log('Pathname:', window.location.pathname);
+    </script>
+</body>
+</html>
