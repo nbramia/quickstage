@@ -56,7 +56,7 @@ export default function Dashboard() {
   
   const checkForUpdates = async () => {
     try {
-      const response = await fetch('/api/extensions/version');
+      const response = await fetch('/extensions/version');
       if (response.ok) {
         const versionInfo = await response.json();
         setCurrentVersion(versionInfo.version);
@@ -113,6 +113,8 @@ export default function Dashboard() {
     try {
       const response = await api.post(`/snapshots/${snapshotId}/rotate-password`);
       // Show the new password to the user
+      console.log('Password rotated:', response.password);
+      // Show the new password to the user
       alert(`New password: ${response.password}`);
     } catch (err) {
       setError('Failed to rotate password');
@@ -136,8 +138,8 @@ export default function Dashboard() {
   const handleDownloadExtension = () => {
     // Primary download URL: direct from web app public directory
     const primaryUrl = `${window.location.origin}/quickstage.vsix`;
-    // Backup download URL: through Worker API with explicit headers
-    const backupUrl = `${window.location.origin}/api/extensions/download`;
+    // Backup download URL: through web app API
+    const backupUrl = `${window.location.origin}/extensions/download`;
     
     // Try to use File System Access API if available and custom location selected
     if (saveLocation === 'custom' && customPath && 'showSaveFilePicker' in window) {
@@ -165,7 +167,7 @@ export default function Dashboard() {
   const handleShowPATModal = async () => {
     try {
       // Load existing PATs
-      const response = await fetch('/api/tokens/list', { credentials: 'include' });
+      const response = await fetch('/tokens/list', { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setExistingPATs(data.pats || []);
@@ -180,7 +182,7 @@ export default function Dashboard() {
   const handleGeneratePAT = async () => {
     setIsGeneratingPAT(true);
     try {
-      const response = await fetch('/api/tokens/create', {
+      const response = await fetch('/tokens/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
@@ -190,7 +192,7 @@ export default function Dashboard() {
         const data = await response.json();
         setNewPAT(data.token);
         // Reload existing PATs
-        const listResponse = await fetch('/api/tokens/list', { credentials: 'include' });
+        const listResponse = await fetch('/tokens/list', { credentials: 'include' });
         if (listResponse.ok) {
           const listData = await listResponse.json();
           setExistingPATs(listData.pats || []);
@@ -207,14 +209,14 @@ export default function Dashboard() {
 
   const handleRevokePAT = async (patId: string) => {
     try {
-      const response = await fetch(`/api/tokens/${patId}`, {
+      const response = await fetch(`/tokens/${patId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
       
       if (response.ok) {
         // Reload existing PATs
-        const listResponse = await fetch('/api/tokens/list', { credentials: 'include' });
+        const listResponse = await fetch('/tokens/list', { credentials: 'include' });
         if (listResponse.ok) {
           const listData = await listResponse.json();
           setExistingPATs(listData.pats || []);

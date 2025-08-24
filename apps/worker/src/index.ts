@@ -972,6 +972,38 @@ app.post('/snapshots/:id/rotate-password', async (c: any) => {
   return c.json({ password: newPass });
 });
 
+// Add /api/snapshots/list route BEFORE the /api/snapshots/:id route to avoid conflicts
+app.get('/api/snapshots/list', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  
+  const listJson = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
+  const ids: string[] = JSON.parse(listJson);
+  
+  const snapshots = [];
+  for (const id of ids) {
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (metaRaw) {
+      try {
+        const meta = JSON.parse(metaRaw);
+        if (meta.expiresAt && meta.expiresAt > Date.now()) {
+          snapshots.push({
+            id: meta.id,
+            name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
+            createdAt: meta.createdAt,
+            expiresAt: meta.expiresAt,
+            password: meta.password,
+            isPublic: meta.isPublic || false,
+            viewCount: meta.viewCount || 0
+          });
+        }
+      } catch {}
+    }
+  }
+  
+  return c.json({ data: { snapshots } });
+});
+
 // API version of snapshot details endpoint (for Viewer component)
 app.get('/api/snapshots/:id', async (c: any) => {
   const id = c.req.param('id');
@@ -1690,36 +1722,7 @@ app.get('/api/me', async (c: any) => {
   return c.json({ user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt } });
 });
 
-app.get('/api/snapshots/list', async (c: any) => {
-  const uid = await getUidFromSession(c);
-  if (!uid) return c.json({ error: 'unauthorized' }, 401);
-  
-  const listJson = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
-  const ids: string[] = JSON.parse(listJson);
-  
-  const snapshots = [];
-  for (const id of ids) {
-    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-    if (metaRaw) {
-      try {
-        const meta = JSON.parse(metaRaw);
-        if (meta.expiresAt && meta.expiresAt > Date.now()) {
-          snapshots.push({
-            id: meta.id,
-            name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
-            createdAt: meta.createdAt,
-            expiresAt: meta.expiresAt,
-            password: meta.password,
-            isPublic: meta.isPublic || false,
-            viewCount: meta.viewCount || 0
-          });
-        }
-      } catch {}
-    }
-  }
-  
-  return c.json({ data: { snapshots } });
-});
+
 
 // Add missing /api endpoints for the extension
 app.post('/api/snapshots/create', async (c: any) => {
@@ -1858,6 +1861,95 @@ app.delete('/api/tokens/:tokenId', async (c: any) => {
   return c.json({ message: 'PAT revoked successfully' });
 });
 
+// Add tokens endpoints without /api prefix for web app compatibility
+app.post('/tokens/create', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  
+  // Generate a new PAT
+  const tokenId = generateIdBase62(16);
+  const token = `qs_pat_${tokenId}`;
+  const now = Date.now();
+  const expiresAt = now + (90 * 24 * 60 * 60 * 1000); // 90 days
+  
+  const patData = {
+    id: tokenId,
+    token,
+    userId: uid,
+    createdAt: now,
+    expiresAt,
+    lastUsed: null,
+    description: 'VS Code/Cursor Extension'
+  };
+  
+  // Store PAT in KV
+  await c.env.KV_USERS.put(`pat:${token}`, JSON.stringify(patData));
+  
+  // Add to user's PAT list
+  const patListJson = await c.env.KV_USERS.get(`user:${uid}:pats`) || '[]';
+  const patIds: string[] = JSON.parse(patListJson);
+  patIds.push(token);
+  await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(patIds));
+  
+  return c.json({ 
+    token, 
+    expiresAt,
+    message: 'Store this token securely. It will not be shown again.'
+  });
+});
+
+app.get('/tokens/list', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  
+  const patListJson = await c.env.KV_USERS.get(`user:${uid}:pats`) || '[]';
+  const patIds: string[] = JSON.parse(patListJson);
+  
+  const pats = [];
+  for (const patId of patIds) {
+    const patData = await c.env.KV_USERS.get(`pat:${patId}`);
+    if (patData) {
+      const pat = JSON.parse(patData);
+      // Don't return the full token, just metadata
+      pats.push({
+        id: pat.id,
+        createdAt: pat.createdAt,
+        expiresAt: pat.expiresAt,
+        lastUsed: pat.lastUsed,
+        description: pat.description
+      });
+    }
+  }
+  
+  return c.json({ pats });
+});
+
+app.delete('/tokens/:tokenId', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  
+  const tokenId = c.req.param('tokenId');
+  const fullToken = `qs_pat_${tokenId}`;
+  
+  // Verify ownership
+  const patData = await c.env.KV_USERS.get(`pat:${fullToken}`);
+  if (!patData) return c.json({ error: 'not_found' }, 404);
+  
+  const pat = JSON.parse(patData);
+  if (pat.userId !== uid) return c.json({ error: 'forbidden' }, 403);
+  
+  // Remove PAT
+  await c.env.KV_USERS.put(`pat:${fullToken}`, JSON.stringify(patData));
+  
+  // Remove from user's PAT list
+  const patListJson = await c.env.KV_USERS.get(`user:${uid}:pats`) || '[]';
+  const patIds: string[] = JSON.parse(patListJson);
+  const updatedPatIds = patIds.filter(id => id !== fullToken);
+  await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(updatedPatIds));
+  
+  return c.json({ message: 'PAT revoked successfully' });
+});
+
 // Helper function to get user ID from PAT
 async function getUidFromPAT(c: any, token: string): Promise<string | null> {
   const patData = await c.env.KV_USERS.get(`pat:${token}`);
@@ -1950,6 +2042,8 @@ app.post('/api/snapshots/finalize', async (c: any) => {
   return c.json({ ok: true });
 });
 
+
+
 // Add snapshot serving endpoint for /api/s/:id/*
 app.get('/api/s/:id/*', async (c: any) => {
   const id = c.req.param('id');
@@ -2015,6 +2109,57 @@ app.get('/api/extensions/version', async (c: any) => {
 
 // Backup VSIX download endpoint with explicit headers
 app.get('/api/extensions/download', async (c: any) => {
+  try {
+    // Fetch the VSIX from the web app's public directory
+    const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
+    
+    const response = await fetch(vsixUrl);
+    if (!response.ok) {
+      console.error('Failed to fetch VSIX from web app:', response.status);
+      return c.json({ error: 'download_unavailable' }, 500);
+    }
+    
+    const vsixData = await response.arrayBuffer();
+    
+    // Get version for dynamic filename
+    const versionInfo = getExtensionVersion();
+    const filename = `quickstage-${versionInfo.version}.vsix`;
+    
+    // Serve with explicit headers to ensure proper download
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/octet-stream');
+    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
+    headers.set('Content-Length', vsixData.byteLength.toString());
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    
+    return new Response(vsixData, { headers });
+    
+  } catch (error) {
+    console.error('Error serving VSIX download:', error);
+    return c.json({ error: 'download_failed' }, 500);
+  }
+});
+
+// Add extensions endpoints without /api prefix for web app compatibility
+app.get('/extensions/version', async (c: any) => {
+  try {
+    const versionInfo = getExtensionVersion();
+    return c.json({
+      version: versionInfo.version,
+      buildDate: versionInfo.buildDate,
+      checksum: 'direct-serve', // No longer serving VSIX content
+      downloadUrl: '/quickstage.vsix', // Direct from web app
+      filename: 'quickstage.vsix'
+    });
+  } catch (error) {
+    console.error('Error serving version info:', error);
+    return c.json({ error: 'version_info_unavailable' }, 500);
+  }
+});
+
+app.get('/extensions/download', async (c: any) => {
   try {
     // Fetch the VSIX from the web app's public directory
     const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
