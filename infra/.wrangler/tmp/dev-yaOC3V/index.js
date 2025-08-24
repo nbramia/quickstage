@@ -25859,7 +25859,7 @@ async function ensureUserByName(c, name) {
   if (user)
     return user;
   const uid = generateIdBase62(16);
-  user = { uid, createdAt: Date.now(), plan: "free", passkeys: [] };
+  user = { uid, createdAt: Date.now(), plan: "free", role: "user", passkeys: [] };
   await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
   await c.env.KV_USERS.put(`user:byname:${name}`, uid);
   return user;
@@ -25971,6 +25971,7 @@ app.post("/auth/register", async (c) => {
     uid,
     createdAt: Date.now(),
     plan: "free",
+    role: "user",
     passkeys: [],
     email,
     passwordHash: hashedPassword,

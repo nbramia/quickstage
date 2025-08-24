@@ -101,6 +101,7 @@ type UserRecord = {
   createdAt: number;
   lastLoginAt?: number;
   plan: 'free' | 'pro';
+  role: 'user' | 'admin' | 'superadmin';
   licenseKey?: string;
   email?: string;
   name?: string;
@@ -125,7 +126,7 @@ async function ensureUserByName(c: any, name: string): Promise<UserRecord> {
   let user = await getUserByName(c, name);
   if (user) return user;
   const uid = generateIdBase62(16);
-  user = { uid, createdAt: Date.now(), plan: 'free', passkeys: [] };
+  user = { uid, createdAt: Date.now(), plan: 'free', role: 'user', passkeys: [] };
   await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
   await c.env.KV_USERS.put(`user:byname:${name}`, uid);
   return user;
@@ -239,6 +240,7 @@ app.post('/auth/register', async (c: any) => {
     uid, 
     createdAt: Date.now(), 
     plan: 'free', 
+    role: 'user',
     passkeys: [],
     email,
     passwordHash: hashedPassword,
