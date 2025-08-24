@@ -471,36 +471,46 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-20">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900">QuickStage</h1>
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg mr-3">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                QuickStage
+              </h1>
             </div>
             
             <nav className="flex items-center space-x-8">
               <Link
                 to="/dashboard"
-                className="text-blue-600 border-b-2 border-blue-600 px-3 py-2 text-sm font-medium"
+                className="relative text-blue-600 px-4 py-2 text-sm font-semibold transition-colors"
               >
                 Dashboard
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full"></div>
               </Link>
               <Link
                 to="/settings"
-                className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
+                className="text-gray-600 hover:text-gray-900 px-4 py-2 text-sm font-medium transition-colors"
               >
                 Settings
               </Link>
               
               {/* User Menu */}
               <div className="flex items-center space-x-4">
-                <div className="text-sm text-gray-700">
-                  <span className="font-medium">{user?.plan === 'pro' ? 'Pro' : 'Free'}</span>
-                  <span className="text-gray-500 ml-2">Plan</span>
+                <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
+                  <div className="text-sm text-gray-700">
+                    <span className="font-semibold">{user?.plan === 'pro' ? '✨ Pro' : 'Free'}</span>
+                    <span className="text-gray-500 ml-2">Plan</span>
+                  </div>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 hover:shadow-md"
                 >
                   Sign Out
                 </button>
@@ -514,27 +524,40 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Welcome Section */}
         <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                  Welcome back!
-                </h2>
-                <p className="text-gray-600">
-                  Manage your staged snapshots and create new ones from VS Code.
+          <div className="bg-gradient-to-r from-white to-blue-50 rounded-2xl shadow-xl border border-blue-100 p-8">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-2 rounded-full">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    Welcome back!
+                  </h2>
+                </div>
+                <p className="text-lg text-gray-700 mb-4">
+                  Manage your staged snapshots and create new ones directly from VS Code or Cursor.
                 </p>
                 {user && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    User ID: {user.uid.slice(0, 8)}... • Member since {new Date(user.createdAt).toLocaleDateString()}
-                  </p>
+                  <div className="bg-white bg-opacity-60 backdrop-blur-sm rounded-lg p-4 inline-block">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-semibold">User ID:</span> {user.uid.slice(0, 8)}... • 
+                      <span className="font-semibold ml-2">Member since:</span> {new Date(user.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
                 )}
               </div>
               {user?.plan === 'free' && (
                 <Link
                   to="/settings"
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
                 >
-                  Go Pro
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  <span>Go Pro</span>
                 </Link>
               )}
             </div>
@@ -543,15 +566,25 @@ export default function Dashboard() {
 
         {/* Extension Download Section */}
         <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            <div>
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                   QuickStage Extension
                 </h2>
-                <p className="text-gray-600 mb-4">
+                <p className="text-gray-600">
                   Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
                 </p>
+              </div>
+            </div>
+            
+            <div className="space-y-6">
                 
                 {/* Update Notification */}
                 {currentVersion && (
@@ -609,113 +642,124 @@ export default function Dashboard() {
                 )}
                 
                 {/* Location Selection */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
                     Save Location
                   </label>
-                  <select
-                    value={saveLocation}
-                    onChange={(e) => handleLocationChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="downloads">Downloads Folder</option>
-                    <option value="vscode">VS Code Extensions Folder</option>
-                    <option value="cursor">Cursor Extensions Folder</option>
-                    <option value="custom">Custom Location...</option>
-                  </select>
-                  
-                  {/* Show platform-specific path info */}
-                  {saveLocation !== 'downloads' && saveLocation !== 'custom' && (
-                    <div className="mt-2 text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                      <strong>Suggested path:</strong> {getExtensionPaths()[saveLocation as keyof ReturnType<typeof getExtensionPaths>]}
-                      <br />
-                      <span className="text-gray-500">
-                        {getPlatformInfo().isWindows ? 'Windows' : getPlatformInfo().isMac ? 'macOS' : 'Linux'} detected
-                      </span>
-                    </div>
-                  )}
-                  
-                  {saveLocation === 'custom' && (
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        value={customPath}
-                        onChange={(e) => {
-                          setCustomPath(e.target.value);
-                          localStorage.setItem('quickstage-custom-path', e.target.value);
-                        }}
-                        placeholder="Enter custom path..."
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      />
-                      <button
-                        onClick={() => setShowLocationPicker(true)}
-                        className="mt-2 px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <select
+                        value={saveLocation}
+                        onChange={(e) => handleLocationChange(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                       >
-                        Browse...
-                      </button>
+                        <option value="downloads">📁 Downloads Folder</option>
+                        <option value="vscode">💻 VS Code Extensions Folder</option>
+                        <option value="cursor">🎯 Cursor Extensions Folder</option>
+                        <option value="custom">🔧 Custom Location...</option>
+                      </select>
                     </div>
-                  )}
+                    
+                    {/* Show platform-specific path info */}
+                    {saveLocation !== 'downloads' && saveLocation !== 'custom' && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start space-x-3">
+                          <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <div className="text-sm font-medium text-blue-800 mb-1">Suggested Path</div>
+                            <div className="text-xs text-blue-700 font-mono bg-blue-100 px-2 py-1 rounded">
+                              {getExtensionPaths()[saveLocation as keyof ReturnType<typeof getExtensionPaths>]}
+                            </div>
+                            <div className="text-xs text-blue-600 mt-1">
+                              {getPlatformInfo().isWindows ? '🪟 Windows' : getPlatformInfo().isMac ? '🍎 macOS' : '🐧 Linux'} detected
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {saveLocation === 'custom' && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-start space-x-3">
+                          <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-yellow-800 mb-2">Custom Location</div>
+                            <input
+                              type="text"
+                              value={customPath}
+                              onChange={(e) => {
+                                setCustomPath(e.target.value);
+                                localStorage.setItem('quickstage-custom-path', e.target.value);
+                              }}
+                              placeholder="Enter custom path or click Browse..."
+                              className="w-full px-3 py-2 border border-yellow-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                            />
+                            <button
+                              onClick={() => setShowLocationPicker(true)}
+                              className="mt-2 px-4 py-2 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded-md transition-colors flex items-center space-x-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                              </svg>
+                              <span>Browse...</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
-                <div className="flex items-center space-x-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                   <button
                     onClick={() => handleDownloadExtension()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
+                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <span>Download Extension</span>
+                    <span className="text-lg">Download Extension</span>
                   </button>
                   
-                  <button
-                    onClick={checkForUpdates}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-colors flex items-center space-x-2"
-                    title="Check for updates"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <span>Check Updates</span>
-                  </button>
                   <button
                     onClick={() => handleShowInstructions()}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
+                    className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-gray-300 flex items-center justify-center space-x-3"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <span>View Instructions</span>
+                    <span className="text-lg">View Instructions</span>
                   </button>
                   
-                              <button
-              onClick={() => handleShowAIInstructions()}
-              className="bg-purple-100 hover:bg-purple-200 text-purple-700 font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-              <span>AI Instructions</span>
-            </button>
+                  <button
+                    onClick={() => handleShowAIInstructions()}
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    <span className="text-lg">AI Instructions</span>
+                  </button>
 
-            <button
-              onClick={() => handleShowPATModal()}
-              className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-3 px-6 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <span>Manage PATs</span>
-            </button>
-                  <span className="text-sm text-gray-500">
+                  <button
+                    onClick={() => handleShowPATModal()}
+                    className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span className="text-lg">Manage PATs</span>
+                  </button>
+                </div>
+                
+                <div className="text-center">
+                  <span className="text-sm text-gray-500 bg-gray-100 px-4 py-2 rounded-full">
                     Version {currentVersion || 'Loading...'} • VS Code & Cursor Compatible
                   </span>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="text-sm text-blue-800 font-medium">Ready to Install</div>
-                  <div className="text-xs text-blue-600">All systems operational</div>
                 </div>
               </div>
             </div>
@@ -1104,9 +1148,6 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Views
                       </th>
-                                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Password
                         </th>
@@ -1143,15 +1184,6 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {snapshot.viewCount}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              snapshot.isPublic 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {snapshot.isPublic ? 'Public' : 'Private'}
-                            </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {snapshot.password ? (
