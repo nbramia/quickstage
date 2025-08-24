@@ -1,99 +1,107 @@
-// Cloudflare Pages Function to handle /s/* routes and proxy to the Worker
+// Simple Pages Function to handle /s/* routes
 export async function onRequest(context: any): Promise<Response> {
-  try {
-    const { request } = context;
-    const url = new URL(request.url);
-    
-    console.log('🚀 Pages Function /s/[[path]] invoked:', {
-      fullUrl: request.url,
-      pathname: url.pathname,
-      method: request.method,
-      headers: Object.fromEntries(request.headers.entries())
-    });
+  const { request } = context;
+  const url = new URL(request.url);
+  
+  // Serve the redirect page for all /s/* routes
+  const redirectPage = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickStage - Redirecting...</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background: #f5f5f5; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+        }
+        .container { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            max-width: 400px; 
+            width: 100%; 
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 1rem;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Redirecting to QuickStage...</h2>
+        <p>You will be redirected to your staged prototype in a moment.</p>
+        <p>If you're not redirected automatically, click the button below.</p>
+        <a href="#" id="redirect-btn" class="btn">Open Prototype</a>
+    </div>
 
-    // Get the full path after /s/
-    const fullPath = url.pathname;
-    const queryString = url.search;
-    
-    // Construct the Worker URL
-    const workerUrl = `https://quickstage-worker.nbramia.workers.dev${fullPath}${queryString}`;
-    console.log('🔄 Proxying to worker:', workerUrl);
+    <script>
+        // Extract the snapshot ID from the URL
+        const pathParts = window.location.pathname.split('/');
+        const snapshotId = pathParts[2]; // /s/abc123 -> abc123
+        
+        if (snapshotId) {
+            // Create the Worker URL
+            const workerUrl = \`https://quickstage-worker.nbramia.workers.dev/s/\${snapshotId}\`;
+            
+            // Set the button href
+            document.getElementById('redirect-btn').href = workerUrl;
+            
+            // Redirect after a short delay
+            setTimeout(() => {
+                window.location.href = workerUrl;
+            }, 1500);
+        } else {
+            document.querySelector('.container').innerHTML = \`
+                <h2>Invalid URL</h2>
+                <p>Please use a valid QuickStage snapshot URL.</p>
+                <a href="https://quickstage.tech" class="btn">Return to Dashboard</a>
+            \`;
+        }
+    </script>
+</body>
+</html>`;
 
-    // Create headers for the worker request, excluding problematic ones
-    const headers = new Headers();
-    for (const [key, value] of request.headers.entries()) {
-      // Skip headers that might cause issues with the proxy
-      if (!['host', 'origin', 'referer'].includes(key.toLowerCase())) {
-        headers.set(key, value);
-      }
+  return new Response(redirectPage, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
     }
-    
-    // Add our own headers
-    headers.set('x-forwarded-for', request.headers.get('cf-connecting-ip') || 'unknown');
-    headers.set('x-forwarded-proto', url.protocol.replace(':', ''));
-    headers.set('x-forwarded-host', url.host);
-
-    // Forward the request to the Worker
-    const workerRequest = new Request(workerUrl, {
-      method: request.method,
-      headers: headers,
-      body: request.body,
-      redirect: 'manual',
-    });
-
-    console.log('📤 Sending request to worker...');
-    
-    // Get response from Worker with timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-    
-    try {
-      const response = await fetch(workerRequest, {
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      console.log('📥 Worker response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
-      // Return the response directly
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      });
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      if (fetchError.name === 'AbortError') {
-        throw new Error('Worker request timed out');
-      }
-      throw fetchError;
-    }
-  } catch (error) {
-    console.error('❌ Pages Function error (/s/ proxy):', error);
-    
-    // Return a more helpful error response
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Full error details:', error);
-    
-    return new Response(
-      JSON.stringify({
-        error: 'Proxy error',
-        message: errorMessage,
-        timestamp: new Date().toISOString(),
-        path: context?.request?.url || 'unknown'
-      }),
-      {
-        status: 502,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
-        },
-      }
-    );
-  }
+  });
 }
