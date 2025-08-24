@@ -31,6 +31,9 @@ export default function Dashboard() {
   const [newPAT, setNewPAT] = useState('');
   const [existingPATs, setExistingPATs] = useState<any[]>([]);
   const [isGeneratingPAT, setIsGeneratingPAT] = useState(false);
+  const [filterType, setFilterType] = useState<'active' | 'all'>('active');
+  const [showSuccessMessage, setShowSuccessMessage] = useState('');
+  const [showErrorMessage, setShowErrorMessage] = useState('');
 
   useEffect(() => {
     loadSnapshots();
@@ -84,6 +87,31 @@ export default function Dashboard() {
     }
   };
 
+  // Filter snapshots based on filter type
+  const filteredSnapshots = snapshots.filter(snapshot => {
+    if (filterType === 'active') {
+      return new Date(snapshot.expiresAt) > new Date();
+    }
+    return true; // Show all snapshots
+  });
+
+  // Check if snapshot is expired
+  const isExpired = (expiresAt: string) => {
+    return new Date(expiresAt) <= new Date();
+  };
+
+  // Show success message
+  const showSuccess = (message: string) => {
+    setShowSuccessMessage(message);
+    setTimeout(() => setShowSuccessMessage(''), 3000);
+  };
+
+  // Show error message
+  const showError = (message: string) => {
+    setShowErrorMessage(message);
+    setTimeout(() => setShowErrorMessage(''), 3000);
+  };
+
   const handleLogout = () => {
     logout();
   };
@@ -93,8 +121,9 @@ export default function Dashboard() {
       await api.post(`/snapshots/${snapshotId}/extend`, { days: 7 });
       // Reload snapshots to get updated expiry dates
       loadSnapshots();
+      showSuccess('Snapshot extended successfully!');
     } catch (err) {
-      setError('Failed to extend snapshot');
+      showError('Failed to extend snapshot');
       console.error(err);
     }
   };
@@ -104,8 +133,9 @@ export default function Dashboard() {
       await api.post(`/snapshots/${snapshotId}/expire`);
       // Reload snapshots to get updated list
       loadSnapshots();
+      showSuccess('Snapshot expired successfully!');
     } catch (err) {
-      setError('Failed to expire snapshot');
+      showError('Failed to expire snapshot');
       console.error(err);
     }
   };
@@ -113,12 +143,20 @@ export default function Dashboard() {
   const handleRotatePassword = async (snapshotId: string) => {
     try {
       const response = await api.post(`/snapshots/${snapshotId}/rotate-password`);
-      // Show the new password to the user
-      console.log('Password rotated:', response.password);
-      // Show the new password to the user
-      alert(`New password: ${response.password}`);
+      const newPassword = response.password;
+      
+      // Copy to clipboard
+      try {
+        await navigator.clipboard.writeText(newPassword);
+        showSuccess('New password copied to clipboard!');
+      } catch (clipboardErr) {
+        showSuccess(`New password: ${newPassword}`);
+      }
+      
+      // Reload snapshots to get updated password
+      loadSnapshots();
     } catch (err) {
-      setError('Failed to rotate password');
+      showError('Failed to rotate password');
       console.error(err);
     }
   };
@@ -972,10 +1010,57 @@ Please create this prototype step by step, ensuring it's production-ready and ca
         <div className="px-4 sm:px-0">
           <div className="bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
-                Your Snapshots ({snapshots.length})
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Your Snapshots ({filteredSnapshots.length})
+                </h3>
+                
+                {/* Filter Toggle */}
+                <div className="flex items-center space-x-3">
+                  <span className="text-sm text-gray-600">Filter:</span>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setFilterType('active')}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                        filterType === 'active'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Active
+                    </button>
+                    <button
+                      onClick={() => setFilterType('all')}
+                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                        filterType === 'all'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      All
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Success Message */}
+            {showSuccessMessage && (
+              <div className="px-6 py-4">
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+                  {showSuccessMessage}
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {showErrorMessage && (
+              <div className="px-6 py-4">
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                  {showErrorMessage}
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="px-6 py-4">
@@ -1033,9 +1118,10 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {snapshots.map((snapshot) => {
+                    {filteredSnapshots.map((snapshot) => {
                       const daysUntilExpiry = getDaysUntilExpiry(snapshot.expiresAt);
                       const expiryColor = getExpiryColor(daysUntilExpiry);
+                      const expired = isExpired(snapshot.expiresAt);
                       
                       return (
                         <tr key={snapshot.id} className="hover:bg-gray-50">
@@ -1053,8 +1139,8 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                             {formatDate(snapshot.createdAt)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className={`text-sm ${expiryColor}`}>
-                              {daysUntilExpiry > 0 ? `${daysUntilExpiry} days` : 'Expired'}
+                            <div className={`text-sm ${expired ? 'text-red-600' : expiryColor}`}>
+                              {expired ? 'Expired' : `${daysUntilExpiry} days`}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1097,7 +1183,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                               onClick={() => handleExtendSnapshot(snapshot.id)}
                               className="text-gray-600 hover:text-gray-900 mr-2"
                             >
-                              Extend
+                              {expired ? 'Renew' : 'Extend'}
                             </button>
                             <button 
                               onClick={() => handleExpireSnapshot(snapshot.id)}

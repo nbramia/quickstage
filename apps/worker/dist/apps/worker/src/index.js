@@ -530,6 +530,7 @@ app.post('/snapshots/create', async (c) => {
         createdAt,
         expiresAt,
         passwordHash,
+        password: realPassword, // Store plain text password for display
         totalBytes: 0,
         files: [],
         views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
@@ -930,6 +931,7 @@ app.post('/snapshots/:id/rotate-password', async (c) => {
     const newPass = generatePassword(20);
     const saltHex = randomHex(8);
     meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
+    meta.password = newPass; // Store plain text password for display
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
     return c.json({ password: newPass });
 });
@@ -946,21 +948,22 @@ app.get('/api/snapshots/list', async (c) => {
         if (metaRaw) {
             try {
                 const meta = JSON.parse(metaRaw);
-                if (meta.expiresAt && meta.expiresAt > Date.now()) {
-                    snapshots.push({
-                        id: meta.id,
-                        name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
-                        createdAt: meta.createdAt,
-                        expiresAt: meta.expiresAt,
-                        password: meta.password,
-                        isPublic: meta.isPublic || false,
-                        viewCount: meta.viewCount || 0
-                    });
-                }
+                // Always include the snapshot, let the frontend handle filtering
+                snapshots.push({
+                    id: meta.id,
+                    name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
+                    createdAt: meta.createdAt,
+                    expiresAt: meta.expiresAt,
+                    password: meta.password || null,
+                    isPublic: meta.public || false,
+                    viewCount: meta.viewCount || 0
+                });
             }
             catch { }
         }
     }
+    // Sort snapshots by createdAt in descending order (newest first)
+    snapshots.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     return c.json({ data: { snapshots } });
 });
 // API version of snapshot details endpoint (for Viewer component)
@@ -1540,6 +1543,64 @@ app.get('/admin/purge-expired', async (c) => {
     // This route will be bound to CRON; iterate KV list
     // Cloudflare KV list requires pagination; for MVP, skip and rely on manual
     return c.json({ ok: true });
+});
+// Add /api prefixed routes for Cloudflare routing
+app.post('/api/snapshots/:id/extend', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const days = Number(body?.days || 1);
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'forbidden' }, 403);
+    const cap = DEFAULT_CAPS.maxDays;
+    const added = Math.min(Math.max(1, days || 1), cap);
+    meta.expiresAt += added * 24 * 60 * 60 * 1000;
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    return c.json({ ok: true, expiresAt: meta.expiresAt });
+});
+app.post('/api/snapshots/:id/expire', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const id = c.req.param('id');
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'forbidden' }, 403);
+    meta.status = 'expired';
+    meta.expiresAt = nowMs() - 1000;
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    // remove from index
+    const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
+    const ids = JSON.parse(listJson).filter((x) => x !== id);
+    await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+    return c.json({ ok: true });
+});
+app.post('/api/snapshots/:id/rotate-password', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const id = c.req.param('id');
+    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!metaRaw)
+        return c.json({ error: 'not_found' }, 404);
+    const meta = JSON.parse(metaRaw);
+    if (meta.ownerUid !== uid)
+        return c.json({ error: 'forbidden' }, 403);
+    const newPass = generatePassword(20);
+    const saltHex = randomHex(8);
+    meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
+    meta.password = newPass; // Store plain text password for display
+    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    return c.json({ password: newPass });
 });
 // Add /api prefixed routes for Cloudflare routing
 app.post('/api/auth/google', async (c) => {

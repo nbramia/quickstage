@@ -461,11 +461,16 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 - **Centralized Configuration**: Created `apps/web/src/config.ts` to centralize all URLs and configuration values
 - **Configurable Worker URLs**: Worker base URL is now configurable in one place for easy future clean URL implementation
 - **Dynamic Version Display**: Dashboard now shows actual extension version instead of hardcoded "0.0.1"
-- **Fixed Dashboard Buttons**: Extend, Expire, and New Password buttons now work properly
-- **Password Display Fix**: Dashboard now shows actual snapshot passwords instead of "No password"
+- **Fixed Dashboard Buttons**: Extend, Expire, and New Password buttons now work properly with proper `/api` prefixed endpoints
+- **Password Display Fix**: Dashboard now shows actual snapshot passwords for easy sharing (stored in plain text for casual sharing)
 - **Improved Sorting**: Snapshots are now sorted newest to oldest by default
 - **Route Conflict Resolution**: Fixed duplicate routes and routing precedence issues in Worker
 - **View URL Fix**: Dashboard View button now correctly links to Worker URLs instead of broken Pages routes
+- **Enhanced Filtering**: Added All/Active toggle filter to show all snapshots or only active ones
+- **Expired Snapshot Handling**: Expired snapshots now show "Expired" status and "Renew" button instead of "Extend"
+- **Visual Confirmations**: Added success/error message notifications for all dashboard actions
+- **Auto-clipboard Integration**: New passwords are automatically copied to clipboard when generated
+- **Consistent Password Generation**: Password rotation uses the same 20-character generation logic as original passwords
 
 ### Universal Commenting System & System Stabilization (2025-08-21)
 - **Added Universal Comments Overlay**: Every staged prototype now includes a commenting system
