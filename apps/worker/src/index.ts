@@ -8,6 +8,45 @@ import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, rand
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
 import { getExtensionVersion } from './version-info';
+
+// Helper function to increment unique view count
+async function incrementUniqueViewCount(c: any, snapshotId: string, meta: any) {
+  try {
+    // Get viewer fingerprint (IP + User-Agent + timestamp for deduplication)
+    const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+    const userAgent = c.req.header('user-agent') || 'unknown';
+    const now = Date.now();
+    
+    // Create a unique viewer identifier (hash of IP + User-Agent)
+    const viewerFingerprint = await sha256Hex(`${ip}:${userAgent}`);
+    
+    // Check if this viewer has already been counted for this snapshot
+    const viewerKey = `viewer:${snapshotId}:${viewerFingerprint}`;
+    const existingView = await c.env.KV_SNAPS.get(viewerKey);
+    
+    if (!existingView) {
+      // This is a new unique viewer
+      // Store viewer record with 24-hour expiration to prevent immediate re-counting
+      await c.env.KV_SNAPS.put(viewerKey, JSON.stringify({
+        ip,
+        userAgent,
+        timestamp: now,
+        snapshotId
+      }), { expirationTtl: 86400 }); // 24 hours
+      
+      // Increment view count
+      meta.viewCount = (meta.viewCount || 0) + 1;
+      await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(meta));
+      
+      console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.viewCount})`);
+    } else {
+      console.log(`👁️ Returning viewer for snapshot ${snapshotId}: ${ip} (not counted)`);
+    }
+  } catch (error) {
+    console.error('Error incrementing view count:', error);
+    // Don't fail the request if view counting fails
+  }
+}
 // Passkeys (WebAuthn)
 // @ts-ignore
 import {
@@ -895,7 +934,7 @@ app.get('/snapshots/list', async (c: any) => {
     expiresAt: m.expiresAt, 
     totalBytes: m.totalBytes, 
     status: m.status,
-    password: m.password || null,
+    password: m.password || (m.passwordHash ? 'Password protected' : null),
     public: m.public || false
   })) });
 });
@@ -951,10 +990,7 @@ app.post('/snapshots/:id/expire', async (c: any) => {
   meta.status = 'expired';
   meta.expiresAt = nowMs() - 1000;
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-  // remove from index
-  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
-  const ids: string[] = JSON.parse(listJson).filter((x: string) => x !== id);
-  await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+  // Don't remove from index - keep expired snapshots visible when "All" is selected
   return c.json({ ok: true });
 });
 
@@ -1015,7 +1051,7 @@ app.get('/api/snapshots/list', async (c: any) => {
           name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
           createdAt: meta.createdAt,
           expiresAt: meta.expiresAt,
-                      password: meta.password || null,
+                      password: meta.password || (meta.passwordHash ? 'Password protected' : null),
           isPublic: meta.public || false,
           viewCount: meta.viewCount || 0
         });
@@ -1149,6 +1185,9 @@ app.get('/s/:id', async (c: any) => {
       });
     }
   }
+  
+  // Increment view count for unique viewers
+  await incrementUniqueViewCount(c, id, meta);
   
   // Get the main index.html file
   const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
@@ -1445,6 +1484,9 @@ app.get('/snap/:id', async (c: any) => {
     }
   }
   
+  // Increment view count for unique viewers
+  await incrementUniqueViewCount(c, id, meta);
+  
   // Get the main index.html file
   const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
   if (!indexObj) {
@@ -1674,10 +1716,7 @@ app.post('/api/snapshots/:id/expire', async (c: any) => {
   meta.status = 'expired';
   meta.expiresAt = nowMs() - 1000;
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-  // remove from index
-  const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
-  const ids: string[] = JSON.parse(listJson).filter((x: string) => x !== id);
-  await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+  // Don't remove from index - keep expired snapshots visible when "All" is selected
   return c.json({ ok: true });
 });
 
@@ -1828,6 +1867,7 @@ app.post('/api/snapshots/create', async (c: any) => {
     createdAt: now,
     expiresAt,
     passwordHash,
+    password: realPassword, // Store plain text password for display
     totalBytes: 0,
     files: [],
     views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
@@ -2157,10 +2197,6 @@ app.get('/api/s/:id/*', async (c: any) => {
   
   if (!obj) return c.json({ error: 'file_not_found' }, 404);
   
-  // Increment view count
-  meta.viewCount = (meta.viewCount || 0) + 1;
-  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-  
   // Return file with appropriate headers
   const headers = new Headers();
   if (obj.httpMetadata?.contentType) {
@@ -2366,12 +2402,9 @@ async function purgeExpired(env: Bindings) {
               await env.R2_SNAPSHOTS.delete((objs.objects as any[]).map((o: any) => o.key as string));
             }
           } while (r2cursor);
-          await env.KV_SNAPS.delete(k.name);
-          if (meta.ownerUid) {
-            const listJson = (await env.KV_USERS.get(`user:${meta.ownerUid}:snapshots`)) || '[]';
-            const ids: string[] = (JSON.parse(listJson) as string[]).filter((x: string) => x !== id);
-            await env.KV_USERS.put(`user:${meta.ownerUid}:snapshots`, JSON.stringify(ids));
-          }
+          // Don't delete from KV - keep metadata for dashboard display
+          // Don't remove from user's list - keep expired snapshots visible when "All" is selected
+          // Only clean up R2 objects to save storage
         }
       } catch {}
     }

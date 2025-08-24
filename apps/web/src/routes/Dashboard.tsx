@@ -163,13 +163,11 @@ export default function Dashboard() {
 
   const handleCopyUrl = async (snapshotId: string) => {
     try {
-      const url = `${window.location.origin}/s/${snapshotId}`;
+      const url = config.getSnapshotUrl(snapshotId);
       await navigator.clipboard.writeText(url);
-      // Show a brief success message
-      setError(''); // Clear any existing errors
-      // You could add a success state here if you want
+      showSuccess('URL copied to clipboard!');
     } catch (err) {
-      setError('Failed to copy URL');
+      showError('Failed to copy URL');
       console.error(err);
     }
   };

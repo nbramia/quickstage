@@ -3,10 +3,45 @@ import { cors } from 'hono/cors';
 import { getCookie, setCookie } from 'hono/cookie';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
 import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
-import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex } from './utils';
+import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
 import { getExtensionVersion } from './version-info';
+// Helper function to increment unique view count
+async function incrementUniqueViewCount(c, snapshotId, meta) {
+    try {
+        // Get viewer fingerprint (IP + User-Agent + timestamp for deduplication)
+        const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+        const userAgent = c.req.header('user-agent') || 'unknown';
+        const now = Date.now();
+        // Create a unique viewer identifier (hash of IP + User-Agent)
+        const viewerFingerprint = await sha256Hex(`${ip}:${userAgent}`);
+        // Check if this viewer has already been counted for this snapshot
+        const viewerKey = `viewer:${snapshotId}:${viewerFingerprint}`;
+        const existingView = await c.env.KV_SNAPS.get(viewerKey);
+        if (!existingView) {
+            // This is a new unique viewer
+            // Store viewer record with 24-hour expiration to prevent immediate re-counting
+            await c.env.KV_SNAPS.put(viewerKey, JSON.stringify({
+                ip,
+                userAgent,
+                timestamp: now,
+                snapshotId
+            }), { expirationTtl: 86400 }); // 24 hours
+            // Increment view count
+            meta.viewCount = (meta.viewCount || 0) + 1;
+            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(meta));
+            console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.viewCount})`);
+        }
+        else {
+            console.log(`👁️ Returning viewer for snapshot ${snapshotId}: ${ip} (not counted)`);
+        }
+    }
+    catch (error) {
+        console.error('Error incrementing view count:', error);
+        // Don't fail the request if view counting fails
+    }
+}
 // Passkeys (WebAuthn)
 // @ts-ignore
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse, } from '@simplewebauthn/server';
@@ -833,7 +868,7 @@ app.get('/snapshots/list', async (c) => {
             expiresAt: m.expiresAt,
             totalBytes: m.totalBytes,
             status: m.status,
-            password: m.password || null,
+            password: m.password || (m.passwordHash ? 'Password protected' : null),
             public: m.public || false
         })) });
 });
@@ -890,10 +925,7 @@ app.post('/snapshots/:id/expire', async (c) => {
     meta.status = 'expired';
     meta.expiresAt = nowMs() - 1000;
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-    // remove from index
-    const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
-    const ids = JSON.parse(listJson).filter((x) => x !== id);
-    await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+    // Don't remove from index - keep expired snapshots visible when "All" is selected
     return c.json({ ok: true });
 });
 // Extend
@@ -954,7 +986,7 @@ app.get('/api/snapshots/list', async (c) => {
                     name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
                     createdAt: meta.createdAt,
                     expiresAt: meta.expiresAt,
-                    password: meta.password || null,
+                    password: meta.password || (meta.passwordHash ? 'Password protected' : null),
                     isPublic: meta.public || false,
                     viewCount: meta.viewCount || 0
                 });
@@ -1081,6 +1113,8 @@ app.get('/s/:id', async (c) => {
             });
         }
     }
+    // Increment view count for unique viewers
+    await incrementUniqueViewCount(c, id, meta);
     // Get the main index.html file
     const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
     if (!indexObj) {
@@ -1361,6 +1395,8 @@ app.get('/snap/:id', async (c) => {
             return c.text('Password required', 401);
         }
     }
+    // Increment view count for unique viewers
+    await incrementUniqueViewCount(c, id, meta);
     // Get the main index.html file
     const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
     if (!indexObj) {
@@ -1578,10 +1614,7 @@ app.post('/api/snapshots/:id/expire', async (c) => {
     meta.status = 'expired';
     meta.expiresAt = nowMs() - 1000;
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
-    // remove from index
-    const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
-    const ids = JSON.parse(listJson).filter((x) => x !== id);
-    await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+    // Don't remove from index - keep expired snapshots visible when "All" is selected
     return c.json({ ok: true });
 });
 app.post('/api/snapshots/:id/rotate-password', async (c) => {
@@ -1717,6 +1750,7 @@ app.post('/api/snapshots/create', async (c) => {
         createdAt: now,
         expiresAt,
         passwordHash,
+        password: realPassword, // Store plain text password for display
         totalBytes: 0,
         files: [],
         views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
@@ -1999,9 +2033,6 @@ app.get('/api/s/:id/*', async (c) => {
     const obj = await c.env.R2_SNAPSHOTS.get(key);
     if (!obj)
         return c.json({ error: 'file_not_found' }, 404);
-    // Increment view count
-    meta.viewCount = (meta.viewCount || 0) + 1;
-    await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
     // Return file with appropriate headers
     const headers = new Headers();
     if (obj.httpMetadata?.contentType) {
@@ -2181,12 +2212,9 @@ async function purgeExpired(env) {
                             await env.R2_SNAPSHOTS.delete(objs.objects.map((o) => o.key));
                         }
                     } while (r2cursor);
-                    await env.KV_SNAPS.delete(k.name);
-                    if (meta.ownerUid) {
-                        const listJson = (await env.KV_USERS.get(`user:${meta.ownerUid}:snapshots`)) || '[]';
-                        const ids = JSON.parse(listJson).filter((x) => x !== id);
-                        await env.KV_USERS.put(`user:${meta.ownerUid}:snapshots`, JSON.stringify(ids));
-                    }
+                    // Don't delete from KV - keep metadata for dashboard display
+                    // Don't remove from user's list - keep expired snapshots visible when "All" is selected
+                    // Only clean up R2 objects to save storage
                 }
             }
             catch { }

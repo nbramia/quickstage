@@ -471,6 +471,10 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 - **Visual Confirmations**: Added success/error message notifications for all dashboard actions
 - **Auto-clipboard Integration**: New passwords are automatically copied to clipboard when generated
 - **Consistent Password Generation**: Password rotation uses the same 20-character generation logic as original passwords
+- **Fixed Expired Snapshot Visibility**: Expired snapshots now remain visible when "All" filter is selected (fixed cron job cleanup)
+- **Improved Password Storage**: All snapshot creation endpoints now consistently store plain text passwords for display
+- **Cleaner Password Display**: Changed "Password protected (original not stored)" to just "Password protected" for better UX
+- **Fixed View Counter**: Implemented unique viewer tracking that counts distinct visitors instead of raw page loads
 
 ### Universal Commenting System & System Stabilization (2025-08-21)
 - **Added Universal Comments Overlay**: Every staged prototype now includes a commenting system
