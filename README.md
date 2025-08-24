@@ -457,6 +457,16 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 
 ## Recent Updates
 
+### Dashboard Functionality & Configuration Improvements (2025-08-24)
+- **Centralized Configuration**: Created `apps/web/src/config.ts` to centralize all URLs and configuration values
+- **Configurable Worker URLs**: Worker base URL is now configurable in one place for easy future clean URL implementation
+- **Dynamic Version Display**: Dashboard now shows actual extension version instead of hardcoded "0.0.1"
+- **Fixed Dashboard Buttons**: Extend, Expire, and New Password buttons now work properly
+- **Password Display Fix**: Dashboard now shows actual snapshot passwords instead of "No password"
+- **Improved Sorting**: Snapshots are now sorted newest to oldest by default
+- **Route Conflict Resolution**: Fixed duplicate routes and routing precedence issues in Worker
+- **View URL Fix**: Dashboard View button now correctly links to Worker URLs instead of broken Pages routes
+
 ### Universal Commenting System & System Stabilization (2025-08-21)
 - **Added Universal Comments Overlay**: Every staged prototype now includes a commenting system
 - **Top-Right Comments Button**: Blue "💬 Comments" button appears on all staged prototypes (after password entry)
@@ -675,15 +685,56 @@ npm run package        # Runs build-manual.js (manual packaging)
 npm run release:full   # Bump version → Build → Package → Update Worker
 ```
 
+### **Configuration File Structure**
+The main configuration file `apps/web/src/config.ts` contains:
+
+```typescript
+export const config = {
+  // Worker API base URL - change this when you get clean URLs working
+  WORKER_BASE_URL: 'https://quickstage-worker.nbramia.workers.dev',
+  
+  // Web app base URL
+  WEB_BASE_URL: 'https://quickstage.tech',
+  
+  // API endpoints
+  API_BASE_URL: '/api',
+  
+  // Snapshot viewer URL template
+  getSnapshotUrl: (snapshotId: string) => `${config.WORKER_BASE_URL}/s/${snapshotId}`,
+  
+  // Extension download URL
+  EXTENSION_DOWNLOAD_URL: '/quickstage.vsix',
+  
+  // Version info endpoint
+  VERSION_INFO_URL: '/api/extensions/version'
+};
+```
+
+**To implement clean URLs in the future:**
+1. Update `WORKER_BASE_URL` in `config.ts`
+2. All components automatically use the new URLs
+3. No need to search and replace throughout the codebase
+
 For detailed deployment instructions, see [VERSION_MANAGEMENT.md](apps/extension/VERSION_MANAGEMENT.md).
 
 ### Routing Configuration
-The system now uses a **direct Worker approach** for maximum reliability:
+### **Configuration System**
+The system now uses a centralized configuration approach for easy maintenance and future improvements:
+
+1. **Centralized URLs**: All URLs are defined in `apps/web/src/config.ts`
+2. **Easy Clean URL Migration**: When you implement clean URLs, change only one value in the config
+3. **Consistent Configuration**: All components use the same configuration source
+4. **Future-Proof**: Easy to switch between Worker URLs and clean URLs
+
+### **Current Routing Strategy**
+The system currently uses a **direct Worker approach** for maximum reliability:
 
 1. **Extension generates URLs**: Directly to `https://quickstage-worker.nbramia.workers.dev/s/abc123`
 2. **No Pages routing**: Bypasses Cloudflare Pages routing complexity
 3. **Direct Worker access**: Ensures 100% reliability for snapshot serving
 4. **Simplified architecture**: Fewer moving parts, easier to maintain
+
+**Future Clean URL Implementation**: When you're ready to implement clean URLs, simply update the `WORKER_BASE_URL` in `apps/web/src/config.ts` and all components will automatically use the new URLs.
 
 This approach prioritizes functionality over URL aesthetics, ensuring staged prototypes always work reliably.
 

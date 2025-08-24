@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
+import config from '../config';
 
 type Snapshot = {
   id: string;
@@ -56,7 +57,7 @@ export default function Dashboard() {
   
   const checkForUpdates = async () => {
     try {
-      const response = await fetch('/extensions/version');
+      const response = await fetch(config.VERSION_INFO_URL);
       if (response.ok) {
         const versionInfo = await response.json();
         setCurrentVersion(versionInfo.version);
@@ -137,9 +138,9 @@ export default function Dashboard() {
 
   const handleDownloadExtension = () => {
     // Primary download URL: direct from web app public directory
-    const primaryUrl = `${window.location.origin}/quickstage.vsix`;
+    const primaryUrl = `${window.location.origin}${config.EXTENSION_DOWNLOAD_URL}`;
     // Backup download URL: through web app API
-    const backupUrl = `${window.location.origin}/extensions/download`;
+    const backupUrl = `${window.location.origin}${config.API_BASE_URL}/extensions/download`;
     
     // Try to use File System Access API if available and custom location selected
     if (saveLocation === 'custom' && customPath && 'showSaveFilePicker' in window) {
@@ -167,7 +168,7 @@ export default function Dashboard() {
   const handleShowPATModal = async () => {
     try {
       // Load existing PATs
-      const response = await fetch('/tokens/list', { credentials: 'include' });
+      const response = await fetch(`${config.API_BASE_URL}/tokens/list`, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         setExistingPATs(data.pats || []);
@@ -671,7 +672,7 @@ export default function Dashboard() {
               <span>Manage PATs</span>
             </button>
                   <span className="text-sm text-gray-500">
-                    Version 0.0.1 • VS Code & Cursor Compatible • Consistent Naming
+                    Version {currentVersion || 'Loading...'} • VS Code & Cursor Compatible
                   </span>
                 </div>
               </div>
@@ -1079,7 +1080,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <a
-                              href={`/s/${snapshot.id}`}
+                              href={config.getSnapshotUrl(snapshot.id)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-900 mr-2"

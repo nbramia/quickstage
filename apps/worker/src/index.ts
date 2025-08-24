@@ -868,16 +868,35 @@ app.post('/snapshots/finalize', async (c: any) => {
   return c.json({ url: `${c.env.PUBLIC_BASE_URL}/s/${id}`, password: 'hidden' });
 });
 
-// List snapshots (compact)
+
+
+
+  
+
+
+// Add /snapshots/list route BEFORE /snapshots/:id to avoid conflicts
 app.get('/snapshots/list', async (c: any) => {
   const uid = await getUidFromSession(c);
   if (!uid) return c.json({ error: 'unauthorized' }, 401);
   const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
   const ids: string[] = JSON.parse(listJson);
+  
   const metas = await Promise.all(
     ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')),
   );
-  return c.json({ snapshots: metas.map((m) => ({ id: m.id, createdAt: m.createdAt, expiresAt: m.expiresAt, totalBytes: m.totalBytes, status: m.status })) });
+  
+  // Sort snapshots by createdAt in descending order (newest first)
+  const sortedMetas = metas.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  
+  return c.json({ snapshots: sortedMetas.map((m) => ({ 
+    id: m.id, 
+    createdAt: m.createdAt, 
+    expiresAt: m.expiresAt, 
+    totalBytes: m.totalBytes, 
+    status: m.status,
+    password: m.password || null,
+    public: m.public || false
+  })) });
 });
 
 // Get individual snapshot details
@@ -971,6 +990,8 @@ app.post('/snapshots/:id/rotate-password', async (c: any) => {
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
   return c.json({ password: newPass });
 });
+
+
 
 // Add /api/snapshots/list route BEFORE the /api/snapshots/:id route to avoid conflicts
 app.get('/api/snapshots/list', async (c: any) => {
@@ -1860,6 +1881,10 @@ app.delete('/api/tokens/:tokenId', async (c: any) => {
   
   return c.json({ message: 'PAT revoked successfully' });
 });
+
+
+
+
 
 // Add tokens endpoints without /api prefix for web app compatibility
 app.post('/tokens/create', async (c: any) => {

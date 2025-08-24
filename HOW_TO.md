@@ -36,7 +36,7 @@
 - **Be direct** - Nathan appreciates straightforward answers
 - **Show your work** - explain your reasoning
 - **Admit uncertainty** - if you're not sure, say so
-- **Provide clear next steps** - always give actionable guidance
+- **Provide clear next steps** - always give actionable guidance. Always include how I should test, and if I need to e.g. push to Github to redeploy, reinstall the VSIX, just reload the webpage, etc.
 
 ### **Debugging Preferences**
 - **Use `curl` commands** for testing API endpoints

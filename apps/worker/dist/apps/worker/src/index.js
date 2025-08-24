@@ -816,7 +816,7 @@ app.post('/snapshots/finalize', async (c) => {
     }
     return c.json({ url: `${c.env.PUBLIC_BASE_URL}/s/${id}`, password: 'hidden' });
 });
-// List snapshots (compact)
+// Add /snapshots/list route BEFORE /snapshots/:id to avoid conflicts
 app.get('/snapshots/list', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
@@ -824,7 +824,17 @@ app.get('/snapshots/list', async (c) => {
     const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
     const ids = JSON.parse(listJson);
     const metas = await Promise.all(ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')));
-    return c.json({ snapshots: metas.map((m) => ({ id: m.id, createdAt: m.createdAt, expiresAt: m.expiresAt, totalBytes: m.totalBytes, status: m.status })) });
+    // Sort snapshots by createdAt in descending order (newest first)
+    const sortedMetas = metas.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return c.json({ snapshots: sortedMetas.map((m) => ({
+            id: m.id,
+            createdAt: m.createdAt,
+            expiresAt: m.expiresAt,
+            totalBytes: m.totalBytes,
+            status: m.status,
+            password: m.password || null,
+            public: m.public || false
+        })) });
 });
 // Get individual snapshot details
 app.get('/snapshots/:id', async (c) => {
