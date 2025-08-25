@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from '../api';
+import { api, setSessionToken } from '../api';
 
 type UserPlan = 'free' | 'pro';
 
@@ -8,6 +8,7 @@ interface User {
   email: string;
   name: string;
   plan: UserPlan;
+  role: 'user' | 'admin' | 'superadmin';
   createdAt: number;
   lastLoginAt?: number;
   hasPasskeys?: boolean;
@@ -19,6 +20,14 @@ interface User {
     counter: number;
     transports?: string[];
   }>;
+  // Subscription information
+  subscriptionStatus?: 'none' | 'trial' | 'active' | 'cancelled' | 'past_due';
+  subscriptionDisplay?: string;
+  trialEndsAt?: number;
+  nextBillingDate?: number;
+  canAccessPro?: boolean;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
 }
 
 interface AuthContextType {
@@ -36,6 +45,7 @@ interface AuthContextType {
   updateProfile: (updates: { name?: string; email?: string }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   removePasskey: (credentialId: string) => Promise<void>;
+  cancelSubscription: () => Promise<{ ok: boolean; message?: string; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -98,7 +108,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       const response = await api.post('/auth/login', { email, password });
       
-      if (response.user) {
+      if (response.ok && response.user) {
+        // Store session token for cross-origin requests
+        if (response.sessionToken) {
+          setSessionToken(response.sessionToken);
+        }
         setUser(response.user);
       } else {
         await refreshUser();
@@ -119,7 +133,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       const response = await api.post('/auth/google', { idToken });
       
-      if (response.user) {
+      if (response.ok && response.user) {
+        // Store session token for cross-origin requests
+        if (response.sessionToken) {
+          setSessionToken(response.sessionToken);
+        }
         setUser(response.user);
       } else {
         await refreshUser();
@@ -140,7 +158,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       const response = await api.post('/auth/register', { email, password, name });
       
-      if (response.user) {
+      if (response.ok && response.user) {
+        // Store session token for cross-origin requests
+        if (response.sessionToken) {
+          setSessionToken(response.sessionToken);
+        }
         setUser(response.user);
       } else {
         await refreshUser();
@@ -164,8 +186,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Logout error:', error);
       // Continue with logout even if backend call fails
     } finally {
-      // Clear session by setting cookie to expired
-      document.cookie = 'ps_sess=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      // Clear session token only
+      setSessionToken(null);
       setUser(null);
       setError(null);
     }
@@ -215,15 +237,38 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const cancelSubscription = async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const response = await api.post('/billing/cancel');
+      if (response.ok) {
+        await refreshUser();
+        return { ok: true, message: response.message || 'Subscription cancelled successfully.' };
+      } else {
+        return { ok: false, error: response.message || 'Failed to cancel subscription.' };
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || 'Subscription cancellation failed';
+      setError(errorMessage);
+      return { ok: false, error: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const clearError = () => {
     setError(null);
   };
 
   useEffect(() => {
-    // Check if user is already authenticated
-    if (document.cookie.includes('ps_sess=')) {
+    // Check if user is already authenticated via localStorage token
+    const existingToken = localStorage.getItem('quickstage_session_token');
+    if (existingToken) {
+      // Token exists, try to refresh user data
       refreshUser();
     } else {
+      // No token found, user is not authenticated
       setLoading(false);
     }
   }, []);
@@ -243,6 +288,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateProfile,
     changePassword,
     removePasskey,
+    cancelSubscription,
   };
 
   return (

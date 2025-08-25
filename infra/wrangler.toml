@@ -2,6 +2,14 @@ name = "quickstage-worker"
 main = "../apps/worker/src/index.ts"
 compatibility_date = "2024-05-12"
 
+# Stripe configuration
+[vars]
+STRIPE_PRICE_ID = "price_1RuSJcPDkQopAc5hGO0qLNvU"  # Your $6/mo price ID
+
+# Stripe secrets (set these with: wrangler secret put STRIPE_SECRET_KEY)
+# wrangler secret put STRIPE_SECRET_KEY
+# wrangler secret put STRIPE_WEBHOOK_SECRET
+
 # Custom domain for clean snapshot URLs
 [triggers.custom_domains]
 domain = "snap.quickstage.tech"

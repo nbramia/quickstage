@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [filterType, setFilterType] = useState<'active' | 'all'>('active');
   const [showSuccessMessage, setShowSuccessMessage] = useState('');
   const [showErrorMessage, setShowErrorMessage] = useState('');
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
 
   useEffect(() => {
     loadSnapshots();
@@ -66,8 +67,8 @@ export default function Dashboard() {
 
   const loadSnapshots = async () => {
     try {
-      const response = await api.get('/snapshots/list');
-      setSnapshots(response.data.snapshots || []);
+      const response = await api.get('/api/snapshots/list');
+      setSnapshots(response.snapshots || []);
     } catch (err) {
       setError('Failed to load snapshots');
       console.error(err);
@@ -101,13 +102,86 @@ export default function Dashboard() {
     setTimeout(() => setShowErrorMessage(''), 3000);
   };
 
+  // Billing functions
+  const handleUpgradeToPro = async () => {
+    try {
+      setIsLoadingBilling(true);
+      const response = await api.post('/billing/checkout');
+      if (response.url) {
+        window.location.href = response.url;
+      }
+    } catch (error: any) {
+      showError(error.message || 'Failed to start checkout');
+    } finally {
+      setIsLoadingBilling(false);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      setIsLoadingBilling(true);
+      const response = await api.post('/billing/portal');
+      if (response.url) {
+        window.location.href = response.url;
+      }
+    } catch (error: any) {
+      showError(error.message || 'Failed to open billing portal');
+    } finally {
+      setIsLoadingBilling(false);
+    }
+  };
+
+  const getSubscriptionStatus = () => {
+    if (!user) return 'None';
+    
+    // Use the subscriptionDisplay field from the user object
+    return user.subscriptionDisplay || 'Pro';
+  };
+
+  const getSubscriptionStatusColor = (status: string) => {
+    switch (status) {
+      case 'Pro':
+        return 'text-green-600 bg-green-100';
+      case 'Pro (Trial)':
+        return 'text-blue-600 bg-blue-100';
+      case 'Pro (Cancelled)':
+        return 'text-orange-600 bg-orange-100';
+      case 'Pro (Past Due)':
+        return 'text-red-600 bg-red-100';
+      default:
+        return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const canUpgrade = () => {
+    // Superadmin accounts never need to upgrade
+    if (user?.role === 'superadmin') return false;
+    
+    // Trial users don't need to upgrade - they already have Pro access
+    if (user?.subscriptionStatus === 'trial') return false;
+    
+    // User can upgrade if they have no subscription status or are on a cancelled/past due subscription
+    return user && (!user.subscriptionStatus || 
+                   user.subscriptionStatus === 'none' || 
+                   user.subscriptionStatus === 'cancelled' || 
+                   user.subscriptionStatus === 'past_due');
+  };
+
+  const canManageBilling = () => {
+    // Superadmin accounts don't have billing to manage
+    if (user?.role === 'superadmin') return false;
+    
+    // User can manage billing if they have an active subscription or trial
+    return user && (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trial');
+  };
+
   const handleLogout = () => {
     logout();
   };
 
   const handleExtendSnapshot = async (snapshotId: string) => {
     try {
-      await api.post(`/snapshots/${snapshotId}/extend`, { days: 7 });
+      await api.post(`/api/snapshots/${snapshotId}/extend`, { days: 7 });
       // Reload snapshots to get updated expiry dates
       loadSnapshots();
       showSuccess('Snapshot extended successfully!');
@@ -119,7 +193,7 @@ export default function Dashboard() {
 
   const handleExpireSnapshot = async (snapshotId: string) => {
     try {
-      await api.post(`/snapshots/${snapshotId}/expire`);
+      await api.post(`/api/snapshots/${snapshotId}/expire`);
       // Reload snapshots to get updated list
       loadSnapshots();
       showSuccess('Snapshot expired successfully!');
@@ -131,7 +205,7 @@ export default function Dashboard() {
 
   const handleRotatePassword = async (snapshotId: string) => {
     try {
-      const response = await api.post(`/snapshots/${snapshotId}/rotate-password`);
+      const response = await api.post(`/api/snapshots/${snapshotId}/rotate-password`);
       const newPassword = response.password;
       
       // Copy to clipboard
@@ -273,6 +347,23 @@ export default function Dashboard() {
     }
   };
 
+  const copyPasswordToClipboard = async (password: string) => {
+    try {
+      await navigator.clipboard.writeText(password);
+      showSuccess('Password copied to clipboard!');
+    } catch (err) {
+      console.error('Failed to copy password to clipboard:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = password;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showSuccess('Password copied to clipboard!');
+    }
+  };
+
 
   
   const downloadToDefaultLocation = async (primaryUrl: string, backupUrl?: string) => {
@@ -380,12 +471,20 @@ export default function Dashboard() {
               >
                 Settings
               </Link>
+              {user?.role === 'superadmin' && (
+                <Link
+                  to="/admin"
+                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 hover:shadow-md"
+                >
+                  🛡️ Admin Panel
+                </Link>
+              )}
               
               {/* User Menu */}
               <div className="flex items-center space-x-4">
                 <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
                   <div className="text-sm text-gray-700">
-                    <span className="font-semibold">{user?.plan === 'pro' ? '✨ Pro' : 'Free'}</span>
+                    <span className="font-semibold">{user?.subscriptionDisplay || 'Pro'}</span>
                     <span className="text-gray-500 ml-2">Plan</span>
                   </div>
                 </div>
@@ -421,16 +520,9 @@ export default function Dashboard() {
                 <p className="text-lg text-gray-700 mb-4">
                   Manage your staged snapshots and create new ones directly from VS Code or Cursor.
                 </p>
-                {user && (
-                  <div className="bg-white bg-opacity-60 backdrop-blur-sm rounded-lg p-4 inline-block">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-semibold">User ID:</span> {user.uid.slice(0, 8)}... • 
-                      <span className="font-semibold ml-2">Member since:</span> {new Date(user.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                )}
+
               </div>
-              {user?.plan === 'free' && (
+              {canUpgrade() && (
                 <Link
                   to="/settings"
                   className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
@@ -444,6 +536,127 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Account Information Section - Only show for users who need to upgrade */}
+        {canUpgrade() && (
+          <div className="px-4 sm:px-0 mb-8">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+              <div className="flex items-center space-x-3">
+                <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    Account Information
+                  </h2>
+                  <p className="text-gray-600">
+                    {user?.subscriptionDisplay || 'Pro'} • {user?.role === 'admin' ? 'Admin' : user?.role === 'superadmin' ? 'Super Admin' : 'User'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Billing Actions */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Billing & Subscription</h3>
+                
+                {/* Only show billing actions if user can upgrade or manage billing */}
+                {(canUpgrade() || canManageBilling()) ? (
+                  <div className="flex flex-wrap gap-3">
+                    {canUpgrade() && (
+                      <button
+                        onClick={handleUpgradeToPro}
+                        disabled={isLoadingBilling}
+                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {isLoadingBilling ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <span>✨ Upgrade to Pro</span>
+                            <span className="ml-2 text-xs">$6/month</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    
+                    {canManageBilling() && (
+                      <button
+                        onClick={handleManageBilling}
+                        disabled={isLoadingBilling}
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {isLoadingBilling ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                            Loading...
+                          </>
+                        ) : (
+                          'Manage Billing'
+                        )}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    {user?.subscriptionStatus === 'cancelled' ? (
+                      'Your subscription has been cancelled. You will retain access until the end of your current billing period.'
+                    ) : user?.subscriptionStatus === 'past_due' ? (
+                      'Your subscription payment is past due. Please update your payment method to continue access.'
+                    ) : (
+                      'Contact support to manage your subscription'
+                    )}
+                  </div>
+                )}
+                
+                {/* Trial Info */}
+                {user?.subscriptionStatus === 'trial' && user?.trialEndsAt && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-blue-800">
+                          <strong>Free Trial Active:</strong> You have access to all Pro features until{' '}
+                          {new Date(user.trialEndsAt).toLocaleDateString()}. 
+                          Add a payment method to continue after your trial ends.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Active Subscription Info */}
+                {user?.subscriptionStatus === 'active' && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                    <div className="flex">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm text-green-800">
+                          <strong>Pro Subscription Active:</strong> You have full access to all Pro features.
+                          {user.nextBillingDate && (
+                            <> Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Extension Download Section */}
         <div className="px-4 sm:px-0 mb-8">
@@ -996,11 +1209,17 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900">
-                                {snapshot.name}
+                                Snapshot {snapshot.id.slice(0, 8)}
                               </div>
-                              <div className="text-sm text-gray-500">
-                                ID: {snapshot.id}
-                              </div>
+                              <button
+                                onClick={() => handleCopyUrl(snapshot.id)}
+                                className="text-green-600 hover:text-green-900 text-sm flex items-center space-x-1 transition-colors"
+                              >
+                                <span>Copy URL</span>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                </svg>
+                              </button>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1016,28 +1235,38 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {snapshot.password ? (
-                              <code className="bg-gray-100 px-2 py-1 rounded text-xs">
-                                {snapshot.password}
-                              </code>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => copyPasswordToClipboard(snapshot.password!)}
+                                  className="bg-gray-100 px-2 py-1 rounded text-xs hover:bg-gray-200 transition-colors cursor-pointer font-mono"
+                                  title="Click to copy password"
+                                >
+                                  {snapshot.password}
+                                </button>
+                                <button
+                                  onClick={() => copyPasswordToClipboard(snapshot.password!)}
+                                  className="text-gray-500 hover:text-gray-700 transition-colors"
+                                  title="Copy password"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                  </svg>
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-gray-500">No password</span>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <a
-                              href={config.getSnapshotUrl(snapshot.id)}
+                              href={snapshot.password ? `${config.getSnapshotUrl(snapshot.id)}?p=${encodeURIComponent(snapshot.password)}` : config.getSnapshotUrl(snapshot.id)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:text-blue-900 mr-2"
                             >
                               View
                             </a>
-                            <button
-                              onClick={() => handleCopyUrl(snapshot.id)}
-                              className="text-green-600 hover:text-green-900 mr-2"
-                            >
-                              Copy URL
-                            </button>
+
                             <button 
                               onClick={() => handleExtendSnapshot(snapshot.id)}
                               className="text-gray-600 hover:text-gray-900 mr-2"
@@ -1135,7 +1364,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                             className="mt-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center space-x-2"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                             </svg>
                             <span>Copy Token</span>
                           </button>

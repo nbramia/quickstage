@@ -1,16 +1,19 @@
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://quickstage.tech/api').replace(/\/$/, '');
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://quickstage-worker.nbramia.workers.dev').replace(/\/$/, '');
 
-// Global session token storage - not needed since we use httpOnly cookies
-let globalSessionToken: string | null = null;
+// Global session token storage for cross-origin requests
+let globalSessionToken: string | null = localStorage.getItem('quickstage_session_token');
 
 export function setSessionToken(token: string | null) {
   globalSessionToken = token;
+  if (token) {
+    localStorage.setItem('quickstage_session_token', token);
+  } else {
+    localStorage.removeItem('quickstage_session_token');
+  }
 }
 
 export function getSessionToken() {
-  // Since cookies are httpOnly, we can't access them from JavaScript
-  // The backend will handle authentication via cookies automatically
-  return null;
+  return globalSessionToken;
 }
 
 export async function devLogin(uid: string) {
@@ -25,7 +28,12 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
-    // No need to manually add Authorization header - cookies handle auth
+    // Add Authorization header for cross-origin requests
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     console.log('Making request to:', `${BASE_URL}${endpoint}`);
     console.log('Headers:', headers);
     
@@ -36,6 +44,16 @@ export const api = {
     
     if (!response.ok) {
       console.error('Request failed:', response.status, response.statusText);
+      
+      // Handle authentication errors by clearing invalid tokens
+      if (response.status === 401) {
+        console.log('Token invalid, clearing session...');
+        setSessionToken(null);
+        // Redirect to login page
+        window.location.href = '/login';
+        throw new Error('Authentication failed - please log in again');
+      }
+      
       throw new Error(`API request failed: ${response.status}`);
     }
     
@@ -47,6 +65,12 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
+    // Add Authorization header for cross-origin requests
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
       credentials: 'include',
@@ -55,6 +79,15 @@ export const api = {
     });
     
     if (!response.ok) {
+      // Handle authentication errors by clearing invalid tokens
+      if (response.status === 401) {
+        console.log('Token invalid, clearing session...');
+        setSessionToken(null);
+        // Redirect to login page
+        window.location.href = '/login';
+        throw new Error('Authentication failed - please log in again');
+      }
+      
       throw new Error(`API request failed: ${response.status}`);
     }
     
@@ -66,6 +99,12 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
+    // Add Authorization header for cross-origin requests
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'PUT',
       credentials: 'include',
@@ -74,6 +113,15 @@ export const api = {
     });
     
     if (!response.ok) {
+      // Handle authentication errors by clearing invalid tokens
+      if (response.status === 401) {
+        console.log('Token invalid, clearing session...');
+        setSessionToken(null);
+        // Redirect to login page
+        window.location.href = '/login';
+        throw new Error('Authentication failed - please log in again');
+      }
+      
       throw new Error(`API request failed: ${response.status}`);
     }
     
@@ -85,6 +133,12 @@ export const api = {
       'Content-Type': 'application/json',
     };
     
+    // Add Authorization header for cross-origin requests
+    const token = getSessionToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'DELETE',
       credentials: 'include',
@@ -92,6 +146,15 @@ export const api = {
     });
     
     if (!response.ok) {
+      // Handle authentication errors by clearing invalid tokens
+      if (response.status === 401) {
+        console.log('Token invalid, clearing session...');
+        setSessionToken(null);
+        // Redirect to login page
+        window.location.href = '/login';
+        throw new Error('Authentication failed - please log in again');
+      }
+      
       throw new Error(`API request failed: ${response.status}`);
     }
     

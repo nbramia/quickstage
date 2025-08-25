@@ -57,6 +57,22 @@ export function Viewer() {
     }
   }, [snapshot]);
 
+  // Check for password in URL query parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const passwordParam = urlParams.get('p');
+    if (passwordParam) {
+      setPassword(decodeURIComponent(passwordParam));
+      // If we have a password in the URL, try to submit it automatically
+      if (passwordParam && snapshotId) {
+        // Small delay to ensure the component is fully mounted
+        setTimeout(() => {
+          handlePasswordSubmitWithPassword(decodeURIComponent(passwordParam));
+        }, 100);
+      }
+    }
+  }, [snapshotId]);
+
   const fetchSnapshot = async () => {
     try {
       setError(null);
@@ -95,6 +111,28 @@ export function Viewer() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
+      });
+      if (!res.ok) throw new Error(res.status.toString());
+      setShowPasswordForm(false);
+      // Refresh snapshot details (now accessible) and comments
+      await fetchSnapshot();
+      fetchComments();
+
+    } catch (error: any) {
+      console.error('Password verification failed:', error);
+      setError(error.message || 'Invalid password');
+    }
+  };
+
+  const handlePasswordSubmitWithPassword = async (passwordToUse: string) => {
+    try {
+      setError(null);
+      // Gate cookie is set by this non-API endpoint
+      const res = await fetch(`/s/${snapshotId}/gate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordToUse })
       });
       if (!res.ok) throw new Error(res.status.toString());
       setShowPasswordForm(false);

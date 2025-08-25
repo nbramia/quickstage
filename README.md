@@ -457,6 +457,36 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 
 ## Recent Updates
 
+### Complete Subscription System with Stripe Integration (2025-01-27)
+- **Stripe Billing Integration**: Full Stripe Checkout and billing portal integration for Pro subscriptions
+- **7-Day Free Trial**: All new users automatically get a 7-day free trial of Pro features
+- **Automatic Trial Management**: Trial status automatically converts to active subscription or expires to cancelled
+- **Subscription Status Tracking**: Comprehensive tracking of trial, active, cancelled, and past_due statuses
+- **Smart Plan Display**: Shows "Pro", "Pro (Trial)", "Pro (Cancelled)", "Pro (Past Due)", or "Pro (Superadmin)" instead of generic "Free/Pro"
+- **Superadmin Handling**: Superadmin accounts get permanent Pro access without subscription requirements
+- **Trial User Experience**: Trial users get full Pro access with hidden upgrade prompts and clear billing information
+- **Billing Management**: Users can manage subscriptions, update payment methods, and cancel subscriptions
+- **Access Control**: VSIX downloads and PAT authentication automatically restricted based on subscription status
+- **Admin Dashboard Updates**: Admin dashboard shows detailed subscription information for all users
+- **Frontend Integration**: Dashboard and Settings pages automatically hide upgrade options for active subscribers, trial users, and superadmins
+- **Webhook Integration**: Stripe webhooks automatically sync subscription status changes
+- **Trial Expiration Handling**: Automatic status updates when trials expire
+
+### Admin Dashboard & User Management Overhaul (2025-01-27)
+- **Admin Dashboard**: Created comprehensive admin dashboard at `/admin` for user management
+- **Superadmin Role System**: Added role-based access control with `user`, `admin`, and `superadmin` roles
+- **User Management**: Admins can view all users, create new users, and deactivate/activate accounts
+- **User Analytics**: Dashboard shows user statistics including total snapshots, active snapshots, and login history
+- **Cross-Subdomain Cookies**: Fixed session persistence issues by allowing cookies across subdomains
+- **Admin API Endpoints**: Added `/admin/users`, `/admin/users/:uid/deactivate`, `/admin/users/:uid/activate` endpoints
+- **Superadmin Setup**: Added one-time setup endpoint `/admin/setup-superadmin` for initial superadmin creation
+- **Simplified Authentication**: Replaced complex hybrid authentication with simple Authorization header-based system
+- **Session Token Management**: All login endpoints return sessionToken stored in localStorage for reliable authentication
+- **No More Cookie Complexity**: Eliminated cross-origin cookie issues by using only Authorization headers
+- **Automatic Token Validation**: Frontend automatically detects and handles invalid tokens by redirecting to login
+- **Response Format Consistency**: Fixed critical mismatch between `/snapshots/list` and `/api/snapshots/list` endpoints
+- **Admin Navigation**: Added "Back to Dashboard" button in admin panel for easy navigation
+
 ### Dashboard Functionality & Configuration Improvements (2025-08-24)
 - **Centralized Configuration**: Created `apps/web/src/config.ts` to centralize all URLs and configuration values
 - **Configurable Worker URLs**: Worker base URL is now configurable in one place for easy future clean URL implementation
@@ -550,8 +580,13 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 - **Universal Commenting System**: Every staged prototype includes a commenting overlay with real-time collaboration
 - **Real-time Comments**: Inline sidebar with Turnstile anti-spam protection
 - **Cloudflare Stack**: Pages, Workers, R2, KV, Durable Objects, Turnstile
-- **Billing Integration**: Stripe Checkout for Pro tier upgrades
+- **Pro Subscription System**: 7-day free trial with automatic conversion to $6/month Pro plan
+- **Stripe Integration**: Secure payment processing with automatic subscription management
+- **Smart Access Control**: VSIX downloads and PAT authentication automatically restricted based on subscription status
+- **Billing Management**: User-friendly subscription management with Stripe billing portal
 - **Web Dashboard**: Complete web interface for managing snapshots and settings
+- **Admin Dashboard**: Comprehensive user management system for administrators and superadmins
+- **Role-Based Access Control**: User, admin, and superadmin roles with appropriate permissions
 - **Multi-Provider Authentication**: Email/password, Google OAuth, and passkey support
 - **Multi-Layer Routing**: Reliable /s/* routing with fallback strategies
 

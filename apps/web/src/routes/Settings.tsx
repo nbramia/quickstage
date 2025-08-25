@@ -4,9 +4,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 
 export function Settings() {
-  const { user, logout, loading: authLoading } = useAuth();
+  const { user, logout, loading: authLoading, cancelSubscription } = useAuth();
   const [upgrading, setUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleUpgrade = async () => {
     try {
@@ -23,6 +24,56 @@ export function Settings() {
       setError('Checkout failed');
     } finally {
       setUpgrading(false);
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      setError(null);
+      const response = await api.post('/billing/portal');
+      if (response.url) {
+        window.location.href = response.url;
+      } else {
+        setError('No billing portal URL received');
+      }
+    } catch (error) {
+      console.error('Billing portal error:', error);
+      setError('Failed to open billing portal');
+    }
+  };
+
+  const handleChangePaymentMethod = async () => {
+    try {
+      setError(null);
+      const response = await api.post('/billing/change-payment');
+      if (response.url) {
+        window.location.href = response.url;
+      } else {
+        setError('No payment update URL received');
+      }
+    } catch (error) {
+      console.error('Payment method update error:', error);
+      setError('Failed to update payment method');
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!confirm('Are you sure you want to cancel your Pro subscription? You will retain access until the end of your current billing period.')) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      const result = await cancelSubscription();
+      if (result.ok) {
+        setSuccessMessage(result.message || 'Subscription cancelled successfully');
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setError(result.error || 'Failed to cancel subscription');
+      }
+    } catch (error) {
+      console.error('Cancel subscription error:', error);
+      setError('Failed to cancel subscription');
     }
   };
 
@@ -85,7 +136,7 @@ export function Settings() {
               {/* User Menu */}
               <div className="flex items-center space-x-4">
                 <div className="text-sm text-gray-700">
-                  <span className="font-medium">{user.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                  <span className="font-medium">{user.subscriptionDisplay || 'Pro'}</span>
                   <span className="text-gray-500 ml-2">Plan</span>
                 </div>
                 <button
@@ -119,6 +170,24 @@ export function Settings() {
           </div>
         )}
 
+        {/* Success Message */}
+        {successMessage && (
+          <div className="px-4 sm:px-0 mb-4">
+            <div className="bg-green-50 border border-green-200 rounded-md p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-green-800">{successMessage}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* User Info Card */}
         <div className="px-4 sm:px-0 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
@@ -128,16 +197,10 @@ export function Settings() {
                 <label className="block text-sm font-medium text-gray-700">User ID</label>
                 <p className="mt-1 text-sm text-gray-900 font-mono">{user.uid}</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Current Plan</label>
-                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full mt-1 ${
-                  user.plan === 'pro' 
-                    ? 'bg-purple-100 text-purple-800' 
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {user.plan === 'pro' ? 'Pro' : 'Free'}
-                </span>
-              </div>
+              <div className="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
+                  <span className="text-gray-600">Current Plan:</span>
+                  <span className="font-semibold text-gray-900">{user.subscriptionDisplay || 'Pro'}</span>
+                </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Member Since</label>
                 <p className="mt-1 text-sm text-gray-900">
@@ -161,7 +224,21 @@ export function Settings() {
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Plan Management</h3>
             
-            {user.plan === 'free' ? (
+            {user.role === 'superadmin' ? (
+              <div>
+                <div className="mb-4">
+                  <p className="text-purple-600 font-medium mb-2">
+                    ✓ Pro (Superadmin) - Permanent Access
+                  </p>
+                  <p className="text-gray-600 text-sm">
+                    As a superadmin, you have permanent access to all Pro features without any subscription requirements.
+                  </p>
+                </div>
+                <div className="text-sm text-gray-500">
+                  No billing management needed - your access is permanent.
+                </div>
+              </div>
+            ) : !user.subscriptionStatus || user.subscriptionStatus === 'none' ? (
               <div>
                 <p className="text-gray-600 mb-4">
                   Upgrade to Pro for unlimited snapshots, larger file sizes, and extended expiry times.
@@ -174,14 +251,114 @@ export function Settings() {
                   {upgrading ? 'Processing...' : 'Upgrade to Pro'}
                 </button>
               </div>
+            ) : user.subscriptionStatus === 'trial' ? (
+              <div>
+                <div className="mb-4">
+                  <p className="text-blue-600 font-medium mb-2">
+                    ✓ Pro (Trial) - Active
+                  </p>
+                  <p className="text-gray-600 text-sm">
+                    You're currently on a 7-day free trial of the Pro plan. Enjoy unlimited snapshots, 100MB per snapshot, and up to 90-day expiry times.
+                  </p>
+                  {user.trialEndsAt && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Trial ends: {new Date(user.trialEndsAt).toLocaleDateString()}
+                    </p>
+                  )}
+                  {user.nextBillingDate && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleChangePaymentMethod}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Change Payment Method
+                  </button>
+                  <button
+                    onClick={handleCancelSubscription}
+                    className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Cancel Subscription
+                  </button>
+                </div>
+              </div>
+            ) : user.subscriptionStatus === 'active' ? (
+              <div>
+                <div className="mb-4">
+                  <p className="text-green-600 font-medium mb-2">
+                    ✓ Pro - Active Subscription
+                  </p>
+                  <p className="text-gray-600 text-sm">
+                    You have full access to all Pro features: unlimited snapshots, 100MB per snapshot, and up to 90-day expiry times.
+                  </p>
+                  {user.nextBillingDate && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleChangePaymentMethod}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Change Payment Method
+                  </button>
+                  <button
+                    onClick={handleCancelSubscription}
+                    className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Cancel Subscription
+                  </button>
+                </div>
+              </div>
+            ) : user.subscriptionStatus === 'cancelled' ? (
+              <div>
+                <p className="text-orange-600 font-medium mb-2">
+                  ⚠️ Pro (Cancelled)
+                </p>
+                <p className="text-gray-600 text-sm mb-4">
+                  Your subscription has been cancelled. You will retain access to Pro features until the end of your current billing period.
+                </p>
+                <button
+                  onClick={handleUpgrade}
+                  disabled={upgrading}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  {upgrading ? 'Processing...' : 'Reactivate Pro'}
+                </button>
+              </div>
+            ) : user.subscriptionStatus === 'past_due' ? (
+              <div>
+                <p className="text-red-600 font-medium mb-2">
+                  ⚠️ Pro (Payment Past Due)
+                </p>
+                <p className="text-gray-600 text-sm mb-4">
+                  Your subscription payment is past due. Please update your payment method to continue access to Pro features.
+                </p>
+                <button
+                  onClick={handleManageBilling}
+                  className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Update Payment Method
+                </button>
+              </div>
             ) : (
               <div>
-                <p className="text-green-600 font-medium mb-4">
-                  ✓ You're currently on the Pro plan
+                <p className="text-gray-600 mb-4">
+                  Upgrade to Pro for unlimited snapshots, larger file sizes, and extended expiry times.
                 </p>
-                <p className="text-gray-600 text-sm">
-                  Enjoy unlimited snapshots, 100MB per snapshot, and up to 90-day expiry times.
-                </p>
+                <button
+                  onClick={handleUpgrade}
+                  disabled={upgrading}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  {upgrading ? 'Processing...' : 'Upgrade to Pro'}
+                </button>
               </div>
             )}
           </div>

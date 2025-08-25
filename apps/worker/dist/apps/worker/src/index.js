@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCookie, setCookie } from 'hono/cookie';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
-import { DEFAULT_CAPS, SESSION_COOKIE_NAME, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
+import { DEFAULT_CAPS, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
 import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
@@ -61,28 +61,25 @@ app.use('*', cors({
     },
     credentials: true
 }));
-function isSecureRequest(c) {
-    try {
-        const url = new URL(c.req.url);
-        if (url.protocol === 'https:')
-            return true;
-    }
-    catch { }
-    const xfProto = c.req.header('x-forwarded-proto') || c.req.header('X-Forwarded-Proto');
-    return typeof xfProto === 'string' && xfProto.toLowerCase().includes('https');
-}
+// Simplified authentication - no more complex cookie logic
 async function getUidFromSession(c) {
-    const cookie = getCookie(c, SESSION_COOKIE_NAME);
-    let token = cookie;
-    if (!token) {
-        const auth = c.req.header('authorization') || c.req.header('Authorization');
-        if (auth && auth.startsWith('Bearer '))
-            token = auth.slice(7);
-    }
-    if (!token)
+    // Only use Authorization header - much simpler
+    const auth = c.req.header('authorization') || c.req.header('Authorization');
+    if (!auth || !auth.startsWith('Bearer ')) {
         return null;
-    const data = await verifySession(token, c.env.SESSION_HMAC_SECRET);
-    return data && data.uid ? String(data.uid) : null;
+    }
+    const token = auth.slice(7);
+    if (!token) {
+        return null;
+    }
+    try {
+        const data = await verifySession(token, c.env.SESSION_HMAC_SECRET);
+        return data && data.uid ? String(data.uid) : null;
+    }
+    catch (error) {
+        console.error('Session verification failed:', error);
+        return null;
+    }
 }
 async function getUserByName(c, name) {
     const uid = await c.env.KV_USERS.get(`user:byname:${name}`);
@@ -91,14 +88,55 @@ async function getUserByName(c, name) {
     const raw = await c.env.KV_USERS.get(`user:${uid}`);
     return raw ? JSON.parse(raw) : null;
 }
+// Subscription helper functions
+function getSubscriptionDisplayStatus(user) {
+    // Superadmin gets special status
+    if (user.role === 'superadmin')
+        return 'Superadmin';
+    if (!user.subscriptionStatus || user.subscriptionStatus === 'none')
+        return 'None';
+    if (user.subscriptionStatus === 'trial')
+        return 'Free Trial';
+    if (user.subscriptionStatus === 'active')
+        return 'Pro';
+    if (user.subscriptionStatus === 'cancelled')
+        return 'Cancelled';
+    if (user.subscriptionStatus === 'past_due')
+        return 'Past Due';
+    return 'None';
+}
+function canAccessProFeatures(user) {
+    // Superadmin can always access
+    if (user.role === 'superadmin')
+        return true;
+    const now = Date.now();
+    // Active subscription
+    if (user.subscriptionStatus === 'active')
+        return true;
+    // Trial period
+    if (user.subscriptionStatus === 'trial' && user.trialEndsAt && now < user.trialEndsAt) {
+        return true;
+    }
+    return false;
+}
+function startFreeTrial(user) {
+    const now = Date.now();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    user.subscriptionStatus = 'trial';
+    user.trialStartedAt = now;
+    user.trialEndsAt = now + sevenDays;
+    user.plan = 'pro'; // Give pro features during trial
+}
 async function ensureUserByName(c, name) {
     let user = await getUserByName(c, name);
     if (user)
         return user;
     const uid = generateIdBase62(16);
-    user = { uid, createdAt: Date.now(), plan: 'free', passkeys: [] };
+    user = { uid, createdAt: Date.now(), plan: 'free', role: 'user', passkeys: [], subscriptionStatus: 'none' };
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
+    // Start trial for new user
+    await startTrialForUser(c, user);
     return user;
 }
 // Passkey: Register begin
@@ -146,8 +184,7 @@ app.post('/auth/register-passkey/finish', async (c) => {
     user.lastLoginAt = Date.now();
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
 });
 // Passkey: Login begin
 app.post('/auth/login-passkey/begin', async (c) => {
@@ -194,8 +231,7 @@ app.post('/auth/login-passkey/finish', async (c) => {
     user.lastLoginAt = Date.now();
     await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
     const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
+    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
 });
 // Email/Password: Register
 app.post('/auth/register', async (c) => {
@@ -215,7 +251,9 @@ app.post('/auth/register', async (c) => {
         uid,
         createdAt: Date.now(),
         plan: 'free',
+        role: 'user',
         passkeys: [],
+        subscriptionStatus: 'none',
         email,
         passwordHash: hashedPassword,
         name
@@ -223,10 +261,11 @@ app.post('/auth/register', async (c) => {
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
     await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+    // Start trial for new user
+    await startTrialForUser(c, user);
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true, user: { uid, name, email, plan: user.plan } });
+    return c.json({ ok: true, user: { uid, name, email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
 });
 // Email/Password: Login
 app.post('/auth/login', async (c) => {
@@ -252,8 +291,7 @@ app.post('/auth/login', async (c) => {
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-    return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
+    return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
 });
 // Google OAuth: Login/Register
 app.post('/auth/google', async (c) => {
@@ -302,7 +340,9 @@ app.post('/auth/google', async (c) => {
                     uid,
                     createdAt: Date.now(),
                     plan: 'free',
+                    role: 'user',
                     passkeys: [],
+                    subscriptionStatus: 'none',
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
                     googleId: idToken
@@ -310,6 +350,8 @@ app.post('/auth/google', async (c) => {
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+                // Start trial for new user
+                await startTrialForUser(c, user);
             }
         }
         else {
@@ -320,7 +362,9 @@ app.post('/auth/google', async (c) => {
                 uid,
                 createdAt: Date.now(),
                 plan: 'free',
+                role: 'user',
                 passkeys: [],
+                subscriptionStatus: 'none',
                 email: email,
                 name: displayName,
                 googleId: idToken
@@ -328,11 +372,12 @@ app.post('/auth/google', async (c) => {
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+            // Start trial for new user
+            await startTrialForUser(c, user);
         }
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-        setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-        return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
+        return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
     }
     catch (error) {
         console.error('Google OAuth error:', error);
@@ -347,25 +392,81 @@ app.get('/me', async (c) => {
     if (!raw)
         return c.json({ user: null });
     const user = JSON.parse(raw);
-    // Return safe user data (no sensitive info)
+    // Calculate subscription display information
+    let subscriptionDisplay = 'Pro';
+    let subscriptionStatus = 'none';
+    let trialEndsAt = null;
+    let nextBillingDate = null;
+    let canAccessPro = false;
+    // Superadmin accounts always have Pro access
+    if (user.role === 'superadmin') {
+        subscriptionDisplay = 'Pro (Superadmin)';
+        subscriptionStatus = 'superadmin';
+        canAccessPro = true;
+    }
+    else if (user.subscriptionStatus) {
+        subscriptionStatus = user.subscriptionStatus;
+        if (user.subscriptionStatus === 'trial' && user.trialEndsAt) {
+            subscriptionDisplay = 'Pro (Trial)';
+            trialEndsAt = user.trialEndsAt;
+            canAccessPro = true;
+            // For trial users, next billing date is when the trial ends
+            nextBillingDate = user.trialEndsAt;
+        }
+        else if (user.subscriptionStatus === 'active') {
+            subscriptionDisplay = 'Pro';
+            canAccessPro = true;
+            // Calculate next billing date (30 days from last payment or subscription start)
+            if (user.lastPaymentAt) {
+                nextBillingDate = user.lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
+            }
+            else if (user.subscriptionStartedAt) {
+                nextBillingDate = user.subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
+            }
+        }
+        else if (user.subscriptionStatus === 'cancelled') {
+            subscriptionDisplay = 'Pro (Cancelled)';
+            canAccessPro = false;
+        }
+        else if (user.subscriptionStatus === 'past_due') {
+            subscriptionDisplay = 'Pro (Past Due)';
+            canAccessPro = false;
+        }
+    }
+    else {
+        // No subscription status, check if they have pro plan
+        canAccessPro = user.plan === 'pro';
+        if (canAccessPro) {
+            subscriptionDisplay = 'Pro';
+        }
+    }
+    // Return safe user data with subscription information
     return c.json({
         user: {
             uid: user.uid,
             name: user.name,
             email: user.email,
             plan: user.plan,
+            role: user.role || 'user',
             createdAt: user.createdAt,
             lastLoginAt: user.lastLoginAt,
             hasPasskeys: user.passkeys && user.passkeys.length > 0,
             hasPassword: !!user.passwordHash,
-            hasGoogle: !!user.googleId
+            hasGoogle: !!user.googleId,
+            // Subscription information
+            subscriptionStatus: subscriptionStatus,
+            subscriptionDisplay: subscriptionDisplay,
+            trialEndsAt: trialEndsAt,
+            nextBillingDate: nextBillingDate,
+            canAccessPro: canAccessPro,
+            stripeCustomerId: user.stripeCustomerId,
+            stripeSubscriptionId: user.stripeSubscriptionId
         }
     });
 });
 // Logout endpoint
 app.post('/auth/logout', async (c) => {
-    // Clear the session cookie
-    setCookie(c, SESSION_COOKIE_NAME, '', { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 0, path: '/' });
+    // No need to clear cookies - just return success
     return c.json({ ok: true });
 });
 // Update user profile
@@ -459,53 +560,143 @@ app.delete('/auth/passkeys/:credentialId', async (c) => {
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     return c.json({ ok: true, passkeys: user.passkeys });
 });
-// Billing: checkout
-app.post('/billing/checkout', async (c) => {
+// Start free trial with credit card required for auto-billing after trial
+app.post('/billing/start-trial', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    // Check if user already has trial/subscription
+    if (user.subscriptionStatus && user.subscriptionStatus !== 'none' && user.subscriptionStatus !== 'cancelled') {
+        return c.json({ error: 'already_subscribed' }, 400);
+    }
     const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
         apiVersion: '2023-10-16',
         httpClient: Stripe.createFetchHttpClient(),
     });
+    // Create or get Stripe customer
+    let customerId = user.stripeCustomerId;
+    if (!customerId) {
+        const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: { uid }
+        });
+        customerId = customer.id;
+        user.stripeCustomerId = customerId;
+    }
+    // Create checkout session for trial with required payment method
     const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
+        customer: customerId,
         line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
-        success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
-        cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
-        metadata: { uid },
+        subscription_data: {
+            trial_period_days: 7,
+            metadata: { uid }
+        },
+        success_url: `${c.env.PUBLIC_BASE_URL}/?trial=started`,
+        cancel_url: `${c.env.PUBLIC_BASE_URL}/?trial=cancelled`,
+        metadata: { uid, action: 'start_trial' },
     });
     return c.json({ url: session.url });
 });
-// Billing: webhook
-app.post('/billing/webhook', async (c) => {
+// Manual subscription for existing users (after trial ends or reactivation)
+app.post('/billing/subscribe', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
     const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
         apiVersion: '2023-10-16',
         httpClient: Stripe.createFetchHttpClient(),
     });
-    const sig = c.req.header('stripe-signature');
-    const rawBody = await c.req.text();
-    let event;
+    // Create or get Stripe customer
+    let customerId = user.stripeCustomerId;
+    if (!customerId) {
+        const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: { uid }
+        });
+        customerId = customer.id;
+        user.stripeCustomerId = customerId;
+    }
+    const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer: customerId,
+        line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+        success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
+        cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
+        metadata: { uid, action: 'subscribe' },
+    });
+    return c.json({ url: session.url });
+});
+// Get subscription status
+app.get('/billing/status', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    return c.json({
+        status: getSubscriptionDisplayStatus(user),
+        canAccessPro: canAccessProFeatures(user),
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStartedAt: user.subscriptionStartedAt,
+        lastPaymentAt: user.lastPaymentAt,
+        stripeCustomerId: user.stripeCustomerId
+    });
+});
+// Cancel subscription
+app.post('/billing/cancel', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (!user.stripeSubscriptionId) {
+        return c.json({ error: 'no_subscription' }, 400);
+    }
     try {
-        const cryptoProvider = Stripe.createSubtleCryptoProvider();
-        event = await stripe.webhooks.constructEventAsync(rawBody, sig, c.env.STRIPE_WEBHOOK_SECRET, undefined, cryptoProvider);
-    }
-    catch (err) {
-        return c.json({ error: 'bad_signature' }, 400);
-    }
-    if (event.type === 'checkout.session.completed' || event.type === 'invoice.paid') {
-        const session = event.data.object;
-        const uid = session.metadata?.uid;
-        if (uid) {
-            const raw = await c.env.KV_USERS.get(`user:${uid}`);
-            if (raw) {
-                const user = JSON.parse(raw);
-                user.plan = 'pro';
-                await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
-            }
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
         }
+        // Initialize Stripe client with environment variables
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        console.log(`Cancelling subscription ${user.stripeSubscriptionId} for user ${uid}`);
+        // Cancel the subscription at period end (user keeps access until paid period ends)
+        const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+            cancel_at_period_end: true
+        });
+        // Update user status
+        user.subscriptionStatus = 'cancelled';
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        console.log(`Subscription ${user.stripeSubscriptionId} cancelled for user ${uid}`);
+        return c.json({
+            ok: true,
+            message: 'Subscription cancelled. You will retain access until the end of your current billing period.',
+            cancelAt: subscription.cancel_at
+        });
     }
-    return c.json({ received: true });
+    catch (error) {
+        console.error('Stripe cancel subscription error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return c.json({ error: 'cancel_failed', details: errorMessage }, 500);
+    }
 });
 // Create snapshot
 app.post('/snapshots/create', async (c) => {
@@ -862,15 +1053,17 @@ app.get('/snapshots/list', async (c) => {
     const metas = await Promise.all(ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')));
     // Sort snapshots by createdAt in descending order (newest first)
     const sortedMetas = metas.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return c.json({ snapshots: sortedMetas.map((m) => ({
-            id: m.id,
-            createdAt: m.createdAt,
-            expiresAt: m.expiresAt,
-            totalBytes: m.totalBytes,
-            status: m.status,
-            password: m.password || (m.passwordHash ? 'Password protected' : null),
-            public: m.public || false
-        })) });
+    return c.json({ data: { snapshots: sortedMetas.map((m) => ({
+                id: m.id,
+                name: m.name || `Snapshot ${m.id.slice(0, 8)}`,
+                createdAt: m.createdAt,
+                expiresAt: m.expiresAt,
+                totalBytes: m.totalBytes,
+                status: m.status,
+                password: m.password || (m.passwordHash ? 'Password protected' : null),
+                isPublic: m.public || false,
+                viewCount: m.viewCount || 0
+            })) } });
 });
 // Get individual snapshot details
 app.get('/snapshots/:id', async (c) => {
@@ -996,7 +1189,7 @@ app.get('/api/snapshots/list', async (c) => {
     }
     // Sort snapshots by createdAt in descending order (newest first)
     snapshots.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return c.json({ data: { snapshots } });
+    return c.json({ snapshots });
 });
 // API version of snapshot details endpoint (for Viewer component)
 app.get('/api/snapshots/:id', async (c) => {
@@ -1458,8 +1651,8 @@ app.post('/s/:id/gate', async (c) => {
         if (!ok)
             return c.json({ error: 'forbidden' }, 403);
         setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
-            secure: isSecureRequest(c),
-            sameSite: 'Lax',
+            secure: true,
+            sameSite: 'None',
             path: `/s/${id}`,
             maxAge: 60 * 60,
         });
@@ -1677,7 +1870,9 @@ app.post('/api/auth/google', async (c) => {
                     uid,
                     createdAt: Date.now(),
                     plan: 'free',
+                    role: 'user',
                     passkeys: [],
+                    subscriptionStatus: 'none',
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
                     googleId: idToken
@@ -1685,6 +1880,8 @@ app.post('/api/auth/google', async (c) => {
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+                // Start trial for new user
+                await startTrialForUser(c, user);
             }
         }
         else {
@@ -1695,7 +1892,9 @@ app.post('/api/auth/google', async (c) => {
                 uid,
                 createdAt: Date.now(),
                 plan: 'free',
+                role: 'user',
                 passkeys: [],
+                subscriptionStatus: 'none',
                 email: email,
                 name: displayName,
                 googleId: idToken
@@ -1703,11 +1902,12 @@ app.post('/api/auth/google', async (c) => {
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+            // Start trial for new user
+            await startTrialForUser(c, user);
         }
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-        setCookie(c, SESSION_COOKIE_NAME, token, { httpOnly: true, secure: isSecureRequest(c), sameSite: 'Lax', maxAge: 60 * 60 * 24 * 7, path: '/' });
-        return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan } });
+        return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
     }
     catch (error) {
         console.error('Google OAuth error:', error);
@@ -1722,7 +1922,208 @@ app.get('/api/me', async (c) => {
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
     const user = JSON.parse(userRaw);
-    return c.json({ user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt } });
+    return c.json({ user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user', createdAt: user.createdAt, lastLoginAt: user.lastLoginAt } });
+});
+// Admin endpoints
+app.get('/admin/users', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin')
+        return c.json({ error: 'forbidden' }, 403);
+    // Get all users
+    const users = [];
+    let cursor = undefined;
+    do {
+        const list = await c.env.KV_USERS.list({ prefix: 'user:', cursor });
+        cursor = list.cursor;
+        for (const key of list.keys) {
+            // Filter for actual user records (user:uid) vs other keys (user:byemail:*, user:uid:snapshots, etc.)
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const uid = key.name.replace('user:', '');
+                const userDataRaw = await c.env.KV_USERS.get(key.name);
+                if (userDataRaw) {
+                    const userData = JSON.parse(userDataRaw);
+                    // Get user's snapshots
+                    const snapshotsList = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
+                    const snapshotIds = JSON.parse(snapshotsList);
+                    // Count active vs total snapshots
+                    let totalSnapshots = snapshotIds.length;
+                    let activeSnapshots = 0;
+                    for (const snapshotId of snapshotIds) {
+                        const snapshotRaw = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
+                        if (snapshotRaw) {
+                            const snapshot = JSON.parse(snapshotRaw);
+                            if (snapshot.status === 'active' && snapshot.expiresAt > Date.now()) {
+                                activeSnapshots++;
+                            }
+                        }
+                    }
+                    users.push({
+                        uid: userData.uid,
+                        name: userData.name || 'Unknown',
+                        email: userData.email || '',
+                        plan: userData.plan || 'free',
+                        role: userData.role || 'user',
+                        createdAt: userData.createdAt,
+                        lastLoginAt: userData.lastLoginAt,
+                        totalSnapshots,
+                        activeSnapshots,
+                        status: userData.status || 'active',
+                        // Subscription fields
+                        subscriptionStatus: getSubscriptionDisplayStatus(userData),
+                        canAccessPro: canAccessProFeatures(userData),
+                        trialEndsAt: userData.trialEndsAt,
+                        subscriptionStartedAt: userData.subscriptionStartedAt,
+                        lastPaymentAt: userData.lastPaymentAt,
+                        stripeCustomerId: userData.stripeCustomerId
+                    });
+                }
+            }
+        }
+    } while (cursor);
+    return c.json({ users });
+});
+app.post('/admin/users', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin')
+        return c.json({ error: 'forbidden' }, 403);
+    const { name, email, password, role } = await c.req.json();
+    if (!name || !email || !password || !role)
+        return c.json({ error: 'missing_fields' }, 400);
+    // Check if user already exists
+    const existingUser = await getUserByName(c, name);
+    if (existingUser)
+        return c.json({ error: 'user_exists' }, 400);
+    const existingEmail = await c.env.KV_USERS.get(`user:byemail:${email}`);
+    if (existingEmail)
+        return c.json({ error: 'email_exists' }, 400);
+    // Hash password
+    const salt = randomHex(16);
+    const hashedPassword = await hashPasswordArgon2id(password, salt);
+    // Create user
+    const newUid = generateIdBase62(16);
+    const newUser = {
+        uid: newUid,
+        createdAt: Date.now(),
+        plan: 'free',
+        role: role,
+        passkeys: [],
+        subscriptionStatus: 'none',
+        email,
+        passwordHash: hashedPassword,
+        name
+    };
+    await c.env.KV_USERS.put(`user:${newUid}`, JSON.stringify(newUser));
+    await c.env.KV_USERS.put(`user:byname:${name}`, newUid);
+    await c.env.KV_USERS.put(`user:byemail:${email}`, newUid);
+    // Start trial for new user
+    await startTrialForUser(c, newUser);
+    return c.json({ ok: true, user: { uid: newUid, name, email, role } });
+});
+app.post('/admin/users/:uid/deactivate', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin')
+        return c.json({ error: 'forbidden' }, 403);
+    const targetUid = c.req.param('uid');
+    const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
+    if (!targetUserRaw)
+        return c.json({ error: 'target_user_not_found' }, 404);
+    const targetUser = JSON.parse(targetUserRaw);
+    targetUser.status = 'deactivated';
+    await c.env.KV_USERS.put(`user:${targetUid}`, JSON.stringify(targetUser));
+    return c.json({ ok: true });
+});
+app.post('/admin/users/:uid/activate', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin' && user.role !== 'admin')
+        return c.json({ error: 'forbidden' }, 403);
+    const targetUid = c.req.param('uid');
+    const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
+    if (!targetUserRaw)
+        return c.json({ error: 'target_user_not_found' }, 404);
+    const targetUser = JSON.parse(targetUserRaw);
+    targetUser.status = 'active';
+    await c.env.KV_USERS.put(`user:${targetUid}`, JSON.stringify(targetUser));
+    return c.json({ ok: true });
+});
+// Create superadmin user (one-time setup)
+app.post('/admin/setup-superadmin', async (c) => {
+    const { name, email, password } = await c.req.json();
+    if (!name || !email || !password)
+        return c.json({ error: 'missing_fields' }, 400);
+    // Check if superadmin already exists
+    let cursor = undefined;
+    let superadminExists = false;
+    do {
+        const list = await c.env.KV_USERS.list({ prefix: 'user:', cursor });
+        cursor = list.cursor;
+        for (const key of list.keys) {
+            // Filter for actual user records (user:uid) vs other keys (user:byemail:*, user:uid:snapshots, etc.)
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userDataRaw = await c.env.KV_USERS.get(key.name);
+                if (userDataRaw) {
+                    const userData = JSON.parse(userDataRaw);
+                    if (userData.role === 'superadmin') {
+                        superadminExists = true;
+                        break;
+                    }
+                }
+            }
+        }
+    } while (cursor && !superadminExists);
+    if (superadminExists) {
+        return c.json({ error: 'superadmin_already_exists' }, 400);
+    }
+    // Check if user already exists
+    const existingUser = await getUserByName(c, name);
+    if (existingUser)
+        return c.json({ error: 'user_exists' }, 400);
+    const existingEmail = await c.env.KV_USERS.get(`user:byemail:${email}`);
+    if (existingEmail)
+        return c.json({ error: 'email_exists' }, 400);
+    // Hash password
+    const salt = randomHex(16);
+    const hashedPassword = await hashPasswordArgon2id(password, salt);
+    // Create superadmin user
+    const uid = generateIdBase62(16);
+    const user = {
+        uid,
+        createdAt: Date.now(),
+        plan: 'pro',
+        role: 'superadmin',
+        passkeys: [],
+        subscriptionStatus: 'none',
+        email,
+        passwordHash: hashedPassword,
+        name
+    };
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    await c.env.KV_USERS.put(`user:byname:${name}`, uid);
+    await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+    return c.json({ ok: true, user: { uid, name, email, role: 'superadmin' } });
 });
 // Add missing /api endpoints for the extension
 app.post('/api/snapshots/create', async (c) => {
@@ -1930,6 +2331,15 @@ async function getUidFromPAT(c, token) {
     const pat = JSON.parse(patData);
     if (pat.expiresAt < Date.now())
         return null;
+    // Check if user has access to pro features (subscription required for PAT usage)
+    const userRaw = await c.env.KV_USERS.get(`user:${pat.userId}`);
+    if (!userRaw)
+        return null;
+    const user = JSON.parse(userRaw);
+    if (!canAccessProFeatures(user)) {
+        console.log(`PAT access denied for user ${pat.userId}: subscription status ${user.subscriptionStatus}`);
+        return null; // PAT is invalid if subscription is cancelled
+    }
     // Update last used timestamp
     pat.lastUsed = Date.now();
     await c.env.KV_USERS.put(`pat:${token}`, JSON.stringify(pat));
@@ -2058,8 +2468,26 @@ app.get('/api/extensions/version', async (c) => {
         return c.json({ error: 'version_info_unavailable' }, 500);
     }
 });
-// Backup VSIX download endpoint with explicit headers
+// Protected VSIX download endpoint - requires active subscription or trial
 app.get('/api/extensions/download', async (c) => {
+    // Check authentication first
+    const uid = await getUidFromSession(c);
+    if (!uid) {
+        return c.json({ error: 'unauthorized', message: 'Please log in to download the extension' }, 401);
+    }
+    // Check subscription status
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw) {
+        return c.json({ error: 'user_not_found' }, 404);
+    }
+    const user = JSON.parse(userRaw);
+    if (!canAccessProFeatures(user)) {
+        return c.json({
+            error: 'subscription_required',
+            message: 'Active subscription or trial required to download extension',
+            subscriptionStatus: getSubscriptionDisplayStatus(user)
+        }, 403);
+    }
     try {
         // Fetch the VSIX from the web app's public directory
         const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
@@ -2080,6 +2508,7 @@ app.get('/api/extensions/download', async (c) => {
         headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         headers.set('Pragma', 'no-cache');
         headers.set('Expires', '0');
+        console.log(`VSIX download authorized for user ${uid} (${getSubscriptionDisplayStatus(user)})`);
         return new Response(vsixData, { headers });
     }
     catch (error) {
@@ -2105,6 +2534,24 @@ app.get('/extensions/version', async (c) => {
     }
 });
 app.get('/extensions/download', async (c) => {
+    // Check authentication first
+    const uid = await getUidFromSession(c);
+    if (!uid) {
+        return c.json({ error: 'unauthorized', message: 'Please log in to download the extension' }, 401);
+    }
+    // Check subscription status
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw) {
+        return c.json({ error: 'user_not_found' }, 404);
+    }
+    const user = JSON.parse(userRaw);
+    if (!canAccessProFeatures(user)) {
+        return c.json({
+            error: 'subscription_required',
+            message: 'Active subscription or trial required to download extension',
+            subscriptionStatus: getSubscriptionDisplayStatus(user)
+        }, 403);
+    }
     try {
         // Fetch the VSIX from the web app's public directory
         const vsixUrl = `https://quickstage.tech/quickstage.vsix`;
@@ -2229,3 +2676,463 @@ const worker = {
 };
 export default worker;
 export { CommentsRoom } from './comments';
+// Stripe billing endpoints
+app.post('/billing/checkout', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    try {
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Check if Stripe price ID is available
+        if (!c.env.STRIPE_PRICE_ID) {
+            console.error('STRIPE_PRICE_ID not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Initialize Stripe client with environment variables
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        console.log(`Creating checkout session for user ${uid} with price ${c.env.STRIPE_PRICE_ID}`);
+        // Create or retrieve Stripe customer
+        let customerId = user.stripeCustomerId;
+        if (!customerId) {
+            console.log(`Creating new Stripe customer for user ${uid}`);
+            const customer = await stripe.customers.create({
+                email: user.email,
+                name: user.name,
+                metadata: { uid }
+            });
+            customerId = customer.id;
+            // Update user with Stripe customer ID
+            user.stripeCustomerId = customerId;
+            await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+            console.log(`Created Stripe customer ${customerId} for user ${uid}`);
+        }
+        // Create checkout session
+        const session = await stripe.checkout.sessions.create({
+            customer: customerId,
+            payment_method_types: ['card'],
+            line_items: [{
+                    price: c.env.STRIPE_PRICE_ID, // Your $6/mo price ID
+                    quantity: 1,
+                }],
+            mode: 'subscription',
+            success_url: `https://quickstage.tech/dashboard?success=true`,
+            cancel_url: `https://quickstage.tech/dashboard?canceled=true`,
+            subscription_data: {
+                trial_period_days: 7, // 7-day trial
+                metadata: { uid: user.uid }
+            },
+            metadata: { uid: user.uid }
+        });
+        console.log(`Created checkout session ${session.id} for user ${uid}`);
+        return c.json({ url: session.url });
+    }
+    catch (error) {
+        console.error('Stripe checkout error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return c.json({ error: 'checkout_failed', details: errorMessage }, 500);
+    }
+});
+// Change payment method endpoint
+app.post('/billing/change-payment', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (!user.stripeCustomerId) {
+        return c.json({ error: 'no_subscription' }, 400);
+    }
+    try {
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Initialize Stripe client with environment variables
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        console.log(`Creating payment method update session for user ${uid}`);
+        // Create a checkout session for updating payment method
+        const session = await stripe.checkout.sessions.create({
+            customer: user.stripeCustomerId,
+            payment_method_types: ['card'],
+            mode: 'setup', // Setup mode for updating payment method
+            success_url: `https://quickstage.tech/settings?payment_updated=true`,
+            cancel_url: `https://quickstage.tech/settings?payment_canceled=true`,
+            metadata: { uid: user.uid, action: 'change_payment' }
+        });
+        console.log(`Created payment method update session ${session.id} for user ${uid}`);
+        return c.json({ url: session.url });
+    }
+    catch (error) {
+        console.error('Stripe payment method update error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return c.json({ error: 'payment_update_failed', details: errorMessage }, 500);
+    }
+});
+app.post('/billing/portal', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (!user.stripeCustomerId) {
+        return c.json({ error: 'no_subscription' }, 400);
+    }
+    try {
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Initialize Stripe client with environment variables
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        console.log(`Creating billing portal session for user ${uid}`);
+        // Create billing portal session
+        const session = await stripe.billingPortal.sessions.create({
+            customer: user.stripeCustomerId,
+            return_url: `https://quickstage.tech/dashboard`,
+        });
+        console.log(`Created billing portal session ${session.id} for user ${uid}`);
+        return c.json({ url: session.url });
+    }
+    catch (error) {
+        console.error('Stripe billing portal error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return c.json({ error: 'portal_failed', details: errorMessage }, 500);
+    }
+});
+// Stripe webhook endpoint
+app.post('/webhooks/stripe', async (c) => {
+    try {
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Check if Stripe webhook secret is available
+        if (!c.env.STRIPE_WEBHOOK_SECRET) {
+            console.error('STRIPE_WEBHOOK_SECRET not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        const sig = c.req.header('stripe-signature');
+        const rawBody = await c.req.text();
+        if (!sig) {
+            console.error('No Stripe signature found');
+            return c.json({ error: 'no_signature' }, 400);
+        }
+        let event;
+        try {
+            event = await stripe.webhooks.constructEventAsync(rawBody, sig, c.env.STRIPE_WEBHOOK_SECRET);
+        }
+        catch (err) {
+            console.error('Webhook signature verification failed:', err);
+            return c.json({ error: 'bad_signature' }, 400);
+        }
+        console.log(`Processing Stripe webhook: ${event.type}`);
+        // Handle various Stripe webhook events
+        switch (event.type) {
+            case 'checkout.session.completed':
+                console.log('Handling checkout.session.completed event');
+                await handleCheckoutSessionCompleted(c, event.data.object);
+                break;
+            case 'customer.created':
+                console.log('Handling customer.created event');
+                await handleCustomerCreated(c, event.data.object);
+                break;
+            case 'customer.subscription.created':
+                console.log('Handling customer.subscription.created event');
+                await handleSubscriptionCreated(c, event.data.object);
+                break;
+            case 'customer.subscription.updated':
+                console.log('Handling customer.subscription.updated event');
+                await handleSubscriptionUpdated(c, event.data.object);
+                break;
+            case 'customer.subscription.deleted':
+                console.log('Handling customer.subscription.deleted event');
+                await handleSubscriptionDeleted(c, event.data.object);
+                break;
+            case 'customer.deleted':
+                console.log('Handling customer.deleted event');
+                await handleCustomerDeleted(c, event.data.object);
+                break;
+            case 'invoice.payment_succeeded':
+                console.log('Handling invoice.payment_succeeded event');
+                await handlePaymentSucceeded(c, event.data.object);
+                break;
+            case 'invoice.payment_failed':
+                console.log('Handling invoice.payment_failed event');
+                await handlePaymentFailed(c, event.data.object);
+                break;
+            case 'customer.updated':
+                console.log('Handling customer.updated event');
+                // Customer updates don't require immediate action
+                break;
+            default:
+                console.log(`Unhandled event type: ${event.type}`);
+                console.log('Event data:', JSON.stringify(event.data, null, 2));
+        }
+        return c.json({ received: true });
+    }
+    catch (error) {
+        console.error('Webhook processing error:', error);
+        return c.json({ error: 'webhook_processing_failed' }, 500);
+    }
+});
+// Cancel subscription endpoint
+app.post('/billing/cancel', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (!user.stripeSubscriptionId) {
+        return c.json({ error: 'no_subscription' }, 400);
+    }
+    try {
+        // Check if Stripe secret key is available
+        if (!c.env.STRIPE_SECRET_KEY) {
+            console.error('STRIPE_SECRET_KEY not found in environment');
+            return c.json({ error: 'stripe_configuration_error' }, 500);
+        }
+        // Initialize Stripe client with environment variables
+        const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+            apiVersion: '2023-10-16',
+        });
+        console.log(`Cancelling subscription ${user.stripeSubscriptionId} for user ${uid}`);
+        // Cancel the subscription at period end (user keeps access until paid period ends)
+        const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+            cancel_at_period_end: true
+        });
+        // Update user status
+        user.subscriptionStatus = 'cancelled';
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        console.log(`Subscription ${user.stripeSubscriptionId} cancelled for user ${uid}`);
+        return c.json({
+            ok: true,
+            message: 'Subscription cancelled. You will retain access until the end of your current billing period.',
+            cancelAt: subscription.cancel_at
+        });
+    }
+    catch (error) {
+        console.error('Stripe cancel subscription error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        return c.json({ error: 'cancel_failed', details: errorMessage }, 500);
+    }
+});
+// Helper function to start a trial for a user
+async function startTrialForUser(c, user) {
+    if (!user.subscriptionStatus || user.subscriptionStatus === 'none') {
+        user.subscriptionStatus = 'trial';
+        user.plan = 'pro'; // Set plan to pro during trial
+        user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+        user.subscriptionStartedAt = Date.now(); // Track when trial started
+        await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
+        console.log(`Started 7-day trial for user ${user.uid}`);
+    }
+}
+// Helper function to check and update trial status
+async function checkAndUpdateTrialStatus(c, user) {
+    if (user.subscriptionStatus === 'trial' && user.trialEndsAt) {
+        const now = Date.now();
+        if (now >= user.trialEndsAt) {
+            // Trial expired, mark as cancelled
+            user.subscriptionStatus = 'cancelled';
+            user.plan = 'free'; // Revert to free plan after trial expires
+            await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
+            console.log(`Trial expired for user ${user.uid}, marked as cancelled`);
+        }
+    }
+    return user;
+}
+// Webhook handler functions
+async function handleCustomerCreated(c, customer) {
+    console.log(`Processing customer creation: ${customer.id}`);
+    // Customer created event doesn't require immediate action
+    // The subscription creation will handle the user status update
+}
+async function handleCheckoutSessionCompleted(c, session) {
+    const uid = session.metadata?.uid;
+    if (!uid) {
+        console.error('No UID in checkout session metadata');
+        return;
+    }
+    console.log(`Processing checkout session completion for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw) {
+        console.error(`User ${uid} not found for checkout session`);
+        return;
+    }
+    const user = JSON.parse(raw);
+    // Update user with Stripe customer ID
+    if (session.customer) {
+        user.stripeCustomerId = session.customer;
+    }
+    // Update user with subscription ID if available
+    if (session.subscription) {
+        user.stripeSubscriptionId = session.subscription;
+    }
+    // Set user to trial status when checkout is completed
+    user.subscriptionStatus = 'trial';
+    user.plan = 'pro';
+    user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+    if (!user.subscriptionStartedAt) {
+        user.subscriptionStartedAt = Date.now();
+    }
+    // Save updated user
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    console.log(`Updated user ${uid} to trial status with checkout session data`);
+}
+async function handleSubscriptionCreated(c, subscription) {
+    const customerId = subscription.customer;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid) {
+        console.error(`No user found for customer ${customerId}`);
+        return;
+    }
+    console.log(`Processing subscription creation for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    user.stripeSubscriptionId = subscription.id;
+    if (subscription.status === 'trialing') {
+        user.subscriptionStatus = 'trial';
+        user.plan = 'pro';
+        if (!user.subscriptionStartedAt) {
+            user.subscriptionStartedAt = Date.now();
+        }
+        console.log(`User ${uid} marked as trial`);
+    }
+    else if (subscription.status === 'active') {
+        user.subscriptionStatus = 'active';
+        user.plan = 'pro';
+        if (!user.subscriptionStartedAt) {
+            user.subscriptionStartedAt = Date.now();
+        }
+        console.log(`User ${uid} marked as active subscription`);
+    }
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function handleSubscriptionUpdated(c, subscription) {
+    const customerId = subscription.customer;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid)
+        return;
+    console.log(`Processing subscription update for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    if (subscription.status === 'trialing') {
+        user.subscriptionStatus = 'trial';
+        user.plan = 'pro';
+    }
+    else if (subscription.status === 'active') {
+        user.subscriptionStatus = 'active';
+        user.plan = 'pro';
+    }
+    else if (subscription.status === 'canceled' || subscription.status === 'incomplete_expired') {
+        user.subscriptionStatus = 'cancelled';
+        user.plan = 'free';
+    }
+    else if (subscription.status === 'past_due') {
+        user.subscriptionStatus = 'past_due';
+    }
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function handleSubscriptionDeleted(c, subscription) {
+    const customerId = subscription.customer;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid)
+        return;
+    console.log(`Processing subscription deletion for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    user.subscriptionStatus = 'cancelled';
+    user.plan = 'free';
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function handleCustomerDeleted(c, customer) {
+    const customerId = customer.id;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid)
+        return;
+    console.log(`Processing customer deletion for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    user.stripeCustomerId = undefined;
+    user.stripeSubscriptionId = undefined;
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function handlePaymentSucceeded(c, invoice) {
+    const customerId = invoice.customer;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid)
+        return;
+    console.log(`Processing payment success for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    user.lastPaymentAt = Date.now();
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function handlePaymentFailed(c, invoice) {
+    const customerId = invoice.customer;
+    const uid = await getUidByStripeCustomerId(c, customerId);
+    if (!uid)
+        return;
+    console.log(`Processing payment failure for user ${uid}`);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return;
+    const user = JSON.parse(raw);
+    user.subscriptionStatus = 'past_due';
+    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+}
+async function getUidByStripeCustomerId(c, customerId) {
+    let cursor = undefined;
+    do {
+        const list = await c.env.KV_USERS.list({ prefix: 'user:', cursor });
+        cursor = list.cursor;
+        for (const key of list.keys) {
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userRaw = await c.env.KV_USERS.get(key.name);
+                if (userRaw) {
+                    const user = JSON.parse(userRaw);
+                    if (user.stripeCustomerId === customerId) {
+                        return user.uid;
+                    }
+                }
+            }
+        }
+    } while (cursor);
+    return null;
+}
