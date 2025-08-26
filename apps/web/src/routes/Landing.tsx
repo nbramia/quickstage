@@ -35,7 +35,7 @@ export default function Landing() {
   };
 
   const handleSignUp = () => {
-    navigate('/login');
+    navigate('/login?mode=signup');
   };
 
   const handleLogIn = () => {

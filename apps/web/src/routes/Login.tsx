@@ -50,6 +50,15 @@ export default function Login() {
     }
   }, [user, navigate]);
 
+  // Check URL parameters for initial auth mode
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = urlParams.get('mode');
+    if (mode === 'signup') {
+      setAuthMode('register');
+    }
+  }, []);
+
   // Clear errors when switching modes
   useEffect(() => {
     clearError();
