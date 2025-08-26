@@ -57,7 +57,9 @@ export const api = {
       throw new Error(`API request failed: ${response.status}`);
     }
     
-    return response.json();
+    const data = await response.json();
+    console.log(`API GET ${endpoint} response:`, data);
+    return data;
   },
 
   async post(endpoint: string, data?: any) {
@@ -160,5 +162,24 @@ export const api = {
     
     return response.json();
   },
+};
+
+// Admin-specific API functions
+export const adminApi = {
+  async deleteUser(uid: string) {
+    return api.delete(`/admin/users/${uid}`);
+  },
+  
+  async deactivateUser(uid: string) {
+    return api.post(`/admin/users/${uid}/deactivate`);
+  },
+  
+  async activateUser(uid: string) {
+    return api.post(`/admin/users/${uid}/activate`);
+  },
+  
+  async cleanupCorruptedUsers() {
+    return api.post('/admin/cleanup-corrupted-users');
+  }
 };
 

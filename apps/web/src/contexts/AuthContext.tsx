@@ -11,15 +11,8 @@ interface User {
   role: 'user' | 'admin' | 'superadmin';
   createdAt: number;
   lastLoginAt?: number;
-  hasPasskeys?: boolean;
   hasPassword?: boolean;
   hasGoogle?: boolean;
-  passkeys?: Array<{
-    id: string;
-    publicKey: string;
-    counter: number;
-    transports?: string[];
-  }>;
   // Subscription information
   subscriptionStatus?: 'none' | 'trial' | 'active' | 'cancelled' | 'past_due';
   subscriptionDisplay?: string;
@@ -44,7 +37,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   updateProfile: (updates: { name?: string; email?: string }) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  removePasskey: (credentialId: string) => Promise<void>;
+
   cancelSubscription: () => Promise<{ ok: boolean; message?: string; error?: string }>;
 }
 
@@ -222,20 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const removePasskey = async (credentialId: string) => {
-    try {
-      setError(null);
-      setLoading(true);
-      await api.delete(`/auth/passkeys/${credentialId}`);
-      await refreshUser();
-    } catch (error: any) {
-      const errorMessage = error.message || 'Passkey removal failed';
-      setError(errorMessage);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const cancelSubscription = async () => {
     try {
@@ -287,7 +267,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isAuthenticated: !!user,
     updateProfile,
     changePassword,
-    removePasskey,
+
     cancelSubscription,
   };
 

@@ -42,9 +42,6 @@ async function incrementUniqueViewCount(c, snapshotId, meta) {
         // Don't fail the request if view counting fails
     }
 }
-// Passkeys (WebAuthn)
-// @ts-ignore
-import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse, } from '@simplewebauthn/server';
 // Billing (Stripe)
 // Edge-compatible Stripe client with Fetch + SubtleCrypto providers
 // @ts-ignore
@@ -132,107 +129,11 @@ async function ensureUserByName(c, name) {
     if (user)
         return user;
     const uid = generateIdBase62(16);
-    user = { uid, createdAt: Date.now(), plan: 'free', role: 'user', passkeys: [], subscriptionStatus: 'none' };
+    user = { uid, createdAt: Date.now(), plan: 'free', role: 'user', subscriptionStatus: 'none' };
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
-    // Start trial for new user
-    await startTrialForUser(c, user);
     return user;
 }
-// Passkey: Register begin
-app.post('/auth/register-passkey/begin', async (c) => {
-    const { name } = await c.req.json();
-    if (!name)
-        return c.json({ error: 'name_required' }, 400);
-    const user = await ensureUserByName(c, name);
-    const options = generateRegistrationOptions({
-        rpID: c.env.RP_ID,
-        rpName: 'QuickStage',
-        userID: user.uid,
-        userName: name,
-        attestationType: 'none',
-        authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
-        excludeCredentials: (user.passkeys || []).map((pk) => ({ id: pk.id, type: 'public-key' })),
-    });
-    await c.env.KV_USERS.put(`user:${user.uid}:regChallenge`, options.challenge, { expirationTtl: 600 });
-    return c.json(options);
-});
-// Passkey: Register finish
-app.post('/auth/register-passkey/finish', async (c) => {
-    const { name, response } = await c.req.json();
-    if (!name || !response)
-        return c.json({ error: 'bad_request' }, 400);
-    const user = await getUserByName(c, name);
-    if (!user)
-        return c.json({ error: 'not_found' }, 404);
-    const expectedChallenge = await c.env.KV_USERS.get(`user:${user.uid}:regChallenge`);
-    if (!expectedChallenge)
-        return c.json({ error: 'challenge_expired' }, 400);
-    const verification = await verifyRegistrationResponse({
-        response,
-        expectedChallenge,
-        expectedOrigin: `${c.env.PUBLIC_BASE_URL}`,
-        expectedRPID: c.env.RP_ID,
-    });
-    if (!verification.verified || !verification.registrationInfo)
-        return c.json({ error: 'verify_failed' }, 400);
-    const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
-    user.passkeys = user.passkeys || [];
-    if (!user.passkeys.find((pk) => pk.id === credentialID)) {
-        user.passkeys.push({ id: credentialID, publicKey: credentialPublicKey, counter: counter || 0 });
-    }
-    user.lastLoginAt = Date.now();
-    await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
-    const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
-});
-// Passkey: Login begin
-app.post('/auth/login-passkey/begin', async (c) => {
-    const { name } = await c.req.json();
-    if (!name)
-        return c.json({ error: 'name_required' }, 400);
-    const user = await getUserByName(c, name);
-    if (!user || !user.passkeys || user.passkeys.length === 0)
-        return c.json({ error: 'not_found' }, 404);
-    const options = generateAuthenticationOptions({
-        rpID: c.env.RP_ID,
-        userVerification: 'preferred',
-        allowCredentials: user.passkeys.map((pk) => ({ id: pk.id, type: 'public-key' })),
-    });
-    await c.env.KV_USERS.put(`user:${user.uid}:authChallenge`, options.challenge, { expirationTtl: 600 });
-    return c.json(options);
-});
-// Passkey: Login finish
-app.post('/auth/login-passkey/finish', async (c) => {
-    const { name, response } = await c.req.json();
-    if (!name || !response)
-        return c.json({ error: 'bad_request' }, 400);
-    const user = await getUserByName(c, name);
-    if (!user)
-        return c.json({ error: 'not_found' }, 404);
-    const expectedChallenge = await c.env.KV_USERS.get(`user:${user.uid}:authChallenge`);
-    if (!expectedChallenge)
-        return c.json({ error: 'challenge_expired' }, 400);
-    const verification = await verifyAuthenticationResponse({
-        response,
-        expectedChallenge,
-        expectedOrigin: `${c.env.PUBLIC_BASE_URL}`,
-        expectedRPID: c.env.RP_ID,
-        authenticator: {
-            // Use the first for now; in future map credentialID to stored authenticator
-            credentialID: user.passkeys?.[0]?.id,
-            credentialPublicKey: user.passkeys?.[0]?.publicKey,
-            counter: user.passkeys?.[0]?.counter || 0,
-            transports: user.passkeys?.[0]?.transports,
-        },
-    });
-    if (!verification.verified)
-        return c.json({ error: 'verify_failed' }, 400);
-    user.lastLoginAt = Date.now();
-    await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
-    const token = await signSession({ uid: user.uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
-    return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
-});
 // Email/Password: Register
 app.post('/auth/register', async (c) => {
     const { email, password, name } = await c.req.json();
@@ -252,7 +153,6 @@ app.post('/auth/register', async (c) => {
         createdAt: Date.now(),
         plan: 'free',
         role: 'user',
-        passkeys: [],
         subscriptionStatus: 'none',
         email,
         passwordHash: hashedPassword,
@@ -261,8 +161,6 @@ app.post('/auth/register', async (c) => {
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
     await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
-    // Start trial for new user
-    await startTrialForUser(c, user);
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
     return c.json({ ok: true, user: { uid, name, email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
@@ -341,7 +239,6 @@ app.post('/auth/google', async (c) => {
                     createdAt: Date.now(),
                     plan: 'free',
                     role: 'user',
-                    passkeys: [],
                     subscriptionStatus: 'none',
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
@@ -350,8 +247,6 @@ app.post('/auth/google', async (c) => {
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
-                // Start trial for new user
-                await startTrialForUser(c, user);
             }
         }
         else {
@@ -363,7 +258,6 @@ app.post('/auth/google', async (c) => {
                 createdAt: Date.now(),
                 plan: 'free',
                 role: 'user',
-                passkeys: [],
                 subscriptionStatus: 'none',
                 email: email,
                 name: displayName,
@@ -372,8 +266,6 @@ app.post('/auth/google', async (c) => {
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
-            // Start trial for new user
-            await startTrialForUser(c, user);
         }
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
@@ -392,8 +284,31 @@ app.get('/me', async (c) => {
     if (!raw)
         return c.json({ user: null });
     const user = JSON.parse(raw);
+    console.log(`/me endpoint called for user ${uid}:`, {
+        subscriptionStatus: user.subscriptionStatus,
+        plan: user.plan,
+        hasStripe: !!(user.stripeCustomerId || user.stripeSubscriptionId)
+    });
+    // Fix users who have incorrect trial status without Stripe subscription
+    if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+        user.subscriptionStatus = 'none';
+        user.plan = 'free';
+        user.trialEndsAt = undefined;
+        user.subscriptionStartedAt = undefined;
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        console.log(`Fixed user ${uid}: reset incorrect trial status to free plan`);
+    }
+    // Fix users who have 'pro' plan but no Stripe subscription (except superadmin)
+    if (user.plan === 'pro' && !user.stripeCustomerId && !user.stripeSubscriptionId && user.role !== 'superadmin') {
+        user.subscriptionStatus = 'none';
+        user.plan = 'free';
+        user.trialEndsAt = undefined;
+        user.subscriptionStartedAt = undefined;
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        console.log(`Fixed user ${uid}: reset incorrect pro plan to free plan`);
+    }
     // Calculate subscription display information
-    let subscriptionDisplay = 'Pro';
+    let subscriptionDisplay = 'Free';
     let subscriptionStatus = 'none';
     let trialEndsAt = null;
     let nextBillingDate = null;
@@ -434,11 +349,9 @@ app.get('/me', async (c) => {
         }
     }
     else {
-        // No subscription status, check if they have pro plan
-        canAccessPro = user.plan === 'pro';
-        if (canAccessPro) {
-            subscriptionDisplay = 'Pro';
-        }
+        // No subscription status, user is on free plan
+        canAccessPro = false;
+        subscriptionDisplay = 'Free';
     }
     // Return safe user data with subscription information
     return c.json({
@@ -450,7 +363,6 @@ app.get('/me', async (c) => {
             role: user.role || 'user',
             createdAt: user.createdAt,
             lastLoginAt: user.lastLoginAt,
-            hasPasskeys: user.passkeys && user.passkeys.length > 0,
             hasPassword: !!user.passwordHash,
             hasGoogle: !!user.googleId,
             // Subscription information
@@ -540,25 +452,6 @@ app.post('/auth/change-password', async (c) => {
     user.passwordHash = hashedPassword;
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     return c.json({ ok: true });
-});
-// Remove passkey
-app.delete('/auth/passkeys/:credentialId', async (c) => {
-    const uid = await getUidFromSession(c);
-    if (!uid)
-        return c.json({ error: 'unauthorized' }, 401);
-    const credentialId = c.req.param('credentialId');
-    if (!credentialId)
-        return c.json({ error: 'missing_credential_id' }, 400);
-    const raw = await c.env.KV_USERS.get(`user:${uid}`);
-    if (!raw)
-        return c.json({ error: 'user_not_found' }, 404);
-    const user = JSON.parse(raw);
-    if (!user.passkeys || user.passkeys.length === 0)
-        return c.json({ error: 'no_passkeys' }, 400);
-    // Remove the passkey
-    user.passkeys = user.passkeys.filter((pk) => pk.id !== credentialId);
-    await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
-    return c.json({ ok: true, passkeys: user.passkeys });
 });
 // Start free trial with credit card required for auto-billing after trial
 app.post('/billing/start-trial', async (c) => {
@@ -1861,6 +1754,22 @@ app.post('/api/auth/google', async (c) => {
                 user.googleId = idToken; // Store Google ID for future reference
                 if (!user.name && name)
                     user.name = name;
+                // Fix users who have incorrect trial status without Stripe subscription
+                if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+                    user.subscriptionStatus = 'none';
+                    user.plan = 'free';
+                    user.trialEndsAt = undefined;
+                    user.subscriptionStartedAt = undefined;
+                    console.log(`Fixed user ${uid}: reset incorrect trial status to free plan`);
+                }
+                // Fix users who have 'pro' plan but no Stripe subscription (except superadmin)
+                if (user.plan === 'pro' && !user.stripeCustomerId && !user.stripeSubscriptionId && user.role !== 'superadmin') {
+                    user.subscriptionStatus = 'none';
+                    user.plan = 'free';
+                    user.trialEndsAt = undefined;
+                    user.subscriptionStartedAt = undefined;
+                    console.log(`Fixed user ${uid}: reset incorrect pro plan to free plan`);
+                }
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             }
             else {
@@ -1871,7 +1780,6 @@ app.post('/api/auth/google', async (c) => {
                     createdAt: Date.now(),
                     plan: 'free',
                     role: 'user',
-                    passkeys: [],
                     subscriptionStatus: 'none',
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
@@ -1880,8 +1788,6 @@ app.post('/api/auth/google', async (c) => {
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
-                // Start trial for new user
-                await startTrialForUser(c, user);
             }
         }
         else {
@@ -1893,7 +1799,6 @@ app.post('/api/auth/google', async (c) => {
                 createdAt: Date.now(),
                 plan: 'free',
                 role: 'user',
-                passkeys: [],
                 subscriptionStatus: 'none',
                 email: email,
                 name: displayName,
@@ -1902,8 +1807,6 @@ app.post('/api/auth/google', async (c) => {
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
-            // Start trial for new user
-            await startTrialForUser(c, user);
         }
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
@@ -2018,7 +1921,6 @@ app.post('/admin/users', async (c) => {
         createdAt: Date.now(),
         plan: 'free',
         role: role,
-        passkeys: [],
         subscriptionStatus: 'none',
         email,
         passwordHash: hashedPassword,
@@ -2027,8 +1929,6 @@ app.post('/admin/users', async (c) => {
     await c.env.KV_USERS.put(`user:${newUid}`, JSON.stringify(newUser));
     await c.env.KV_USERS.put(`user:byname:${name}`, newUid);
     await c.env.KV_USERS.put(`user:byemail:${email}`, newUid);
-    // Start trial for new user
-    await startTrialForUser(c, newUser);
     return c.json({ ok: true, user: { uid: newUid, name, email, role } });
 });
 app.post('/admin/users/:uid/deactivate', async (c) => {
@@ -2068,6 +1968,64 @@ app.post('/admin/users/:uid/activate', async (c) => {
     targetUser.status = 'active';
     await c.env.KV_USERS.put(`user:${targetUid}`, JSON.stringify(targetUser));
     return c.json({ ok: true });
+});
+// Delete user completely (superadmin only)
+app.delete('/admin/users/:uid', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin')
+        return c.json({ error: 'insufficient_permissions' }, 403);
+    const targetUid = c.req.param('uid');
+    const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
+    if (!targetUserRaw)
+        return c.json({ error: 'target_user_not_found' }, 404);
+    const targetUser = JSON.parse(targetUserRaw);
+    // Cannot delete superadmin
+    if (targetUser.role === 'superadmin')
+        return c.json({ error: 'cannot_delete_superadmin' }, 400);
+    // Cannot delete self
+    if (targetUid === uid)
+        return c.json({ error: 'cannot_delete_self' }, 400);
+    console.log(`Superadmin ${uid} deleting user ${targetUid} (${targetUser.email}) completely`);
+    // Delete all user data from KV
+    await c.env.KV_USERS.delete(`user:${targetUid}`);
+    // Delete by-name index if exists
+    if (targetUser.name) {
+        await c.env.KV_USERS.delete(`user:byname:${targetUser.name}`);
+    }
+    // Delete by-email index if exists
+    if (targetUser.email) {
+        await c.env.KV_USERS.delete(`user:byemail:${targetUser.email}`);
+    }
+    // Delete all user's snapshots
+    const snapshots = await c.env.KV_SNAPS.list({ prefix: `snap:${targetUid}:` });
+    for (const key of snapshots.keys) {
+        await c.env.KV_SNAPS.delete(key.name);
+    }
+    // Delete all user's PATs
+    const pats = await c.env.KV_USERS.list({ prefix: `pat:${targetUid}:` });
+    for (const key of pats.keys) {
+        await c.env.KV_USERS.delete(key.name);
+    }
+    // Delete all user's comments
+    const comments = await c.env.KV_USERS.list({ prefix: `comment:${targetUid}:` });
+    for (const key of comments.keys) {
+        await c.env.KV_USERS.delete(key.name);
+    }
+    return c.json({
+        success: true,
+        message: 'User completely deleted from system',
+        deletedUser: {
+            uid: targetUser.uid,
+            email: targetUser.email,
+            name: targetUser.name
+        }
+    });
 });
 // Create superadmin user (one-time setup)
 app.post('/admin/setup-superadmin', async (c) => {
@@ -2114,7 +2072,6 @@ app.post('/admin/setup-superadmin', async (c) => {
         createdAt: Date.now(),
         plan: 'pro',
         role: 'superadmin',
-        passkeys: [],
         subscriptionStatus: 'none',
         email,
         passwordHash: hashedPassword,
@@ -2967,6 +2924,165 @@ async function checkAndUpdateTrialStatus(c, user) {
     }
     return user;
 }
+// Temporary endpoint to fix existing users with incorrect subscription data
+app.post('/debug/fix-subscription/:uid', async (c) => {
+    const uid = c.req.param('uid');
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(raw);
+    console.log(`Fixing user ${uid}:`, user);
+    // Fix users who have 'trial' status but no actual Stripe subscription
+    if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+        user.subscriptionStatus = 'none';
+        user.plan = 'free';
+        user.trialEndsAt = null;
+        user.subscriptionStartedAt = null;
+        await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        console.log(`Fixed user ${uid}: reset to free plan`);
+        return c.json({
+            success: true,
+            message: 'User subscription data fixed',
+            before: { subscriptionStatus: 'trial', plan: 'pro' },
+            after: { subscriptionStatus: 'none', plan: 'free' }
+        });
+    }
+    return c.json({
+        success: false,
+        message: 'User does not need fixing',
+        current: {
+            subscriptionStatus: user.subscriptionStatus,
+            plan: user.plan,
+            hasStripe: !!(user.stripeCustomerId || user.stripeSubscriptionId)
+        }
+    });
+});
+// Temporary debug endpoint to check user data
+app.get('/debug/user/:uid', async (c) => {
+    const uid = c.req.param('uid');
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(raw);
+    return c.json({
+        uid: user.uid,
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        role: user.role,
+        subscriptionStatus: user.subscriptionStatus,
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStartedAt: user.subscriptionStartedAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        canAccessPro: canAccessProFeatures(user),
+        subscriptionDisplay: getSubscriptionDisplayStatus(user)
+    });
+});
+// Temporary debug endpoint to check user by email
+app.get('/debug/user-by-email/:email', async (c) => {
+    const email = c.req.param('email');
+    const uid = await c.env.KV_USERS.get(`user:byemail:${email}`);
+    if (!uid)
+        return c.json({ error: 'user_not_found' }, 404);
+    const raw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!raw)
+        return c.json({ error: 'user_data_not_found' }, 404);
+    const user = JSON.parse(raw);
+    return c.json({
+        uid: user.uid,
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        role: user.role,
+        subscriptionStatus: user.subscriptionStatus,
+        trialEndsAt: user.trialEndsAt,
+        subscriptionStartedAt: user.subscriptionStartedAt,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        canAccessPro: canAccessProFeatures(user),
+        subscriptionDisplay: getSubscriptionDisplayStatus(user),
+        rawUser: user
+    });
+});
+// Cleanup endpoint to fix all users with corrupted subscription data (superadmin only)
+app.post('/admin/cleanup-corrupted-users', async (c) => {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return c.json({ error: 'unauthorized' }, 401);
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return c.json({ error: 'user_not_found' }, 404);
+    const user = JSON.parse(userRaw);
+    if (user.role !== 'superadmin')
+        return c.json({ error: 'insufficient_permissions' }, 403);
+    console.log(`Superadmin ${uid} running cleanup of corrupted users`);
+    let cursor = undefined;
+    let totalUsers = 0;
+    let fixedUsers = 0;
+    let deletedUsers = 0;
+    const results = [];
+    do {
+        const list = await c.env.KV_USERS.list({ prefix: 'user:', cursor });
+        cursor = list.cursor;
+        for (const key of list.keys) {
+            // Filter for actual user records (user:uid) vs other keys (user:byemail:*, user:uid:snapshots, etc.)
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userDataRaw = await c.env.KV_USERS.get(key.name);
+                if (userDataRaw) {
+                    totalUsers++;
+                    const userData = JSON.parse(userDataRaw);
+                    // Check for corrupted subscription data
+                    if (userData.subscriptionStatus === 'trial' && !userData.stripeCustomerId && !userData.stripeSubscriptionId) {
+                        // Fix corrupted trial status
+                        userData.subscriptionStatus = 'none';
+                        userData.plan = 'free';
+                        userData.trialEndsAt = null;
+                        userData.subscriptionStartedAt = null;
+                        await c.env.KV_USERS.put(key.name, JSON.stringify(userData));
+                        fixedUsers++;
+                        results.push({
+                            uid: userData.uid,
+                            email: userData.email,
+                            action: 'fixed',
+                            before: { subscriptionStatus: 'trial', plan: 'pro' },
+                            after: { subscriptionStatus: 'none', plan: 'free' }
+                        });
+                        console.log(`Fixed user ${userData.uid}: reset corrupted trial status`);
+                    }
+                    // Check for users with 'pro' plan but no subscription
+                    if (userData.plan === 'pro' && !userData.stripeCustomerId && !userData.stripeSubscriptionId && userData.role !== 'superadmin') {
+                        // Fix corrupted pro plan
+                        userData.plan = 'free';
+                        userData.subscriptionStatus = 'none';
+                        userData.trialEndsAt = null;
+                        userData.subscriptionStartedAt = null;
+                        await c.env.KV_USERS.put(key.name, JSON.stringify(userData));
+                        fixedUsers++;
+                        results.push({
+                            uid: userData.uid,
+                            email: userData.email,
+                            action: 'fixed',
+                            before: { plan: 'pro', subscriptionStatus: userData.subscriptionStatus },
+                            after: { plan: 'free', subscriptionStatus: 'none' }
+                        });
+                        console.log(`Fixed user ${userData.uid}: reset corrupted pro plan`);
+                    }
+                }
+            }
+        }
+    } while (cursor);
+    return c.json({
+        success: true,
+        message: 'Cleanup completed',
+        summary: {
+            totalUsers,
+            fixedUsers,
+            deletedUsers
+        },
+        results
+    });
+});
 // Webhook handler functions
 async function handleCustomerCreated(c, customer) {
     console.log(`Processing customer creation: ${customer.id}`);

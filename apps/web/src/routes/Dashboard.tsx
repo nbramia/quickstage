@@ -22,6 +22,18 @@ export default function Dashboard() {
   const [showInstallInstructions, setShowInstallInstructions] = useState(false);
   const [showAIInstructions, setShowAIInstructions] = useState(false);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('Dashboard - Current user object:', user);
+    console.log('Dashboard - User subscription details:', {
+      plan: user?.plan,
+      subscriptionStatus: user?.subscriptionStatus,
+      subscriptionDisplay: user?.subscriptionDisplay,
+      canAccessPro: user?.canAccessPro,
+      role: user?.role
+    });
+  }, [user]);
+
   const [currentVersion, setCurrentVersion] = useState('');
   const [lastDownloadedVersion, setLastDownloadedVersion] = useState('');
   const [needsUpdate, setNeedsUpdate] = useState(false);
@@ -484,7 +496,7 @@ export default function Dashboard() {
               <div className="flex items-center space-x-4">
                 <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
                   <div className="text-sm text-gray-700">
-                    <span className="font-semibold">{user?.subscriptionDisplay || 'Pro'}</span>
+                    <span className="font-semibold">{user?.subscriptionDisplay || 'Free'}</span>
                     <span className="text-gray-500 ml-2">Plan</span>
                   </div>
                 </div>

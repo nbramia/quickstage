@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api';
+import { api, adminApi } from '../api';
 
 interface AdminUser {
   uid: string;
@@ -108,6 +108,45 @@ export default function AdminDashboard() {
       loadUsers();
     } catch (error: any) {
       setError(error.message || 'Failed to activate user');
+    }
+  };
+
+  const handleDeleteUser = async (uid: string, userName: string) => {
+    if (!confirm(`⚠️  DANGER: Are you absolutely sure you want to PERMANENTLY DELETE user "${userName}"?\n\nThis will:\n• Remove all their data from the system\n• Delete all their snapshots\n• Delete all their PATs\n• Delete all their comments\n• This action CANNOT be undone!\n\nType "DELETE" to confirm:`)) {
+      return;
+    }
+    
+    const confirmation = prompt('Type "DELETE" to confirm permanent deletion:');
+    if (confirmation !== 'DELETE') {
+      alert('Deletion cancelled. User data is safe.');
+      return;
+    }
+    
+    try {
+      setError(null);
+      await adminApi.deleteUser(uid);
+      setShowSuccess(`User "${userName}" has been completely deleted from the system!`);
+      loadUsers();
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete user');
+    }
+  };
+
+  const handleCleanupCorruptedUsers = async () => {
+    if (!confirm('This will scan all users and fix any corrupted subscription data. Continue?')) {
+      return;
+    }
+    
+    try {
+      setError(null);
+      setLoading(true);
+      const response = await adminApi.cleanupCorruptedUsers();
+      setShowSuccess(`Cleanup completed! Fixed ${response.summary.fixedUsers} users with corrupted data.`);
+      loadUsers(); // Refresh the user list
+    } catch (error: any) {
+      setError(error.message || 'Failed to cleanup corrupted users');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -260,8 +299,15 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Create User Button */}
-        <div className="mb-6">
+        {/* Admin Actions */}
+        <div className="mb-6 flex space-x-3">
+          <button
+            onClick={handleCleanupCorruptedUsers}
+            className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+            title="Fix users with corrupted subscription data"
+          >
+            🔧 Cleanup Corrupted Users
+          </button>
           <button
             onClick={() => setShowCreateUser(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
@@ -407,21 +453,34 @@ export default function AdminDashboard() {
                       {user.activeSnapshots}/{user.totalSnapshots}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {user.status === 'active' ? (
-                        <button
-                          onClick={() => handleDeactivateUser(user.uid)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          Deactivate
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleActivateUser(user.uid)}
-                          className="text-green-600 hover:text-green-900"
-                        >
-                          Activate
-                        </button>
-                      )}
+                      <div className="flex flex-col space-y-2">
+                        {user.status === 'active' ? (
+                          <button
+                            onClick={() => handleDeactivateUser(user.uid)}
+                            className="text-red-600 hover:text-red-900 text-xs"
+                          >
+                            Deactivate
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleActivateUser(user.uid)}
+                            className="text-green-600 hover:text-green-900 text-xs"
+                          >
+                            Activate
+                          </button>
+                        )}
+                        
+                        {/* Delete button - only show for non-superadmin users */}
+                        {user.role !== 'superadmin' && (
+                          <button
+                            onClick={() => handleDeleteUser(user.uid, user.name)}
+                            className="text-red-800 hover:text-red-900 text-xs font-bold border border-red-300 px-2 py-1 rounded bg-red-50 hover:bg-red-100"
+                            title="Permanently delete user and all their data"
+                          >
+                            🗑️ Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

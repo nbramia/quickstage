@@ -269,7 +269,7 @@ Extension reads these settings from `package.json`:
 #### **Authentication Methods**
 1. **Email/Password**: Traditional registration/login
 2. **Google OAuth**: One-click sign-in
-3. **Passkeys**: WebAuthn-based authentication
+3. **Email/Password & Google OAuth**: Traditional authentication methods
 
 #### **Snapshot Management**
 - View all snapshots with creation dates and expiry
@@ -562,12 +562,12 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 ### Enhanced Authentication System (2025-01-27)
 - **Email/Password Authentication**: Traditional login and registration with secure password handling
 - **Google OAuth Integration**: One-click sign-in using Google accounts with proper OAuth 2.0 flow
-- **Passkey Support**: Modern WebAuthn-based authentication for passwordless login
+- **Multi-Provider Authentication**: Email/password and Google OAuth support
 - **Unified Auth Context**: Centralized authentication management with multiple provider support
 - **Modern UI Design**: Clean, responsive interface with improved user experience
 
 ### TypeScript Build Issues (2025-08-10)
-- Fixed passkey support detection in Login.tsx that was causing Cloudflare deployment failures
+
 - Resolved async function calls for `isUserVerifyingPlatformAuthenticatorAvailable` and `isConditionalMediationAvailable`
 - All builds now pass successfully: `pnpm build`, `pnpm package`
 
@@ -587,7 +587,7 @@ The `/s/*` routing issue has been resolved by using a direct Worker approach:
 - **Web Dashboard**: Complete web interface for managing snapshots and settings
 - **Admin Dashboard**: Comprehensive user management system for administrators and superadmins
 - **Role-Based Access Control**: User, admin, and superadmin roles with appropriate permissions
-- **Multi-Provider Authentication**: Email/password, Google OAuth, and passkey support
+- **Multi-Provider Authentication**: Email/password and Google OAuth support
 - **Multi-Layer Routing**: Reliable /s/* routing with fallback strategies
 
 ## Architecture
@@ -643,7 +643,7 @@ npm run package        # Create VSIX file
 ### Authentication Testing
 - **Email/Password**: Use the registration form to create test accounts
 - **Google OAuth**: Requires valid Google OAuth client ID in environment
-- **Passkeys**: Test with browsers that support WebAuthn (Chrome, Safari, Edge)
+- **Google OAuth**: Test with valid Google account credentials
 
 ### Complete Authentication Flow
 The system now supports three authentication methods:
@@ -660,16 +660,15 @@ The system now supports three authentication methods:
    - Secure token verification with Google's servers
    - Seamless integration with existing accounts
 
-3. **Passkey (WebAuthn)**
-   - Modern passwordless authentication
-   - Platform authenticator support
-   - Multiple passkey management
-   - Secure credential storage
+3. **Google OAuth**
+   - One-click sign-in with Google accounts
+   - Automatic account creation
+   - Secure token verification
 
 ### User Management Features
 - **Profile Updates**: Change name and email
 - **Password Management**: Change passwords securely
-- **Passkey Management**: Add/remove passkeys
+- **Profile Management**: Update name, email, and password
 - **Session Management**: Secure logout and session handling
 - **Multi-Provider Linking**: Link multiple authentication methods to one account
 

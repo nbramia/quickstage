@@ -9,6 +9,18 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('Settings - Current user object:', user);
+    console.log('Settings - User subscription details:', {
+      plan: user?.plan,
+      subscriptionStatus: user?.subscriptionStatus,
+      subscriptionDisplay: user?.subscriptionDisplay,
+      canAccessPro: user?.canAccessPro,
+      role: user?.role
+    });
+  }, [user]);
+
   const handleUpgrade = async () => {
     try {
       setUpgrading(true);
@@ -364,51 +376,7 @@ export function Settings() {
           </div>
         </div>
 
-        {/* Passkeys */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Passkeys</h3>
-            {user.passkeys && user.passkeys.length > 0 ? (
-              <div>
-                <p className="text-gray-600 mb-4">
-                  You have {user.passkeys.length} passkey{user.passkeys.length !== 1 ? 's' : ''} registered.
-                </p>
-                <div className="space-y-2">
-                  {user.passkeys.map((passkey, index) => (
-                    <div key={passkey.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">
-                          Passkey {index + 1}
-                        </span>
-                        <p className="text-xs text-gray-500">
-                          Last used: {passkey.counter} times
-                        </p>
-                      </div>
-                      <button className="text-red-600 hover:text-red-800 text-sm font-medium">
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div>
-                <p className="text-gray-600 mb-4">
-                  No passkeys registered yet. You can register one from the login page.
-                </p>
-                <Link
-                  to="/login"
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                  Register Passkey
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
+
 
         {/* Actions */}
         <div className="px-4 sm:px-0">

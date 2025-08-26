@@ -12,9 +12,7 @@
     "hono": "^4.4.7",
     "zod": "^3.23.8",
     "itty-router": "^4.0.23",
-    "@passwordless-id/webauthn": "^2.1.0",
     "scrypt-js": "^3.0.1",
-    "@simplewebauthn/server": "^11.0.0",
     "stripe": "^14.21.0"
   },
   "devDependencies": {

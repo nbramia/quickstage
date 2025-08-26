@@ -35,34 +35,12 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [passkeySupported, setPasskeySupported] = useState(false);
-  const [showPasskeySection, setShowPasskeySection] = useState(false);
-  
   // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [displayName, setDisplayName] = useState('');
 
-  // Check if passkeys are supported
-  useEffect(() => {
-    const checkPasskeySupport = async () => {
-      try {
-        const isSupported = window.PublicKeyCredential &&
-          typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function' &&
-          typeof window.PublicKeyCredential.isConditionalMediationAvailable === 'function' &&
-          await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() &&
-          await window.PublicKeyCredential.isConditionalMediationAvailable();
-        
-        setPasskeySupported(!!isSupported);
-      } catch (error) {
-        console.warn('Passkey support check failed:', error);
-        setPasskeySupported(false);
-      }
-    };
-    
-    checkPasskeySupport();
-  }, []);
+
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -159,141 +137,9 @@ export default function Login() {
     }
   };
 
-  const handlePasskeyRegister = async () => {
-    if (!displayName.trim()) {
-      setError('Please enter a display name');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      // Start passkey registration
-      const response = await fetch('/api/auth/register-passkey/begin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: displayName.trim() })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start passkey registration');
-      }
-      
-      const data = await response.json();
-      
-      // Convert challenge to ArrayBuffer
-      const challenge = Uint8Array.from(atob(data.challenge), c => c.charCodeAt(0));
-      
-      // Create credentials
-      const credential = await navigator.credentials.create({
-        publicKey: {
-          ...data,
-          challenge,
-          user: {
-            ...data.user,
-            id: Uint8Array.from(atob(data.user.id), c => c.charCodeAt(0))
-          }
-        }
-      });
-      
-      if (!credential) {
-        throw new Error('Failed to create passkey');
-      }
-      
-      // Send credential to server
-      const finishResponse = await fetch('/api/auth/register-passkey/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: displayName.trim(),
-          response: credential
-        })
-      });
-      
-      if (!finishResponse.ok) {
-        throw new Error('Failed to complete passkey registration');
-      }
-      
-      // Success - user should now be authenticated
-      navigate('/dashboard');
-    } catch (err: any) {
-      console.error('Passkey registration failed:', err);
-      setError(err.message || 'Failed to register passkey');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handlePasskeyLogin = async () => {
-    if (!displayName.trim()) {
-      setError('Please enter a display name');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError('');
-    
-    try {
-      // Start passkey authentication
-      const response = await fetch('/api/auth/login-passkey/begin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: displayName.trim() })
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start passkey authentication');
-      }
-      
-      const data = await response.json();
-      
-      // Convert challenge to ArrayBuffer
-      const challenge = Uint8Array.from(atob(data.challenge), c => c.charCodeAt(0));
-      
-      // Get credentials
-      const credential = await navigator.credentials.get({
-        publicKey: {
-          ...data,
-          challenge,
-          allowCredentials: data.allowCredentials.map((cred: any) => ({
-            ...cred,
-            id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-          }))
-        }
-      });
-      
-      if (!credential) {
-        throw new Error('Failed to authenticate with passkey');
-      }
-      
-      // Send credential to server
-      const finishResponse = await fetch('/api/auth/login-passkey/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: displayName.trim(),
-          response: credential
-        })
-      });
-      
-      if (!finishResponse.ok) {
-        throw new Error('Failed to complete passkey authentication');
-      }
-      
-      // Success - user should now be authenticated
-      navigate('/dashboard');
-    } catch (err: any) {
-      console.error('Passkey login failed:', err);
-      setError(err.message || 'Failed to authenticate with passkey');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
+
 
   const handleInputChange = (field: string, value: string) => {
     switch (field) {
@@ -306,9 +152,7 @@ export default function Login() {
       case 'name':
         setName(value);
         break;
-      case 'displayName':
-        setDisplayName(value);
-        break;
+
     }
     // Clear errors when user types
     if (error) setError('');
@@ -427,74 +271,7 @@ export default function Login() {
             </button>
           </div>
 
-          {/* Passkey Section Toggle */}
-          {passkeySupported && (
-            <div className="mb-6">
-              <button
-                onClick={() => setShowPasskeySection(!showPasskeySection)}
-                className="w-full text-blue-600 hover:text-blue-700 font-medium py-2 px-4 rounded-lg hover:bg-blue-50 transition-colors duration-200 flex items-center justify-center"
-              >
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                {showPasskeySection ? 'Hide' : 'Show'} Passkey Authentication
-              </button>
-            </div>
-          )}
 
-          {/* Passkey Section */}
-          {passkeySupported && showPasskeySection && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
-                <svg className="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                Passkey Authentication
-              </h3>
-              
-              <div className="mb-3">
-                <input
-                  type="text"
-                  placeholder="Display name for passkey"
-                  value={displayName}
-                  onChange={(e) => handleInputChange('displayName', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                />
-              </div>
-              
-              <div className="flex gap-2 mb-3">
-                <button
-                  onClick={() => setAuthMode('register')}
-                  className={`flex-1 py-2 px-3 rounded-lg font-medium text-xs transition-colors ${
-                    authMode === 'register'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Register
-                </button>
-                
-                <button
-                  onClick={() => setAuthMode('login')}
-                  className={`flex-1 py-2 px-3 rounded-lg font-medium text-xs transition-colors ${
-                    authMode === 'login'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  Login
-                </button>
-              </div>
-              
-              <button
-                onClick={authMode === 'register' ? handlePasskeyRegister : handlePasskeyLogin}
-                disabled={isLoading || !displayName.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-2 px-3 rounded-lg transition-colors text-sm"
-              >
-                {isLoading ? 'Processing...' : authMode === 'register' ? 'Register Passkey' : 'Login with Passkey'}
-              </button>
-            </div>
-          )}
 
           {/* Mode Toggle */}
           <div className="text-center mb-6">
