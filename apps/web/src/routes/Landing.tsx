@@ -19,6 +19,16 @@ export default function Landing() {
     opacity: number;
   }>>([]);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  
+  // Rotating text options
+  const [currentTextIndex, setCurrentTextIndex] = useState(0);
+  const rotatingTexts = [
+    "No <strong>DevOps</strong>",
+    "No <strong>GitHub</strong>", 
+    "No finnicky <strong>envs</strong>",
+    "No deployment <strong>pipelines</strong>",
+    "No <strong>configs</strong>"
+  ];
 
   const handleGetStarted = () => {
     navigate('/login');
@@ -59,6 +69,15 @@ export default function Landing() {
     
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Rotate text every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTextIndex((prevIndex) => (prevIndex + 1) % rotatingTexts.length);
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [rotatingTexts.length]);
 
   // Handle mouse movement and create star particles
   useEffect(() => {
@@ -199,16 +218,16 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-5xl md:text-7xl font-bold text-white mb-8 leading-tight font-inconsolata">
-              Share Your
+              Share Working
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400"> Prototypes</span>
               <br />
               in One Click
             </h1>
-            <p className="text-xl md:text-2xl text-gray-300 mb-4 leading-relaxed">
-              Build locally, deploy instantly, share securely. 
+            <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed" 
+               dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}>
             </p>
             <p className="text-xl md:text-2xl text-gray-300 mb-10 leading-relaxed">
-              No DevOps, no GitHub, no finnicky envs. Just your prototype, online in seconds.
+              Just your prototype, online in seconds.
             </p>
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
               <button
@@ -247,7 +266,7 @@ export default function Landing() {
               </div>
               <h3 className="text-3xl font-semibold text-white mb-4 font-inconsolata">Build Locally</h3>
               <p className="text-gray-300 leading-relaxed font-poppins">
-                Turn your ideas for a new feature or product into a working prototype – let your favorite AI agent help!
+                Turn your ideas for a new feature or product into a quick prototype – let your favorite AI agent help!
               </p>
             </div>
             
