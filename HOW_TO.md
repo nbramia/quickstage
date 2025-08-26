@@ -46,7 +46,7 @@
 
 ## 🏗️ **Project Architecture Understanding**
 
-### **Current Working System (2025-08-21)**
+### **Current Working System (2025-01-27)**
 - **Extension**: Generates URLs like `https://quickstage-worker.nbramia.workers.dev/s/abc123`
 - **Worker**: Handles all API calls and file serving
 - **Web App**: Dashboard and extension hosting
@@ -194,55 +194,63 @@ When QuickStage works reliably, Nathan is happy. When it breaks, Nathan is frust
 
 **Bottom line**: Nathan wants a system that "just works" and documentation that explains how it all fits together. Prioritize reliability over aesthetics, and always show ALL the changes needed across ALL files.
 
+## 🔍 **Critical Oddities & Hidden Knowledge**
 
-Based on my experience working with you on QuickStage, here are the key oddities and things the new AI needs to know that aren't fully captured in the documentation:
-🔍 Critical Oddities & Hidden Knowledge
-1. Cloudflare Pages Routing is Fundamentally Broken
+### **1. Cloudflare Pages Routing is Fundamentally Broken**
 What the docs say: "Cloudflare Pages routing was fundamentally broken"
 What this really means: No matter what configuration you try (_redirects, _routes.json, _worker.js, Pages Functions), Cloudflare Pages will always serve the React dashboard for /s/* routes instead of proxying to the Worker
 Why this matters: Don't waste time trying to fix this - it's a fundamental limitation of the Pages project, not a configuration issue
 Current workaround: Extension generates direct Worker URLs (quickstage-worker.nbramia.workers.dev/s/abc123)
-2. The Extension Version Bumping is Fragile
+
+### **2. The Extension Version Bumping is Fragile**
 What the docs say: "Automatic version incrementing"
 Hidden reality: The release:full workflow calls version:bump twice in some scenarios, causing version jumps (0.0.29 → 0.0.31)
 Critical detail: If you modify the extension code, you MUST rebuild, package, copy to web app, and deploy web app for changes to take effect
 Why this matters: Nathan has been burned multiple times by thinking extension changes were deployed when they weren't
-3. Worker Logs Get Disabled After Every Deployment
+
+### **3. Worker Logs Get Disabled After Every Deployment**
 What the docs say: "wrangler tail quickstage-worker --format=pretty"
 Hidden reality: Every time you redeploy the worker, Cloudflare automatically disables logs in the UI
 What Nathan has to do: Manually re-enable logs in the Cloudflare dashboard after each deployment
 Why this matters: If Nathan says "logs not showing", this is likely why
-4. The Asset Path Rewriting is Delicate
+
+### **4. The Asset Path Rewriting is Delicate**
 What the docs say: "Asset path replacement in HTML content"
 Hidden reality: The regex replacement can double-replace paths if not careful (/s/id/s/id/assets/...)
 Critical detail: The current regex only targets specific patterns and can miss edge cases
 Why this matters: This caused multiple "blank page" issues that took several iterations to fix
-5. Hono Wildcard Parameters Don't Always Work
+
+### **5. Hono Wildcard Parameters Don't Always Work**
 What the docs say: "Hono wildcard parameter resolution"
 Hidden reality: c.req.param('*') sometimes returns empty strings even when the URL clearly has a path
 Current workaround: Manual URL parsing with regex fallback
 Why this matters: This caused asset 404s that looked like routing issues
-6. The Comments System Has Hidden Dependencies
+
+### **6. The Comments System Has Hidden Dependencies**
 What the docs say: "Fully functional with Durable Objects"
 Hidden reality: The comments overlay is injected into HTML during Worker processing, but the actual API endpoints (/comments/:snapshotId) must exist in the Worker
 Critical detail: If you see "404 on comments API", it means the Worker routes are missing
 Why this matters: This caused a working UI but broken functionality
-7. KV Rate Limiting is Real and Persistent
+
+### **7. KV Rate Limiting is Real and Persistent**
 What the docs say: "Retry logic with exponential backoff"
 Hidden reality: Cloudflare KV has strict rate limits that can cause 429 Too Many Requests even with retry logic
 Critical detail: The retry logic helps but doesn't eliminate the problem entirely
 Why this matters: This can cause staging failures that look like network issues
-8. The Password Gate Has Legacy Support
+
+### **8. The Password Gate Has Legacy Support**
 What the docs say: "Password verification with Argon2id"
 Hidden reality: The system supports both old plain-text passwords and new hashed passwords
 Critical detail: The gate endpoint checks for both formats and handles them differently
 Why this matters: This prevents password verification failures on older snapshots
-9. The Build Process is Fragile
+
+### **9. The Build Process is Fragile**
 What the docs say: "Build scripts copy all necessary files"
 Hidden reality: The build process has been modified multiple times and can break if files are moved or renamed
 Critical detail: Always check that dist/ contains all necessary routing files after building
 Why this matters: Missing files can cause deployment failures
-10. Nathan's Testing Workflow is Specific
+
+### **10. Nathan's Testing Workflow is Specific**
 What the docs say: "Test immediately after each change"
 Hidden reality: Nathan tests by:
 Staging a new project (usually a simple chess app)
@@ -252,31 +260,68 @@ Checking if the prototype loads with comments button
 Testing the comments system
 Critical detail: Don't suggest testing with existing snapshots - Nathan prefers fresh ones
 Why this matters: This is his go-to validation method
-�� Things That Will Break If You Don't Know
-1. Extension Changes Won't Deploy Automatically
+
+## 🚨 **Things That Will Break If You Don't Know**
+
+### **1. Extension Changes Won't Deploy Automatically**
 Mistake: Thinking extension code changes deploy when you deploy the worker
 Reality: Extension changes require the full build → package → copy → web app deploy cycle
 Result: Nathan gets frustrated because "the extension isn't working"
-2. Worker Routes Can Conflict
+
+### **2. Worker Routes Can Conflict**
 Mistake: Adding new routes without checking existing ones
 Reality: The Worker has complex route precedence that can break existing functionality
 Result: Something that was working stops working
-3. Asset Paths Are Context-Sensitive
+
+### **3. Asset Paths Are Context-Sensitive**
 Mistake: Assuming all asset paths follow the same pattern
 Reality: Different frameworks generate different asset path structures
 Result: Some prototypes work, others show blank pages
-4. The Comments System is Injected, Not Built-In
+
+### **4. The Comments System is Injected, Not Built-In**
 Mistake: Thinking the comments UI is part of the prototype
 Reality: It's injected by the Worker during HTML processing
 Result: Confusion about why comments work on some pages but not others
-�� Pro Tips for the New AI
-Always ask for logs first - Nathan will provide them and they're gold
-Test with fresh snapshots - don't assume existing ones work
-Check the Worker routes - if something 404s, the route probably doesn't exist
-Remember the deployment order - Worker first, then web app
-Don't fight Cloudflare Pages routing - it's broken, accept it
-Version bumps are automatic - don't manually change version numbers
-Asset paths are rewritten - the HTML you see isn't the HTML that was uploaded
-Comments are injected - they're not part of the original prototype
-Password gates have fallbacks - support both old and new password formats
-Build process is fragile - always verify the dist/ contents
+
+## 🎯 **Recent UI/UX Improvements (2025-01-27)**
+
+### **Mobile Responsiveness Overhaul**
+- **Dashboard & Settings**: Comprehensive mobile layout improvements
+- **Hamburger Menu**: Mobile navigation with plan indicator, navigation links, and sign-out
+- **Responsive Design**: All pages now work seamlessly on mobile devices
+- **Layout Consistency**: Consistent spacing and organization across all screen sizes
+
+### **Typography System Implementation**
+- **Share Tech Mono**: Used for QuickStage wordmarks throughout the application
+- **Inconsolata**: Applied to all headers (h1, h2, h3) for consistency
+- **Poppins**: Used for all body text and non-header content
+- **Font Integration**: Custom fonts properly loaded and applied across all pages
+
+### **Landing Page Enhancements**
+- **Rotating Text Effect**: Dynamic text that cycles through phrases and then disappears
+- **Interactive Background**: Mouse-following star particle effects throughout all sections
+- **Mobile Optimization**: Reduced button spacing and improved mobile navigation
+- **Direct Sign-Up Flow**: Sign Up button now takes users directly to account creation
+
+### **Feature Callout Box Improvements**
+- **Mobile Layout**: Icons and titles now stay on the same row on mobile devices
+- **Consistent Spacing**: Standardized padding and margins across all feature boxes
+- **Visual Hierarchy**: Improved layout for better readability on all screen sizes
+
+## 🚀 **Pro Tips for the New AI**
+
+1. **Always ask for logs first** - Nathan will provide them and they're gold
+2. **Test with fresh snapshots** - don't assume existing ones work
+3. **Check the Worker routes** - if something 404s, the route probably doesn't exist
+4. **Remember the deployment order** - Worker first, then web app
+5. **Don't fight Cloudflare Pages routing** - it's broken, accept it
+6. **Version bumps are automatic** - don't manually change version numbers
+7. **Asset paths are rewritten** - the HTML you see isn't the HTML that was uploaded
+8. **Comments are injected** - they're not part of the original prototype
+9. **Password gates have fallbacks** - support both old and new password formats
+10. **Build process is fragile** - always verify the dist/ contents
+11. **Mobile responsiveness matters** - Nathan expects all pages to work on mobile
+12. **Typography consistency is important** - use the established font system
+13. **UI/UX improvements should be comprehensive** - don't just fix one page
+14. **Test on multiple screen sizes** - mobile, tablet, and desktop
+15. **Update documentation immediately** - keep it current with all changes

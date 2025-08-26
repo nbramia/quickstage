@@ -9,6 +9,7 @@ export function Settings() {
   const [upgrading, setUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -153,14 +154,15 @@ export function Settings() {
       {/* Header */}
       <header className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
+          <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
                 QuickStage
               </h1>
             </div>
             
-            <nav className="flex items-center space-x-4">
+            {/* Desktop Navigation */}
+            <nav className="hidden sm:flex items-center space-x-4">
               <Link
                 to="/dashboard"
                 className="text-gray-600 hover:text-gray-900 px-4 py-2 text-sm font-medium transition-colors"
@@ -191,16 +193,72 @@ export function Settings() {
                 </button>
               </div>
             </nav>
+
+            {/* Mobile Hamburger Menu */}
+            <div className="sm:hidden">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
           </div>
+
+          {/* Mobile Menu Overlay */}
+          {isMobileMenuOpen && (
+            <div className="sm:hidden">
+              <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
+                {/* Plan Indicator */}
+                <div className="px-3 py-2">
+                  <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full text-center">
+                    <div className="text-sm text-gray-700">
+                      <span className="font-semibold">{user.subscriptionDisplay || 'Free'}</span>
+                      <span className="text-gray-500 ml-2">Plan</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation Links */}
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  to="/settings"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-base font-medium text-blue-600 border-l-4 border-blue-600 bg-blue-50"
+                >
+                  Settings
+                </Link>
+
+                {/* Sign Out Button */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="block w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className="max-w-4xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
         {/* Page Header */}
-        <div className="px-4 sm:px-0 mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 font-inconsolata">Account Settings</h2>
-          <p className="mt-2 text-gray-600">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 font-inconsolata">Account Settings</h2>
+          <p className="mt-2 text-sm sm:text-base text-gray-600">
             Manage your account, plan, and preferences.
           </p>
         </div>
@@ -233,18 +291,18 @@ export function Settings() {
         )}
 
         {/* Account Information Card */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center mb-6">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-4">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-8">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center mb-4 sm:mb-6 space-y-3 sm:space-y-0">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-0 sm:mr-4 flex-shrink-0">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 font-inconsolata">Account Information</h3>
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 font-inconsolata">Account Information</h3>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {/* Name/Username */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Name</label>
@@ -308,9 +366,9 @@ export function Settings() {
         </div>
 
         {/* Plan Management */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4 font-inconsolata">Plan Management</h3>
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4 font-inconsolata">Plan Management</h3>
             
             {user.role === 'superadmin' ? (
               <div>
@@ -455,12 +513,12 @@ export function Settings() {
 
 
         {/* Account Actions */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-            <div className="flex items-center mb-6">
-              <h3 className="text-xl font-semibold text-gray-900 font-inconsolata">Account Actions</h3>
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-8">
+            <div className="flex items-center mb-4 sm:mb-6">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 font-inconsolata">Account Actions</h3>
             </div>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <button
                 onClick={handleLogout}
                 className="bg-gray-300 hover:bg-gray-400 text-gray-900 font-medium py-3 px-6 rounded-lg transition-colors shadow-md flex items-center justify-center"

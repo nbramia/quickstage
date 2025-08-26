@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [showInstallInstructions, setShowInstallInstructions] = useState(false);
   const [showAIInstructions, setShowAIInstructions] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -458,14 +459,15 @@ export default function Dashboard() {
       {/* Header */}
       <header className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
+          <div className="flex justify-between items-center h-16 sm:h-20">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
                 QuickStage
               </h1>
             </div>
             
-            <nav className="flex items-center space-x-4">
+            {/* Desktop Navigation */}
+            <nav className="hidden sm:flex items-center space-x-4">
               <Link
                 to="/dashboard"
                 className="relative text-blue-600 px-4 py-2 text-sm font-semibold transition-colors"
@@ -504,28 +506,93 @@ export default function Dashboard() {
                 </button>
               </div>
             </nav>
+
+            {/* Mobile Hamburger Menu */}
+            <div className="sm:hidden">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
           </div>
+
+          {/* Mobile Menu Overlay */}
+          {isMobileMenuOpen && (
+            <div className="sm:hidden">
+              <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
+                {/* Plan Indicator */}
+                <div className="px-3 py-2">
+                  <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full text-center">
+                    <div className="text-sm text-gray-700">
+                      <span className="font-semibold">{user?.subscriptionDisplay || 'Free'}</span>
+                      <span className="text-gray-500 ml-2">Plan</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation Links */}
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-base font-medium text-blue-600 border-l-4 border-blue-600 bg-blue-50"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  to="/settings"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                >
+                  Settings
+                </Link>
+                {user?.role === 'superadmin' && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-base font-medium text-red-600 hover:text-red-900 hover:bg-red-50"
+                  >
+                    🛡️ Admin Panel
+                  </Link>
+                )}
+
+                {/* Sign Out Button */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="block w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className="max-w-7xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
         {/* Welcome Section */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-gradient-to-r from-white to-blue-50 rounded-2xl shadow-xl border border-blue-100 p-8">
-            <div className="flex justify-between items-start">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-gradient-to-r from-white to-blue-50 rounded-2xl shadow-xl border border-blue-100 p-4 sm:p-8">
+            <div className="flex flex-col sm:flex-row justify-between items-start space-y-4 sm:space-y-0">
               <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 mb-3 sm:mb-2">
+                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl flex-shrink-0">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
+                    <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
                       Welcome back!
                     </h2>
-                    <p className="text-base text-gray-600 font-poppins">
+                    <p className="text-sm sm:text-base text-gray-600 font-poppins">
                       Deploy working prototypes directly from VS Code and Cursor. Share with your team to get quick feedback.
                     </p>
                   </div>
@@ -535,7 +602,7 @@ export default function Dashboard() {
                 <button
                   onClick={handleUpgradeToPro}
                   disabled={isLoadingBilling}
-                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-poppins"
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-4 sm:px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-poppins w-full sm:w-auto"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -549,59 +616,65 @@ export default function Dashboard() {
 
         {/* Why Go Pro Section - Only show for users who need to upgrade */}
         {canUpgrade() && (
-          <div className="px-4 sm:px-0 mb-8">
-            <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-2xl shadow-xl border border-blue-100 p-8">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mb-6 sm:mb-8">
+            <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-2xl shadow-xl border border-blue-100 p-4 sm:p-8">
+              <div className="text-center mb-6 sm:mb-8">
+                <div className="inline-flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-3 sm:mb-4">
+                  <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2 font-inconsolata">
+                <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2 font-inconsolata">
                   Unlock Your Development Superpowers
                 </h2>
-                <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto">
                   Transform collaboration on product development teams with one-click deployment of working prototypes
                 </p>
               </div>
               
               {/* Value Propositions */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 {/* Feature 1 */}
-                <div className="bg-white rounded-xl p-6 shadow-md border border-blue-100">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md border border-blue-100">
+                  <div className="flex items-center mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">VS Code & Cursor Extension</h3>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">VS Code & Cursor Extension</h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-xs sm:text-sm">
                     Install the QuickStage extension directly in your code editor to deploy a working protoype of your project in seconds
                   </p>
                 </div>
 
                 {/* Feature 2 */}
-                <div className="bg-white rounded-xl p-6 shadow-md border border-purple-100">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
+                <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md border border-purple-100">
+                  <div className="flex items-center mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">Share live prototypes with your team</h3>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">Share live prototypes with your team</h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-xs sm:text-sm">
                     Share password-protected URLs with your team. If a picture is worth a thousand words...
                   </p>
                 </div>
 
                 {/* Feature 3 */}
-                <div className="bg-white rounded-xl p-6 shadow-md border border-indigo-100">
-                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
+                <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md border border-indigo-100">
+                  <div className="flex items-center mb-3 sm:mb-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">Comments & Feedback</h3>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">Comments & Feedback</h3>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-gray-600 text-xs sm:text-sm">
                     Share comments to collaborate on next steps and keep everyone on the same page
                   </p>
                 </div>
@@ -609,19 +682,19 @@ export default function Dashboard() {
 
               {/* CTA Section */}
               <div className="text-center">
-                <div className="bg-white rounded-xl p-6 shadow-md border border-blue-100 max-w-md mx-auto">
-                  <div className="flex items-center justify-center space-x-2 mb-4">
-                    <span className="text-2xl">✨</span>
-                    <span className="text-xl font-semibold text-gray-900">Start Your 7-Day Free Trial</span>
-                    <span className="text-2xl">✨</span>
+                <div className="bg-white rounded-xl p-4 sm:p-6 shadow-md border border-blue-100 max-w-md mx-auto">
+                  <div className="flex items-center justify-center space-x-1 sm:space-x-2 mb-3 sm:mb-4">
+                    <span className="text-xl sm:text-2xl">✨</span>
+                    <span className="text-lg sm:text-xl font-semibold text-gray-900">Start Your 7-Day Free Trial</span>
+                    <span className="text-xl sm:text-2xl">✨</span>
                   </div>
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                     Cancel anytime • Full access to all features
                   </p>
                   <button
                     onClick={handleUpgradeToPro}
                     disabled={isLoadingBilling}
-                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 sm:px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoadingBilling ? (
                       <div className="flex items-center justify-center">
@@ -642,20 +715,20 @@ export default function Dashboard() {
         )}
 
         {/* Extension Download Section */}
-        <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-8">
             <div>
-              <div className="flex items-center space-x-3 mb-6">
-                <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 mb-4 sm:mb-6">
+                <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl flex-shrink-0">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
+                  <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
                     QuickStage Extension
                   </h2>
-                  <p className="text-base text-gray-600 font-poppins">
+                  <p className="text-sm sm:text-base text-gray-600 font-poppins">
                     Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
                   </p>
                 </div>
@@ -666,17 +739,17 @@ export default function Dashboard() {
 
                 
                 {/* Status and Download Info on same row */}
-                <div className="flex flex-col lg:flex-row gap-4 mb-6">
+                <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 mb-4 sm:mb-6">
                   {/* Status Section (Dynamic Color) */}
                   <div className="flex-1">
-                    <div className={`border rounded-lg p-4 h-full flex items-center ${
+                    <div className={`border rounded-lg p-3 sm:p-4 h-full flex items-start sm:items-center ${
                       needsUpdate 
                         ? 'bg-yellow-50 border-yellow-200' 
                         : lastDownloadedVersion 
                           ? 'bg-green-50 border-green-200' 
                           : 'bg-blue-50 border-blue-200'
                     }`}>
-                      <svg className={`w-5 h-5 mr-2 flex-shrink-0 ${
+                      <svg className={`w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0 mt-0.5 sm:mt-0 ${
                         needsUpdate 
                           ? 'text-yellow-600' 
                           : lastDownloadedVersion 
@@ -692,7 +765,7 @@ export default function Dashboard() {
                         )}
                       </svg>
                       <div>
-                        <div className={`text-sm font-medium ${
+                        <div className={`text-xs sm:text-sm font-medium ${
                           needsUpdate 
                             ? 'text-yellow-800' 
                             : lastDownloadedVersion 
@@ -721,12 +794,12 @@ export default function Dashboard() {
                   
                   {/* Download Info Section (Blue) */}
                   <div className="flex-1">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 h-full flex items-start">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 h-full flex items-start">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <div className="ml-3">
-                        <div className="text-sm font-medium text-blue-800 mb-1">Download Information</div>
+                      <div className="ml-2 sm:ml-3">
+                        <div className="text-xs sm:text-sm font-medium text-blue-800 mb-1">Download Information</div>
                         <div className="text-xs text-blue-700">
                           After downloading, install in VS Code or Cursor (CMD-Shift-P, "Install from VSIX").
                         </div>
@@ -739,7 +812,7 @@ export default function Dashboard() {
                 <div className="mb-6">
                   {user?.canAccessPro ? (
                     /* Pro User - Show all buttons in a grid that spans full width */
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
                       {/* VSIX Download Button */}
                       <button
                         onClick={() => handleDownloadExtension()}
@@ -1087,11 +1160,11 @@ Please create this prototype step by step, ensuring it's production-ready and ca
         )}
 
         {/* Snapshots Section */}
-        <div className="px-4 sm:px-0">
+        <div>
           <div className="bg-white rounded-lg shadow">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-medium text-gray-900 font-inconsolata">
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
+                <h3 className="text-lg sm:text-xl font-medium text-gray-900 font-inconsolata">
                   Your Snapshots ({filteredSnapshots.length})
                 </h3>
                 
@@ -1101,7 +1174,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                   <div className="flex bg-gray-100 rounded-lg p-1">
                     <button
                       onClick={() => setFilterType('active')}
-                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                      className={`px-2 sm:px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                         filterType === 'active'
                           ? 'bg-white text-gray-900 shadow-sm'
                           : 'text-gray-600 hover:text-gray-900'
@@ -1111,7 +1184,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                     </button>
                     <button
                       onClick={() => setFilterType('all')}
-                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                      className={`px-2 sm:px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                         filterType === 'all'
                           ? 'bg-white text-gray-900 shadow-sm'
                           : 'text-gray-600 hover:text-gray-900'
@@ -1151,19 +1224,19 @@ Please create this prototype step by step, ensuring it's production-ready and ca
             )}
 
             {snapshots.length === 0 ? (
-              <div className="px-6 py-12 text-center">
-                <div className="text-gray-400 mb-4">
-                  <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="px-4 sm:px-6 py-8 sm:py-12 text-center">
+                <div className="text-gray-400 mb-3 sm:mb-4">
+                  <svg className="mx-auto h-8 w-8 sm:h-12 sm:w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">
                   No snapshots yet
                 </h3>
-                <p className="text-gray-500 mb-4">
+                <p className="text-sm sm:text-base text-gray-500 mb-3 sm:mb-4">
                   Use the QuickStage extension in VS Code to create your first snapshot.
                 </p>
-                <div className="text-sm text-gray-400">
+                <div className="text-xs sm:text-sm text-gray-400">
                   <p>1. Install the QuickStage extension</p>
                   <p>2. Open your project in VS Code</p>
                   <p>3. Click "QuickStage: Stage" in the command palette</p>
@@ -1174,22 +1247,22 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Snapshot
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="hidden sm:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Created
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Expires
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="hidden sm:table-cell px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Views
                       </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Password
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                     </tr>
@@ -1202,7 +1275,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                       
                       return (
                         <tr key={snapshot.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900">
                                 Snapshot {snapshot.id.slice(0, 8)}
@@ -1218,18 +1291,18 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                               </button>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="hidden sm:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {formatDate(snapshot.createdAt)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                             <div className={`text-sm ${expired ? 'text-red-600' : expiryColor}`}>
                               {expired ? 'Expired' : `${daysUntilExpiry} days`}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="hidden sm:table-cell px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {snapshot.viewCount}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {snapshot.password ? (
                               <div className="flex items-center space-x-2">
                                 <button
@@ -1253,34 +1326,36 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                               <span className="text-gray-500">No password</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <a
-                              href={snapshot.password ? `${config.getSnapshotUrl(snapshot.id)}?p=${encodeURIComponent(snapshot.password)}` : config.getSnapshotUrl(snapshot.id)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-900 mr-2"
-                            >
-                              View
-                            </a>
+                          <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
+                              <a
+                                href={snapshot.password ? `${config.getSnapshotUrl(snapshot.id)}?p=${encodeURIComponent(snapshot.password)}` : config.getSnapshotUrl(snapshot.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-900"
+                              >
+                                View
+                              </a>
 
-                            <button 
-                              onClick={() => handleExtendSnapshot(snapshot.id)}
-                              className="text-gray-600 hover:text-gray-900 mr-2"
-                            >
-                              {expired ? 'Renew' : 'Extend'}
-                            </button>
-                            <button 
-                              onClick={() => handleExpireSnapshot(snapshot.id)}
-                              className="text-red-600 hover:text-red-900 mr-2"
-                            >
-                              Expire
-                            </button>
-                            <button 
-                              onClick={() => handleRotatePassword(snapshot.id)}
-                              className="text-purple-600 hover:text-purple-900"
-                            >
-                              New Password
-                            </button>
+                              <button 
+                                onClick={() => handleExtendSnapshot(snapshot.id)}
+                                className="text-gray-600 hover:text-gray-900"
+                              >
+                                {expired ? 'Renew' : 'Extend'}
+                              </button>
+                              <button 
+                                onClick={() => handleExpireSnapshot(snapshot.id)}
+                                className="text-red-600 hover:text-red-900"
+                              >
+                                Expire
+                              </button>
+                              <button 
+                                onClick={() => handleRotatePassword(snapshot.id)}
+                                className="text-purple-600 hover:text-purple-900"
+                              >
+                                New Password
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
