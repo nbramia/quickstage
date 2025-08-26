@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import config from '../config';
+import '../fonts.css';
 
 type Snapshot = {
   id: string;
@@ -443,7 +444,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your snapshots...</p>
@@ -453,23 +454,18 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Header */}
       <header className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-lg mr-3">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
                 QuickStage
               </h1>
             </div>
             
-            <nav className="flex items-center space-x-8">
+            <nav className="flex items-center space-x-4">
               <Link
                 to="/dashboard"
                 className="relative text-blue-600 px-4 py-2 text-sm font-semibold transition-colors"
@@ -519,26 +515,27 @@ export default function Dashboard() {
           <div className="bg-gradient-to-r from-white to-blue-50 rounded-2xl shadow-xl border border-blue-100 p-8">
             <div className="flex justify-between items-start">
               <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-4">
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-2 rounded-full">
+                <div className="flex items-center space-x-3 mb-2">
+                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                     </svg>
                   </div>
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                    Welcome back!
-                  </h2>
+                  <div>
+                    <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
+                      Welcome back!
+                    </h2>
+                    <p className="text-base text-gray-600 font-poppins">
+                      Deploy working prototypes directly from VS Code and Cursor. Share with your team to get quick feedback.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-lg text-gray-700 mb-4">
-                  Deploy working prototypes directly from VS Code and Cursor. Share with your team to get quick feedback.
-                </p>
-
               </div>
               {canUpgrade() && (
                 <button
                   onClick={handleUpgradeToPro}
                   disabled={isLoadingBilling}
-                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-poppins"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -560,7 +557,7 @@ export default function Dashboard() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2 font-inconsolata">
                   Unlock Your Development Superpowers
                 </h2>
                 <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -577,7 +574,7 @@ export default function Dashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">VS Code & Cursor Extension</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">VS Code & Cursor Extension</h3>
                   <p className="text-gray-600 text-sm">
                     Install the QuickStage extension directly in your code editor to deploy a working protoype of your project in seconds
                   </p>
@@ -590,7 +587,7 @@ export default function Dashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Share live prototypes with your team</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">Share live prototypes with your team</h3>
                   <p className="text-gray-600 text-sm">
                     Share password-protected URLs with your team. If a picture is worth a thousand words...
                   </p>
@@ -603,7 +600,7 @@ export default function Dashboard() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Comments & Feedback</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 font-inconsolata">Comments & Feedback</h3>
                   <p className="text-gray-600 text-sm">
                     Share comments to collaborate on next steps and keep everyone on the same page
                   </p>
@@ -636,7 +633,7 @@ export default function Dashboard() {
                     )}
                   </button>
                   <p className="text-xs text-gray-500 mt-2">
-                    After trial: $6/month • Billed monthly • Cancel anytime
+                    $6/month after trial • Billed monthly • Cancel anytime
                   </p>
                 </div>
               </div>
@@ -650,15 +647,15 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center space-x-3 mb-6">
                 <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl">
-                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-inconsolata">
                     QuickStage Extension
                   </h2>
-                  <p className="text-gray-600">
+                  <p className="text-base text-gray-600 font-poppins">
                     Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
                   </p>
                 </div>
@@ -714,8 +711,8 @@ export default function Dashboard() {
                           {needsUpdate 
                             ? `New version ${currentVersion} available. You have downloaded version ${lastDownloadedVersion}.`
                             : lastDownloadedVersion 
-                              ? `You have downloaded the latest version (${currentVersion}).`
-                              : `Download version ${currentVersion} to get started.`
+                              ? `You have downloaded the latest version of the extension (${currentVersion}).`
+                              : `Download the extension to get started.`
                           }
                         </div>
                       </div>
@@ -731,7 +728,7 @@ export default function Dashboard() {
                       <div className="ml-3">
                         <div className="text-sm font-medium text-blue-800 mb-1">Download Information</div>
                         <div className="text-xs text-blue-700">
-                          After downloading the extension, you can install it in VS Code or Cursor.
+                          After downloading, install in VS Code or Cursor (CMD-Shift-P, "Install from VSIX").
                         </div>
                       </div>
                     </div>
@@ -739,10 +736,10 @@ export default function Dashboard() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex justify-center mb-6">
+                <div className="mb-6">
                   {user?.canAccessPro ? (
-                    /* Pro User - Show all buttons in a grid */
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    /* Pro User - Show all buttons in a grid that spans full width */
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                       {/* VSIX Download Button */}
                       <button
                         onClick={() => handleDownloadExtension()}
@@ -751,7 +748,7 @@ export default function Dashboard() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span className="text-lg">Download Extension</span>
+                        <span className="text-lg font-poppins">Download Extension</span>
                       </button>
 
                       {/* Installation Instructions Button */}
@@ -762,7 +759,7 @@ export default function Dashboard() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="text-lg">Installation Instructions</span>
+                        <span className="text-lg font-poppins">Quick Installation</span>
                       </button>
 
                       {/* AI Dev Instructions Button */}
@@ -773,7 +770,7 @@ export default function Dashboard() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                         </svg>
-                        <span className="text-lg">AI Dev Instructions</span>
+                        <span className="text-lg font-poppins">AI Dev Instructions</span>
                       </button>
 
                       {/* Tokens Button */}
@@ -784,20 +781,22 @@ export default function Dashboard() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
-                        <span className="text-lg">Tokens</span>
+                        <span className="text-lg font-poppins">Tokens</span>
                       </button>
                     </div>
                   ) : (
                     /* Free User - Show only the disabled download button, centered */
-                    <button
-                      disabled
-                      className="bg-gradient-to-r from-gray-400 to-gray-500 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center space-x-3 cursor-not-allowed opacity-75"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="text-lg">Go Pro to Download</span>
-                    </button>
+                    <div className="flex justify-center">
+                      <button
+                        disabled
+                        className="bg-gradient-to-r from-gray-400 to-gray-500 text-white font-semibold py-6 px-8 rounded-xl flex items-center justify-center space-x-3 cursor-not-allowed opacity-75"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="text-lg font-poppins">Go Pro to Download</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -811,7 +810,7 @@ export default function Dashboard() {
             <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
               <div className="mt-3">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
+                  <h3 className="text-lg font-medium text-gray-900 font-inconsolata">
                     Installation Instructions
                   </h3>
                   <button
@@ -936,7 +935,7 @@ export default function Dashboard() {
             <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
               <div className="mt-3">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
+                  <h3 className="text-lg font-medium text-gray-900 font-inconsolata">
                     AI Assistant Instructions
                   </h3>
                   <button
@@ -1092,7 +1091,7 @@ Please create this prototype step by step, ensuring it's production-ready and ca
           <div className="bg-white rounded-lg shadow">
             <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900">
+                <h3 className="text-xl font-medium text-gray-900 font-inconsolata">
                   Your Snapshots ({filteredSnapshots.length})
                 </h3>
                 
@@ -1297,9 +1296,9 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                 <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
                   <div className="mt-3">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-medium text-gray-900">
-                        Personal Access Tokens for VS Code/Cursor Extension
-                      </h3>
+                                        <h3 className="text-lg font-medium text-gray-900 font-inconsolata">
+                    Personal Access Tokens for VS Code/Cursor Extension
+                  </h3>
                       <button
                         onClick={() => setShowPATModal(false)}
                         className="text-gray-400 hover:text-gray-600"

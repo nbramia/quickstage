@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import '../fonts.css';
 
 type Comment = {
   id: string;
@@ -193,7 +194,7 @@ export function Viewer() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading snapshot...</p>
@@ -204,10 +205,10 @@ export function Viewer() {
 
   if (error && !showPasswordForm) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6 font-poppins">
         <div className="max-w-md w-full">
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <h2 className="text-lg font-semibold mb-2">Error</h2>
+            <h2 className="text-lg font-semibold mb-2 font-inconsolata">Error</h2>
             <p className="mb-4">{error}</p>
             <button 
               onClick={() => navigate('/')}
@@ -223,10 +224,10 @@ export function Viewer() {
 
   if (showPasswordForm) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-6 font-poppins">
         <div className="max-w-md w-full">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Password Protected</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2 font-inconsolata">Password Protected</h1>
             <p className="text-gray-600">This snapshot is password protected. Please enter the password to continue.</p>
           </div>
 
@@ -262,9 +263,9 @@ export function Viewer() {
 
   if (!snapshot) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Snapshot Not Found</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4 font-inconsolata">Snapshot Not Found</h2>
           <p className="text-gray-600 mb-6">The requested snapshot could not be found.</p>
                       <button 
               onClick={() => navigate('/')}
@@ -280,13 +281,13 @@ export function Viewer() {
   const currentFile = snapshot.files.find(f => f.name === selectedFile);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Navigation Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Snapshot: {snapshot.id}</h1>
+              <h1 className="text-xl font-bold text-gray-900 font-inconsolata">Snapshot: {snapshot.id}</h1>
               <div className="text-sm text-gray-500">
                 Created: {formatDate(snapshot.createdAt)} | 
                 Expires: {formatDate(snapshot.expiresAt)} | 
@@ -311,7 +312,7 @@ export function Viewer() {
           {/* File List */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Files ({snapshot.files.length})</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4 font-inconsolata">Files ({snapshot.files.length})</h3>
               <div className="space-y-2">
                 {snapshot.files.map((file) => (
                   <button
@@ -337,7 +338,7 @@ export function Viewer() {
           <div className="lg:col-span-6">
             <div className="bg-white rounded-lg shadow p-2 min-h-[600px]">
               <div className="flex items-center justify-between px-4 py-2 border-b">
-                <h3 className="text-lg font-medium text-gray-900">Preview</h3>
+                <h3 className="text-lg font-medium text-gray-900 font-inconsolata">Preview</h3>
                 <a href={`https://quickstage.tech/s/${snapshotId}/index.html`} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">Open in new tab</a>
               </div>
               <iframe
@@ -352,7 +353,7 @@ export function Viewer() {
           {/* Comments Panel */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Comments ({comments.length})</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-4 font-inconsolata">Comments ({comments.length})</h3>
               
               {/* Comment Form */}
               <div className="mb-6">

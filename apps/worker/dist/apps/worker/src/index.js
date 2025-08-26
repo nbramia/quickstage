@@ -313,13 +313,15 @@ app.get('/me', async (c) => {
     let trialEndsAt = null;
     let nextBillingDate = null;
     let canAccessPro = false;
+    console.log(`/me endpoint - User subscription status: "${user.subscriptionStatus}" (type: ${typeof user.subscriptionStatus})`);
+    console.log(`/me endpoint - User plan: "${user.plan}" (type: ${typeof user.plan})`);
     // Superadmin accounts always have Pro access
     if (user.role === 'superadmin') {
         subscriptionDisplay = 'Pro (Superadmin)';
         subscriptionStatus = 'superadmin';
         canAccessPro = true;
     }
-    else if (user.subscriptionStatus) {
+    else if (user.subscriptionStatus && user.subscriptionStatus !== 'none') {
         subscriptionStatus = user.subscriptionStatus;
         if (user.subscriptionStatus === 'trial' && user.trialEndsAt) {
             subscriptionDisplay = 'Pro (Trial)';
@@ -349,31 +351,35 @@ app.get('/me', async (c) => {
         }
     }
     else {
-        // No subscription status, user is on free plan
+        // No subscription status or subscriptionStatus is 'none', user is on free plan
+        subscriptionStatus = user.subscriptionStatus || 'none';
         canAccessPro = false;
         subscriptionDisplay = 'Free';
     }
+    // Debug: Log what we're about to return
+    const responseUser = {
+        uid: user.uid,
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        role: user.role || 'user',
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+        hasPassword: !!user.passwordHash,
+        hasGoogle: !!user.googleId,
+        // Subscription information
+        subscriptionStatus: subscriptionStatus,
+        subscriptionDisplay: subscriptionDisplay,
+        trialEndsAt: trialEndsAt,
+        nextBillingDate: nextBillingDate,
+        canAccessPro: canAccessPro,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId
+    };
+    console.log(`/me endpoint returning for user ${uid}:`, responseUser);
     // Return safe user data with subscription information
     return c.json({
-        user: {
-            uid: user.uid,
-            name: user.name,
-            email: user.email,
-            plan: user.plan,
-            role: user.role || 'user',
-            createdAt: user.createdAt,
-            lastLoginAt: user.lastLoginAt,
-            hasPassword: !!user.passwordHash,
-            hasGoogle: !!user.googleId,
-            // Subscription information
-            subscriptionStatus: subscriptionStatus,
-            subscriptionDisplay: subscriptionDisplay,
-            trialEndsAt: trialEndsAt,
-            nextBillingDate: nextBillingDate,
-            canAccessPro: canAccessPro,
-            stripeCustomerId: user.stripeCustomerId,
-            stripeSubscriptionId: user.stripeSubscriptionId
-        }
+        user: responseUser
     });
 });
 // Logout endpoint

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
+import '../fonts.css';
 
 export function Settings() {
   const { user, logout, loading: authLoading, cancelSubscription } = useAuth();
@@ -121,7 +122,7 @@ export function Settings() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading settings...</p>
@@ -132,9 +133,9 @@ export function Settings() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Authentication Required</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4 font-inconsolata">Authentication Required</h2>
           <p className="text-gray-600 mb-6">You need to be logged in to access your account settings.</p>
           <Link
             to="/login"
@@ -148,38 +149,43 @@ export function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-20">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold text-gray-900">QuickStage</h1>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
+                QuickStage
+              </h1>
             </div>
             
-            <nav className="flex items-center space-x-8">
+            <nav className="flex items-center space-x-4">
               <Link
                 to="/dashboard"
-                className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium"
+                className="text-gray-600 hover:text-gray-900 px-4 py-2 text-sm font-medium transition-colors"
               >
                 Dashboard
               </Link>
               <Link
                 to="/settings"
-                className="text-blue-600 border-b-2 border-blue-600 px-3 py-2 text-sm font-medium"
+                className="relative text-blue-600 px-4 py-2 text-sm font-semibold transition-colors"
               >
                 Settings
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full"></div>
               </Link>
               
               {/* User Menu */}
               <div className="flex items-center space-x-4">
-                <div className="text-sm text-gray-700">
-                  <span className="font-medium">{user.subscriptionDisplay || 'Pro'}</span>
-                  <span className="text-gray-500 ml-2">Plan</span>
+                <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
+                  <div className="text-sm text-gray-700">
+                    <span className="font-semibold">{user.subscriptionDisplay || 'Free'}</span>
+                    <span className="text-gray-500 ml-2">Plan</span>
+                  </div>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="text-gray-500 hover:text-gray-700 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 hover:shadow-md"
                 >
                   Sign Out
                 </button>
@@ -193,7 +199,7 @@ export function Settings() {
       <main className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Page Header */}
         <div className="px-4 sm:px-0 mb-8">
-          <h2 className="text-3xl font-bold text-gray-900">Account Settings</h2>
+          <h2 className="text-3xl font-bold text-gray-900 font-inconsolata">Account Settings</h2>
           <p className="mt-2 text-gray-600">
             Manage your account, plan, and preferences.
           </p>
@@ -235,7 +241,7 @@ export function Settings() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900">Account Information</h3>
+              <h3 className="text-xl font-semibold text-gray-900 font-inconsolata">Account Information</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -255,23 +261,31 @@ export function Settings() {
                 </div>
               </div>
 
-              {/* Current Plan */}
+              {/* User ID */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Current Plan</label>
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg px-4 py-3 border border-blue-100">
-                  <p className="text-blue-900 font-semibold">{user.subscriptionDisplay || 'Free'}</p>
+                <label className="block text-sm font-medium text-gray-700">User ID</label>
+                <div className="bg-gray-50 rounded-lg px-4 py-3">
+                  <p className="text-gray-900">{user.uid}</p>
                 </div>
               </div>
 
-              {/* Member Since */}
+              {/* Staging Since */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Member Since</label>
+                <label className="block text-sm font-medium text-gray-700">Staging Since</label>
                 <div className="bg-gray-50 rounded-lg px-4 py-3">
                   <p className="text-gray-900">{new Date(user.createdAt).toLocaleDateString('en-US', { 
                     year: 'numeric', 
                     month: 'long', 
                     day: 'numeric' 
                   })}</p>
+                </div>
+              </div>
+
+              {/* Current Plan */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Current Plan</label>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg px-4 py-3 border border-blue-100">
+                  <p className="text-blue-900 font-semibold">{user.subscriptionDisplay || 'Free'}</p>
                 </div>
               </div>
 
@@ -289,13 +303,6 @@ export function Settings() {
                 </div>
               )}
 
-              {/* User ID */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">User ID</label>
-                <div className="bg-gray-50 rounded-lg px-4 py-3">
-                  <p className="text-gray-900">{user.uid}</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -303,7 +310,7 @@ export function Settings() {
         {/* Plan Management */}
         <div className="px-4 sm:px-0 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">Plan Management</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-4 font-inconsolata">Plan Management</h3>
             
             {user.role === 'superadmin' ? (
               <div>
@@ -327,7 +334,7 @@ export function Settings() {
                 <button
                   onClick={handleUpgrade}
                   disabled={upgrading}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
                 >
                   {upgrading ? 'Processing...' : 'Upgrade to Pro'}
                 </button>
@@ -361,7 +368,7 @@ export function Settings() {
                   </button>
                   <button
                     onClick={handleCancelSubscription}
-                    className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                    className="bg-gray-300 hover:bg-gray-400 text-gray-900 font-medium py-2 px-4 rounded-lg transition-colors"
                   >
                     Cancel Subscription
                   </button>
@@ -408,10 +415,10 @@ export function Settings() {
                 <button
                   onClick={handleUpgrade}
                   disabled={upgrading}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
                 >
                   {upgrading ? 'Processing...' : 'Reactivate Pro'}
-                </button>
+              </button>
               </div>
             ) : user.subscriptionStatus === 'past_due' ? (
               <div>
@@ -436,7 +443,7 @@ export function Settings() {
                 <button
                   onClick={handleUpgrade}
                   disabled={upgrading}
-                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                  className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white font-medium py-3 px-6 rounded-lg transition-colors"
                 >
                   {upgrading ? 'Processing...' : 'Upgrade to Pro'}
                 </button>
@@ -451,12 +458,12 @@ export function Settings() {
         <div className="px-4 sm:px-0 mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
             <div className="flex items-center mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Account Actions</h3>
+              <h3 className="text-xl font-semibold text-gray-900 font-inconsolata">Account Actions</h3>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={handleLogout}
-                className="bg-red-400 hover:bg-red-500 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md flex items-center justify-center"
+                className="bg-gray-300 hover:bg-gray-400 text-gray-900 font-medium py-3 px-6 rounded-lg transition-colors shadow-md flex items-center justify-center"
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
+import '../fonts.css';
 
 interface AdminUser {
   uid: string;
@@ -47,9 +48,9 @@ export default function AdminDashboard() {
   // Check if user is superadmin
   if (!user || user.role !== 'superadmin') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4 font-inconsolata">Access Denied</h1>
           <p className="text-gray-600">You don't have permission to access this page.</p>
         </div>
       </div>
@@ -218,7 +219,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading users...</p>
@@ -228,13 +229,13 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="text-3xl font-bold text-gray-900 font-inconsolata">Admin Dashboard</h1>
               <p className="mt-2 text-gray-600">Manage QuickStage users and accounts</p>
             </div>
             <a
@@ -321,7 +322,7 @@ export default function AdminDashboard() {
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
             <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
               <div className="mt-3">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Create New User</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4 font-inconsolata">Create New User</h3>
                 <form onSubmit={handleCreateUser}>
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -396,7 +397,7 @@ export default function AdminDashboard() {
         {/* Users Table */}
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">Users ({users.length})</h3>
+            <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">Users ({users.length})</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

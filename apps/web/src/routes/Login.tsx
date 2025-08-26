@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import '../fonts.css';
 
 // Google API types
 declare global {
@@ -160,7 +161,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12 font-poppins">
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
@@ -171,7 +172,7 @@ export default function Login() {
               </svg>
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2 font-inconsolata">
             {authMode === 'register' ? 'Create Account' : 'Welcome Back'}
           </h1>
           <p className="text-gray-600">
@@ -186,7 +187,7 @@ export default function Login() {
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
           {/* Email/Password Section */}
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center font-inconsolata">
               <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
