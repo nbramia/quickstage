@@ -1,17 +1,19 @@
 import React from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
 
   const handleGetStarted = () => {
     navigate('/login');
   };
 
-  const handleDashboard = () => {
-    navigate('/dashboard');
+  const handleSignUp = () => {
+    navigate('/login');
+  };
+
+  const handleLogIn = () => {
+    navigate('/login');
   };
 
   return (
@@ -25,33 +27,18 @@ export default function Landing() {
             </div>
             
             <nav className="flex items-center space-x-6">
-              {isAuthenticated ? (
-                <>
-                  <Link
-                    to="/dashboard"
-                    className="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors duration-200"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    to="/settings"
-                    className="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors duration-200"
-                  >
-                    Settings
-                  </Link>
-                  <div className="text-sm text-gray-700 bg-gray-100 px-3 py-1 rounded-full">
-                    <span className="font-medium">{user?.plan === 'pro' ? 'Pro' : 'Free'}</span>
-                    <span className="text-gray-500 ml-2">Plan</span>
-                  </div>
-                </>
-              ) : (
-                <button
-                  onClick={handleGetStarted}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg"
-                >
-                  Get Started
-                </button>
-              )}
+              <button
+                onClick={handleSignUp}
+                className="text-gray-600 hover:text-blue-600 px-3 py-2 text-sm font-medium transition-colors duration-200"
+              >
+                Sign Up
+              </button>
+              <button
+                onClick={handleLogIn}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg"
+              >
+                Log In
+              </button>
             </nav>
           </div>
         </div>
@@ -78,26 +65,17 @@ export default function Landing() {
               Just your prototype, online in seconds.
             </p>
             <div className="flex flex-col sm:flex-row gap-6 justify-center mb-16">
-              {isAuthenticated ? (
-                <button
-                  onClick={handleDashboard}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
-                >
-                  Go to Dashboard
-                </button>
-              ) : (
-                <button
-                  onClick={handleGetStarted}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
-                >
-                  Start Staging Free
-                </button>
-              )}
+              <button
+                onClick={handleGetStarted}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
+              >
+                Start Staging Free
+              </button>
               <a
                 href="#how-it-works"
                 className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 bg-white hover:bg-gray-50 shadow-lg hover:shadow-xl"
               >
-                See How It Works
+                30-Second Demo
               </a>
             </div>
           </div>
@@ -169,7 +147,7 @@ export default function Landing() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Lightning Fast</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">10-Second Deploys</h3>
               <p className="text-gray-600 leading-relaxed">
                 Deploy your first prototype in less than 10 seconds. No env management, no CI/CD, no managing environments or deconflicting repos with the development team.
               </p>
@@ -217,7 +195,7 @@ export default function Landing() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">No Setup Required</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">No Setup, No Config</h3>
               <p className="text-gray-600 leading-relaxed">
                 Install the extension in Cursor or VS Code and you're ready to go. Stage your first prototype less than 30 seconds after downloading the extension.
               </p>
@@ -229,7 +207,7 @@ export default function Landing() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Quick Iteration</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Ship Ideas, Not PRDs</h3>
               <p className="text-gray-600 leading-relaxed">
                 Ditch the 10-page requirements docs. If a picture is worth a thousand words, what's a working prototype worth?
               </p>
@@ -254,21 +232,12 @@ export default function Landing() {
           <p className="text-xl text-blue-100 mb-10 leading-relaxed">
             Join dozens of designers, product managers, and developers who are already using QuickStage to shortcut the product development process.
           </p>
-          {isAuthenticated ? (
-            <button
-              onClick={handleDashboard}
-              className="bg-white text-blue-600 hover:bg-gray-100 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
-            >
-              Go to Dashboard
-            </button>
-          ) : (
-            <button
-              onClick={handleGetStarted}
-              className="bg-white text-blue-600 hover:bg-gray-100 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
-            >
-              Start Staging Free
-            </button>
-          )}
+          <button
+            onClick={handleGetStarted}
+            className="bg-white text-blue-600 hover:bg-gray-100 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
+          >
+            Start Staging Free
+          </button>
         </div>
       </section>
 
