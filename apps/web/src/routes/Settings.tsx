@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api';
+import { api, adminApi } from '../api';
 
 export function Settings() {
   const { user, logout, loading: authLoading, cancelSubscription } = useAuth();
@@ -91,6 +91,32 @@ export function Settings() {
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm(`⚠️  DANGER: Are you absolutely sure you want to PERMANENTLY DELETE your account "${user?.name || user?.email}"?\n\nThis will:\n• Remove all your data from the system\n• Delete all your snapshots\n• Delete all your PATs\n• Delete all your comments\n• This action CANNOT be undone!\n\nType "DELETE" to confirm:`)) {
+      return;
+    }
+    
+    const confirmation = prompt('Type "DELETE" to confirm permanent deletion:');
+    if (confirmation !== 'DELETE') {
+      alert('Deletion cancelled. Your data is safe.');
+      return;
+    }
+    
+    try {
+      setError(null);
+      await adminApi.deleteUser(user!.uid);
+      setSuccessMessage('Your account has been completely deleted from the system. You will be redirected to the login page.');
+      
+      // Wait a moment for the user to see the success message, then logout and redirect
+      setTimeout(() => {
+        logout();
+        window.location.href = '/login';
+      }, 3000);
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete account');
+    }
   };
 
   if (authLoading) {
@@ -200,33 +226,76 @@ export function Settings() {
           </div>
         )}
 
-        {/* User Info Card */}
+        {/* Account Information Card */}
         <div className="px-4 sm:px-0 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">User ID</label>
-                <p className="mt-1 text-sm text-gray-900 font-mono">{user.uid}</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+            <div className="flex items-center mb-6">
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-4">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
               </div>
-              <div className="flex items-center justify-between py-3 border-b border-gray-200 last:border-b-0">
-                  <span className="text-gray-600">Current Plan:</span>
-                  <span className="font-semibold text-gray-900">{user.subscriptionDisplay || 'Pro'}</span>
+              <h3 className="text-xl font-semibold text-gray-900">Account Information</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Name/Username */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Name</label>
+                <div className="bg-gray-50 rounded-lg px-4 py-3">
+                  <p className="text-gray-900">{user.name || 'Not provided'}</p>
                 </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Member Since</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {new Date(user.createdAt).toLocaleDateString()}
-                </p>
               </div>
-              {user.lastLoginAt && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Last Login</label>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {new Date(user.lastLoginAt).toLocaleDateString()}
-                  </p>
+
+              {/* Email */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Email Address</label>
+                <div className="bg-gray-50 rounded-lg px-4 py-3">
+                  <p className="text-gray-900">{user.email}</p>
+                </div>
+              </div>
+
+              {/* Current Plan */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Current Plan</label>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg px-4 py-3 border border-blue-100">
+                  <p className="text-blue-900 font-semibold">{user.subscriptionDisplay || 'Free'}</p>
+                </div>
+              </div>
+
+              {/* Member Since */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Member Since</label>
+                <div className="bg-gray-50 rounded-lg px-4 py-3">
+                  <p className="text-gray-900">{new Date(user.createdAt).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}</p>
+                </div>
+              </div>
+
+              {/* Next Billing Date - Only show for active plans */}
+              {(user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trial') && user.nextBillingDate && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Next Billing Date</label>
+                  <div className="bg-green-50 rounded-lg px-4 py-3 border border-green-100">
+                    <p className="text-green-900 font-medium">{new Date(user.nextBillingDate).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}</p>
+                  </div>
                 </div>
               )}
+
+              {/* User ID */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">User ID</label>
+                <div className="bg-gray-50 rounded-lg px-4 py-3">
+                  <p className="text-gray-900">{user.uid}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -234,7 +303,7 @@ export function Settings() {
         {/* Plan Management */}
         <div className="px-4 sm:px-0 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Plan Management</h3>
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Plan Management</h3>
             
             {user.role === 'superadmin' ? (
               <div>
@@ -378,18 +447,29 @@ export function Settings() {
 
 
 
-        {/* Actions */}
-        <div className="px-4 sm:px-0">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Account Actions</h3>
+        {/* Account Actions */}
+        <div className="px-4 sm:px-0 mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+            <div className="flex items-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">Account Actions</h3>
+            </div>
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                className="bg-red-400 hover:bg-red-500 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-md flex items-center justify-center"
               >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
                 Sign Out
               </button>
-              <button className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+              <button 
+                onClick={handleDeleteAccount}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-900 font-medium py-3 px-6 rounded-lg transition-colors shadow-md flex items-center justify-center"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
                 Delete Account
               </button>
             </div>

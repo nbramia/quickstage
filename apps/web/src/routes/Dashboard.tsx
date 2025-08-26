@@ -530,141 +530,115 @@ export default function Dashboard() {
                   </h2>
                 </div>
                 <p className="text-lg text-gray-700 mb-4">
-                  Manage your staged snapshots and create new ones directly from VS Code or Cursor.
+                  Deploy working prototypes directly from VS Code and Cursor. Share with your team to get quick feedback.
                 </p>
 
               </div>
               {canUpgrade() && (
-                <Link
-                  to="/settings"
-                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2"
+                <button
+                  onClick={handleUpgradeToPro}
+                  disabled={isLoadingBilling}
+                  className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
                   <span>Go Pro</span>
-                </Link>
+                </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Account Information Section - Only show for users who need to upgrade */}
+        {/* Why Go Pro Section - Only show for users who need to upgrade */}
         {canUpgrade() && (
           <div className="px-4 sm:px-0 mb-8">
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-              <div className="flex items-center space-x-3">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
+            <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-2xl shadow-xl border border-blue-100 p-8">
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full mb-4">
                   <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                    Account Information
-                  </h2>
-                  <p className="text-gray-600">
-                    {user?.subscriptionDisplay || 'Pro'} • {user?.role === 'admin' ? 'Admin' : user?.role === 'superadmin' ? 'Super Admin' : 'User'}
+                <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+                  Unlock Your Development Superpowers
+                </h2>
+                <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                  Transform collaboration on product development teams with one-click deployment of working prototypes
+                </p>
+              </div>
+              
+              {/* Value Propositions */}
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {/* Feature 1 */}
+                <div className="bg-white rounded-xl p-6 shadow-md border border-blue-100">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">VS Code & Cursor Extension</h3>
+                  <p className="text-gray-600 text-sm">
+                    Install the QuickStage extension directly in your code editor to deploy a working protoype of your project in seconds
+                  </p>
+                </div>
+
+                {/* Feature 2 */}
+                <div className="bg-white rounded-xl p-6 shadow-md border border-purple-100">
+                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Share live prototypes with your team</h3>
+                  <p className="text-gray-600 text-sm">
+                    Share password-protected URLs with your team. If a picture is worth a thousand words...
+                  </p>
+                </div>
+
+                {/* Feature 3 */}
+                <div className="bg-white rounded-xl p-6 shadow-md border border-indigo-100">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Comments & Feedback</h3>
+                  <p className="text-gray-600 text-sm">
+                    Share comments to collaborate on next steps and keep everyone on the same page
                   </p>
                 </div>
               </div>
-              
-              {/* Billing Actions */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Billing & Subscription</h3>
-                
-                {/* Only show billing actions if user can upgrade or manage billing */}
-                {(canUpgrade() || canManageBilling()) ? (
-                  <div className="flex flex-wrap gap-3">
-                    {canUpgrade() && (
-                      <button
-                        onClick={handleUpgradeToPro}
-                        disabled={isLoadingBilling}
-                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {isLoadingBilling ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <span>✨ Upgrade to Pro</span>
-                            <span className="ml-2 text-xs">$6/month</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                    
-                    {canManageBilling() && (
-                      <button
-                        onClick={handleManageBilling}
-                        disabled={isLoadingBilling}
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {isLoadingBilling ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                            Loading...
-                          </>
-                        ) : (
-                          'Manage Billing'
-                        )}
-                      </button>
-                    )}
+
+              {/* CTA Section */}
+              <div className="text-center">
+                <div className="bg-white rounded-xl p-6 shadow-md border border-blue-100 max-w-md mx-auto">
+                  <div className="flex items-center justify-center space-x-2 mb-4">
+                    <span className="text-2xl">✨</span>
+                    <span className="text-xl font-semibold text-gray-900">Start Your 7-Day Free Trial</span>
+                    <span className="text-2xl">✨</span>
                   </div>
-                ) : (
-                  <div className="text-sm text-gray-500">
-                    {user?.subscriptionStatus === 'cancelled' ? (
-                      'Your subscription has been cancelled. You will retain access until the end of your current billing period.'
-                    ) : user?.subscriptionStatus === 'past_due' ? (
-                      'Your subscription payment is past due. Please update your payment method to continue access.'
+                  <p className="text-gray-600 mb-4">
+                    Cancel anytime • Full access to all features
+                  </p>
+                  <button
+                    onClick={handleUpgradeToPro}
+                    disabled={isLoadingBilling}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoadingBilling ? (
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                        Processing...
+                      </div>
                     ) : (
-                      'Contact support to manage your subscription'
+                      'Start Free Trial'
                     )}
-                  </div>
-                )}
-                
-                {/* Trial Info */}
-                {user?.subscriptionStatus === 'trial' && user?.trialEndsAt && (
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-blue-800">
-                          <strong>Free Trial Active:</strong> You have access to all Pro features until{' '}
-                          {new Date(user.trialEndsAt).toLocaleDateString()}. 
-                          Add a payment method to continue after your trial ends.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Active Subscription Info */}
-                {user?.subscriptionStatus === 'active' && (
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-                    <div className="flex">
-                      <div className="flex-shrink-0">
-                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm text-green-800">
-                          <strong>Pro Subscription Active:</strong> You have full access to all Pro features.
-                          {user.nextBillingDate && (
-                            <> Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}</>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2">
+                    After trial: $6/month • Billed monthly • Cancel anytime
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -674,146 +648,157 @@ export default function Dashboard() {
         <div className="px-4 sm:px-0 mb-8">
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
             <div>
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="bg-gradient-to-r from-green-500 to-blue-600 p-3 rounded-xl">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    QuickStage Extension
+                  </h2>
+                  <p className="text-gray-600">
+                    Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  QuickStage Extension
-                </h2>
-                <p className="text-gray-600">
-                  Download and install the QuickStage extension to start staging your projects directly from VS Code or Cursor.
-                </p>
-              </div>
-            </div>
-            
-            <div className="space-y-6">
+              
+              <div className="space-y-6">
                 
-                {/* Update Notification */}
-                {currentVersion && (
-                  <div className="mb-4">
-                    {needsUpdate ? (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                          </svg>
-                          <div>
-                            <div className="text-sm font-medium text-yellow-800">
-                              Update Available!
-                            </div>
-                            <div className="text-xs text-yellow-600">
-                              New version {currentVersion} available. You have version {lastDownloadedVersion}.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : lastDownloadedVersion ? (
-                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <div>
-                            <div className="text-sm font-medium text-green-800">
-                              Up to Date!
-                            </div>
-                            <div className="text-xs text-green-600">
-                              You have the latest version ({currentVersion}) installed.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <div className="flex items-center">
-                          <svg className="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                          </svg>
-                          <div>
-                            <div className="text-sm font-medium text-blue-800">
-                              First Time Install
-                            </div>
-                            <div className="text-xs text-blue-600">
-                              Download version {currentVersion} to get started.
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+
                 
-                {/* Simple Download Info */}
-                <div className="mb-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-start space-x-3">
-                      <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                {/* Status and Download Info on same row */}
+                <div className="flex flex-col lg:flex-row gap-4 mb-6">
+                  {/* Status Section (Dynamic Color) */}
+                  <div className="flex-1">
+                    <div className={`border rounded-lg p-4 h-full flex items-center ${
+                      needsUpdate 
+                        ? 'bg-yellow-50 border-yellow-200' 
+                        : lastDownloadedVersion 
+                          ? 'bg-green-50 border-green-200' 
+                          : 'bg-blue-50 border-blue-200'
+                    }`}>
+                      <svg className={`w-5 h-5 mr-2 flex-shrink-0 ${
+                        needsUpdate 
+                          ? 'text-yellow-600' 
+                          : lastDownloadedVersion 
+                            ? 'text-green-600' 
+                            : 'text-blue-600'
+                      }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {needsUpdate ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        ) : lastDownloadedVersion ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        )}
                       </svg>
                       <div>
+                        <div className={`text-sm font-medium ${
+                          needsUpdate 
+                            ? 'text-yellow-800' 
+                            : lastDownloadedVersion 
+                              ? 'text-green-800' 
+                              : 'text-blue-800'
+                        }`}>
+                          {needsUpdate ? 'Update Available!' : lastDownloadedVersion ? 'Up to Date!' : 'First Time Install'}
+                        </div>
+                        <div className={`text-xs ${
+                          needsUpdate 
+                            ? 'text-yellow-600' 
+                            : lastDownloadedVersion 
+                              ? 'text-green-600' 
+                              : 'text-blue-600'
+                        }`}>
+                          {needsUpdate 
+                            ? `New version ${currentVersion} available. You have downloaded version ${lastDownloadedVersion}.`
+                            : lastDownloadedVersion 
+                              ? `You have downloaded the latest version (${currentVersion}).`
+                              : `Download version ${currentVersion} to get started.`
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Download Info Section (Blue) */}
+                  <div className="flex-1">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 h-full flex items-start">
+                      <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="ml-3">
                         <div className="text-sm font-medium text-blue-800 mb-1">Download Information</div>
                         <div className="text-xs text-blue-700">
-                          The extension will be downloaded to your <strong>Downloads folder</strong>. 
-                          After downloading, you can move it to your preferred location or install it directly.
-                        </div>
-                        <div className="text-xs text-blue-600 mt-2">
-                          💡 <strong>Pro tip:</strong> For easy installation, you can move the downloaded file to your VS Code or Cursor extensions folder.
+                          After downloading the extension, you can install it in VS Code or Cursor.
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  <button
-                    onClick={() => handleDownloadExtension()}
-                    className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="text-lg">Download Extension</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleShowInstructions()}
-                    className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-gray-300 flex items-center justify-center space-x-3"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-lg">View Instructions</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleShowAIInstructions()}
-                    className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    <span className="text-lg">AI Instructions</span>
-                  </button>
 
-                  <button
-                    onClick={() => handleShowPATModal()}
-                    className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span className="text-lg">Manage PATs</span>
-                  </button>
-                </div>
-                
-                <div className="text-center">
-                  <span className="text-sm text-gray-500 bg-gray-100 px-4 py-2 rounded-full">
-                    Version {currentVersion || 'Loading...'} • VS Code & Cursor Compatible
-                  </span>
+                {/* Action Buttons */}
+                <div className="flex justify-center mb-6">
+                  {user?.canAccessPro ? (
+                    /* Pro User - Show all buttons in a grid */
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* VSIX Download Button */}
+                      <button
+                        onClick={() => handleDownloadExtension()}
+                        className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="text-lg">Download Extension</span>
+                      </button>
+
+                      {/* Installation Instructions Button */}
+                      <button
+                        onClick={() => handleShowInstructions()}
+                        className="bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-800 font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-gray-300 flex items-center justify-center space-x-3"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-lg">Installation Instructions</span>
+                      </button>
+
+                      {/* AI Dev Instructions Button */}
+                      <button
+                        onClick={() => handleShowAIInstructions()}
+                        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        <span className="text-lg">AI Dev Instructions</span>
+                      </button>
+
+                      {/* Tokens Button */}
+                      <button
+                        onClick={() => handleShowPATModal()}
+                        className="bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold py-4 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center space-x-3"
+                      >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        <span className="text-lg">Tokens</span>
+                      </button>
+                    </div>
+                  ) : (
+                    /* Free User - Show only the disabled download button, centered */
+                    <button
+                      disabled
+                      className="bg-gradient-to-r from-gray-400 to-gray-500 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center space-x-3 cursor-not-allowed opacity-75"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-lg">Go Pro to Download</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
