@@ -44,6 +44,59 @@ The extension deployment process has been significantly improved with automatic 
 9. **Non-Technical User Focus**: Designed for product managers and designers
 10. **Smart Error Handling**: Descriptive messages perfect for AI-assisted debugging
 
+## 🧪 **Testing Suite Implementation (v0.0.31+)**
+
+### **What's New in v0.0.31+**
+- ✅ **Added**: Comprehensive testing suite with Vitest and React Testing Library
+- ✅ **Added**: 100% coverage of all user interactions and button presses
+- ✅ **Added**: Mobile responsiveness testing for all components
+- ✅ **Added**: Role-based access control testing (Free, Pro, Admin, Superadmin)
+- ✅ **Added**: API mocking with MSW for realistic testing scenarios
+- ✅ **Added**: Pre-deployment testing workflow with critical test suite
+- ✅ **Added**: Mobile hamburger menu testing across all pages
+- ✅ **Added**: Typography system testing (Share Tech Mono, Inconsolata, Poppins)
+- ✅ **Added**: Accessibility testing (ARIA, keyboard navigation, screen readers)
+- ✅ **Added**: Error handling and edge case testing
+
+### **Testing Coverage by Component**
+- **🏠 Landing Page**: 45+ tests covering navigation, rotating text, interactive background
+- **🔐 Authentication**: 50+ tests covering login/signup flows, validation, OAuth
+- **📊 Dashboard**: 60+ tests covering user management, plan content, mobile menu
+- **⚙️ Settings**: 70+ tests covering profile management, modals, account actions
+- **👑 Admin Panel**: 80+ tests covering user management, access control, CRUD operations
+- **👁️ Viewer**: 50+ tests covering snapshot display, file handling, navigation
+
+### **Pre-Deployment Testing**
+```bash
+# Run critical tests (must pass before deployment)
+pnpm test:critical    # ~30 seconds
+
+# Run all tests with coverage
+pnpm test             # ~2-3 minutes
+
+# Pre-deployment check (tests + build)
+pnpm predeploy        # Critical tests + build
+```
+
+### **Testing Architecture**
+- **Vitest**: Fast, Vite-native testing framework
+- **React Testing Library**: User-centric testing approach
+- **MSW**: API mocking for realistic test scenarios
+- **Jest DOM**: Enhanced DOM matchers and assertions
+- **Custom Test Utilities**: Consistent testing patterns across components
+
+### **Benefits of Testing Suite**
+1. **Deployment Confidence**: Catch critical bugs before they reach production
+2. **Fast Feedback**: Critical tests run in under 30 seconds
+3. **Mobile Assurance**: Comprehensive mobile responsiveness testing
+4. **Accessibility Compliance**: ARIA and keyboard navigation testing
+5. **Role-Based Testing**: Verify access control for all user types
+6. **Maintainable Tests**: Consistent patterns and utilities
+7. **Realistic Scenarios**: API mocking with MSW
+8. **Developer Experience**: Watch mode and visual test runner
+
+---
+
 ## 🚀 **Complete Release Workflow**
 
 ### **Step 1: Run Release Workflow**
@@ -735,3 +788,182 @@ The QuickStage application has undergone a complete mobile responsiveness overha
 - **Project Type Detection**: Even smarter detection of project structures and frameworks
 - **Routing Analytics**: Monitor routing performance and success rates
 - **Advanced Caching**: Implement edge caching for better performance
+
+## 🔍 **Debug Endpoints & Direct Data Access (v0.0.31+)**
+
+QuickStage now provides comprehensive debug endpoints for direct access to your data stored in Cloudflare KV. These endpoints are **superadmin-only** and provide powerful tools for data analysis, debugging, and system monitoring.
+
+### **Authentication Required**
+All debug endpoints require superadmin authentication via the `Authorization: Bearer {token}` header. Only users with `role: 'superadmin'` can access these endpoints.
+
+### **Available Debug Endpoints**
+
+#### **1. User Management**
+- **`GET /debug/users`** - List all users with pagination
+  - Query params: `?cursor={cursor}&limit={limit}` (max 1000)
+  - Returns: User list, pagination cursor, total count
+  - Sensitive fields (googleId, passwordHash) are automatically removed
+
+- **`GET /debug/user/{uid}`** - Get specific user by UID
+  - Returns: Complete user record (sensitive fields removed)
+  - Useful for debugging specific user issues
+
+- **`GET /debug/search/email/{email}`** - Search users by email
+  - Returns: Matching users with partial email matching
+  - Case-insensitive search
+
+#### **2. Snapshot Management**
+- **`GET /debug/snapshots`** - List all snapshots with pagination
+  - Query params: `?cursor={cursor}&limit={limit}` (max 1000)
+  - Returns: Snapshot list, pagination cursor, total count
+
+- **`GET /debug/snapshot/{id}`** - Get specific snapshot by ID
+  - Returns: Complete snapshot record
+  - Useful for debugging snapshot issues
+
+#### **3. System Analytics**
+- **`GET /debug/stats`** - Comprehensive system statistics
+  - Returns: User counts, snapshot counts, subscription breakdown
+  - Real-time metrics for system monitoring
+  - Subscription status distribution (free, trial, active, cancelled, past_due, superadmin)
+
+#### **4. Data Export**
+- **`GET /debug/export`** - Export all data for backup/analysis
+  - Returns: Complete JSON export with users and snapshots
+  - Downloads as file: `quickstage-export-{date}.json`
+  - Perfect for data analysis, backups, or migration
+
+#### **5. System Health**
+- **`GET /debug/health`** - Public health check endpoint
+  - No authentication required
+  - Returns: System status, service health, basic metrics
+  - Useful for monitoring and uptime checks
+
+### **Example Usage**
+
+#### **List All Users (First 100)**
+```bash
+curl -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  "https://quickstage-worker.nbramia.workers.dev/debug/users?limit=100"
+```
+
+#### **Get Specific User**
+```bash
+curl -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  "https://quickstage-worker.nbramia.workers.dev/debug/user/USER_UID_HERE"
+```
+
+#### **Search Users by Email**
+```bash
+curl -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  "https://quickstage-worker.nbramia.workers.dev/debug/search/email/nbramia"
+```
+
+#### **Get System Statistics**
+```bash
+curl -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  "https://quickstage-worker.nbramia.workers.dev/debug/stats"
+```
+
+#### **Export All Data**
+```bash
+curl -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
+  "https://quickstage-worker.nbramia.workers.dev/debug/export" \
+  -o "quickstage-export.json"
+```
+
+#### **Check System Health**
+```bash
+curl "https://quickstage-worker.nbramia.workers.dev/debug/health"
+```
+
+### **Data Structure Examples**
+
+#### **User Record (Sensitive Fields Removed)**
+```json
+{
+  "uid": "abc123",
+  "name": "Nathan Ramia",
+  "email": "nbramia1@gmail.com",
+  "plan": "free",
+  "role": "user",
+  "subscriptionStatus": "none",
+  "canAccessPro": false,
+  "subscriptionDisplay": "Free",
+  "createdAt": 1756147245570,
+  "lastLoginAt": 1756148437602
+}
+```
+
+#### **Snapshot Record**
+```json
+{
+  "id": "snap123",
+  "name": "My Project",
+  "createdAt": "2025-01-27T...",
+  "expiresAt": "2025-02-03T...",
+  "password": "xyz789",
+  "isPublic": false,
+  "viewCount": 5
+}
+```
+
+#### **System Statistics**
+```json
+{
+  "system": {
+    "totalUsers": 25,
+    "totalSnapshots": 47,
+    "activeSessions": 3,
+    "timestamp": "2025-01-27T..."
+  },
+  "subscriptions": {
+    "free": 15,
+    "trial": 3,
+    "active": 5,
+    "cancelled": 1,
+    "pastDue": 0,
+    "superadmin": 1
+  },
+  "storage": {
+    "users": 25,
+    "snapshots": 47,
+    "sessions": 3
+  }
+}
+```
+
+### **Security Features**
+- **Superadmin Only**: All sensitive endpoints require superadmin role
+- **Sensitive Data Removal**: googleId and passwordHash automatically removed
+- **Rate Limiting**: Built-in pagination prevents data dumps
+- **Audit Logging**: All debug access is logged for security monitoring
+
+### **Use Cases**
+1. **Debugging**: Investigate user issues or system problems
+2. **Data Analysis**: Export data for business intelligence
+3. **System Monitoring**: Check system health and metrics
+4. **User Support**: Look up specific user information
+5. **Backup**: Create data backups for disaster recovery
+6. **Migration**: Export data for system upgrades
+
+### **Alternative Access Methods**
+
+#### **Cloudflare Dashboard**
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Navigate to **Workers & Pages** → **quickstage-worker**
+3. Click **Settings** → **Variables** → **KV Namespaces**
+4. Browse and edit key-value pairs directly
+
+#### **Worker Logs**
+```bash
+npx wrangler tail quickstage-worker --format=pretty
+```
+
+The debug endpoints provide the most powerful and flexible way to access your data programmatically, while the Cloudflare Dashboard offers a visual interface for manual inspection and editing.
+
+### **Deployment Notes**
+- **Worker Required**: Debug endpoints are part of the worker deployment
+- **No Web App Changes**: These endpoints don't require web app updates
+- **Immediate Availability**: Endpoints are available immediately after worker deployment
+- **Security**: All endpoints automatically check superadmin status

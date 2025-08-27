@@ -3641,4 +3641,342 @@ async function getUidByStripeCustomerId(c: any, customerId: string): Promise<str
   return null;
 }
 
+// ============================================================================
+// DEBUG ENDPOINTS - Superadmin Only Access
+// ============================================================================
+
+// Helper function to check if user is superadmin
+async function isSuperadmin(c: any): Promise<boolean> {
+  const uid = await getUidFromSession(c);
+  if (!uid) return false;
+  
+  const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+  if (!userRaw) return false;
+  
+  const user = JSON.parse(userRaw);
+  return user.role === 'superadmin';
+}
+
+// List all users with pagination
+app.get('/debug/users', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  const cursor = c.req.query('cursor');
+  const limit = parseInt(c.req.query('limit') || '100');
+  
+  try {
+    const list = await c.env.KV_USERS.list({ 
+      prefix: 'user:', 
+      cursor: cursor || undefined,
+      limit: Math.min(limit, 1000) // Cap at 1000 for safety
+    });
+    
+    const users = [];
+    for (const key of list.keys) {
+      if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+        const userRaw = await c.env.KV_USERS.get(key.name);
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          // Remove sensitive fields
+          delete user.googleId;
+          delete user.passwordHash;
+          users.push(user);
+        }
+      }
+    }
+    
+    return c.json({
+      users,
+      cursor: list.cursor,
+      truncated: list.list_complete === false,
+      total: users.length
+    });
+  } catch (error: any) {
+    console.error('Debug users error:', error);
+    return c.json({ error: 'Failed to fetch users' }, 500);
+  }
+});
+
+// Get specific user by UID
+app.get('/debug/user/:uid', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  const uid = c.req.param('uid');
+  
+  try {
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw) {
+      return c.json({ error: 'User not found' }, 404);
+    }
+    
+    const user = JSON.parse(userRaw);
+    // Remove sensitive fields
+    delete user.googleId;
+    delete user.passwordHash;
+    
+    return c.json(user);
+  } catch (error: any) {
+    console.error('Debug user error:', error);
+    return c.json({ error: 'Failed to fetch user' }, 500);
+  }
+});
+
+// Search users by email
+app.get('/debug/search/email/:email', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  const email = c.req.param('email');
+  
+  try {
+    const list = await c.env.KV_USERS.list({ prefix: 'user:' });
+    const users = [];
+    
+    for (const key of list.keys) {
+      if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+        const userRaw = await c.env.KV_USERS.get(key.name);
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          if (user.email && user.email.toLowerCase().includes(email.toLowerCase())) {
+            // Remove sensitive fields
+            delete user.googleId;
+            delete user.passwordHash;
+            users.push(user);
+          }
+        }
+      }
+    }
+    
+    return c.json({
+      users,
+      total: users.length,
+      searchTerm: email
+    });
+  } catch (error: any) {
+    console.error('Debug search error:', error);
+    return c.json({ error: 'Failed to search users' }, 500);
+  }
+});
+
+// List all snapshots with pagination
+app.get('/debug/snapshots', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  const cursor = c.req.query('cursor');
+  const limit = parseInt(c.req.query('limit') || '100');
+  
+  try {
+    const list = await c.env.KV_SNAPS.list({ 
+      prefix: 'snap:', 
+      cursor: cursor || undefined,
+      limit: Math.min(limit, 1000)
+    });
+    
+    const snapshots = [];
+    for (const key of list.keys) {
+      if (key.name.startsWith('snap:') && !key.name.includes(':', 5)) {
+        const snapRaw = await c.env.KV_SNAPS.get(key.name);
+        if (snapRaw) {
+          const snapshot = JSON.parse(snapRaw);
+          snapshots.push(snapshot);
+        }
+      }
+    }
+    
+    return c.json({
+      snapshots,
+      cursor: list.cursor,
+      truncated: list.list_complete === false,
+      total: snapshots.length
+    });
+  } catch (error: any) {
+    console.error('Debug snapshots error:', error);
+    return c.json({ error: 'Failed to fetch snapshots' }, 500);
+  }
+});
+
+// Get specific snapshot by ID
+app.get('/debug/snapshot/:id', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  const id = c.req.param('id');
+  
+  try {
+    const snapRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+    if (!snapRaw) {
+      return c.json({ error: 'Snapshot not found' }, 404);
+    }
+    
+    const snapshot = JSON.parse(snapRaw);
+    return c.json(snapshot);
+  } catch (error: any) {
+    console.error('Debug snapshot error:', error);
+    return c.json({ error: 'Failed to fetch snapshot' }, 500);
+  }
+});
+
+// Get system statistics
+app.get('/debug/stats', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  try {
+    // Count users
+    const userList = await c.env.KV_USERS.list({ prefix: 'user:' });
+    const userCount = userList.keys.filter((key: any) => 
+      key.name.startsWith('user:') && !key.name.includes(':', 5)
+    ).length;
+    
+    // Count snapshots
+    const snapList = await c.env.KV_SNAPS.list({ prefix: 'snap:' });
+    const snapCount = snapList.keys.filter((key: any) => 
+      key.name.startsWith('snap:') && !key.name.includes(':', 5)
+    ).length;
+    
+    // Count active sessions
+    const sessionList = await c.env.KV_USERS.list({ prefix: 'session:' });
+    const sessionCount = sessionList.keys.length;
+    
+    // Get subscription breakdown
+    const users = [];
+    for (const key of userList.keys) {
+      if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+        const userRaw = await c.env.KV_USERS.get(key.name);
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          users.push(user);
+        }
+      }
+    }
+    
+    const subscriptionStats = {
+      free: users.filter(u => u.subscriptionStatus === 'none' || u.subscriptionStatus === 'Free').length,
+      trial: users.filter(u => u.subscriptionStatus === 'trial').length,
+      active: users.filter(u => u.subscriptionStatus === 'active').length,
+      cancelled: users.filter(u => u.subscriptionStatus === 'cancelled').length,
+      pastDue: users.filter(u => u.subscriptionStatus === 'past_due').length,
+      superadmin: users.filter(u => u.role === 'superadmin').length
+    };
+    
+    return c.json({
+      system: {
+        totalUsers: userCount,
+        totalSnapshots: snapCount,
+        activeSessions: sessionCount,
+        timestamp: new Date().toISOString()
+      },
+      subscriptions: subscriptionStats,
+      storage: {
+        users: userList.keys.length,
+        snapshots: snapList.keys.length,
+        sessions: sessionList.keys.length
+      }
+    });
+  } catch (error: any) {
+    console.error('Debug stats error:', error);
+    return c.json({ error: 'Failed to fetch system stats' }, 500);
+  }
+});
+
+// Export all data for backup/analysis (superadmin only)
+app.get('/debug/export', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  try {
+    // Get all users
+    const userList = await c.env.KV_USERS.list({ prefix: 'user:' });
+    const users = [];
+    for (const key of userList.keys) {
+      if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+        const userRaw = await c.env.KV_USERS.get(key.name);
+        if (userRaw) {
+          const user = JSON.parse(userRaw);
+          // Remove sensitive fields
+          delete user.googleId;
+          delete user.passwordHash;
+          users.push(user);
+        }
+      }
+    }
+    
+    // Get all snapshots
+    const snapList = await c.env.KV_SNAPS.list({ prefix: 'snap:' });
+    const snapshots = [];
+    for (const key of snapList.keys) {
+      if (key.name.startsWith('snap:') && !key.name.includes(':', 5)) {
+        const snapRaw = await c.env.KV_SNAPS.get(key.name);
+        if (snapRaw) {
+          const snapshot = JSON.parse(snapRaw);
+          snapshots.push(snapshot);
+        }
+      }
+    }
+    
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      version: '1.0',
+      data: {
+        users,
+        snapshots,
+        summary: {
+          totalUsers: users.length,
+          totalSnapshots: snapshots.length,
+          exportTimestamp: new Date().toISOString()
+        }
+      }
+    };
+    
+    // Set headers for file download
+    c.header('Content-Type', 'application/json');
+    c.header('Content-Disposition', `attachment; filename="quickstage-export-${new Date().toISOString().split('T')[0]}.json"`);
+    
+    return c.json(exportData);
+  } catch (error: any) {
+    console.error('Debug export error:', error);
+    return c.json({ error: 'Failed to export data' }, 500);
+  }
+});
+
+// Health check endpoint (public, no auth required)
+app.get('/debug/health', async (c: any) => {
+  try {
+    // Test KV access
+    const userCount = await c.env.KV_USERS.list({ prefix: 'user:', limit: 1 });
+    const snapCount = await c.env.KV_SNAPS.list({ prefix: 'snap:', limit: 1 });
+    
+    return c.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        kv_users: 'operational',
+        kv_snapshots: 'operational',
+        worker: 'operational'
+      },
+      metrics: {
+        userKeys: userCount.keys.length,
+        snapshotKeys: snapCount.keys.length
+      }
+    });
+  } catch (error: any) {
+    console.error('Health check error:', error);
+    return c.json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    }, 500);
+  }
+});
+
 
