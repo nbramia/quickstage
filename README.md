@@ -79,9 +79,15 @@ npm run test:quick
 # Core functionality (1-2 minutes)  
 npm run test:core
 
-# Automated deployment with testing
+# Automated FULL-STACK deployment with testing
 ./deploy-with-tests.sh
 ```
+
+**This script automatically:**
+- ✅ Runs all tests for both worker and web app
+- ✅ Deploys the backend worker to Cloudflare Workers
+- ✅ Deploys the frontend web app to Cloudflare Pages
+- ✅ Verifies both deployments are successful
 
 **Failure to test will result in broken deployments.**
 ```
@@ -89,13 +95,15 @@ npm run test:core
 ### Deployment
 
 ```bash
-# Deploy to Cloudflare
-pnpm deploy
+# 🚀 RECOMMENDED: Full-stack deployment with testing
+./deploy-with-tests.sh
 
-# Deploy specific service
+# Alternative: Deploy specific service (if needed)
 pnpm --filter @quickstage/worker deploy
 pnpm --filter @quickstage/web deploy
 ```
+
+**Note:** The `deploy-with-tests.sh` script handles both worker and web app deployment automatically, ensuring all tests pass before deployment.
 
 ## Project Structure
 
