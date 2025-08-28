@@ -1021,6 +1021,11 @@ app.get('/extensions/download', async (c) => {
 // Comments endpoints (robust implementation with error handling and logging)
 app.get('/comments/:snapshotId', handleGetSnapshotCommentsAlt);
 app.post('/comments/:snapshotId', handlePostSnapshotCommentAlt);
+// Analytics tracking endpoint
+app.post('/analytics/track', async (c) => {
+    const { handleAnalyticsTrack } = await import('./routes/analytics');
+    return handleAnalyticsTrack(c);
+});
 // Original web app serving (keep as primary)
 // Extension is served directly from web app public directory
 const worker = {
@@ -1031,51 +1036,8 @@ const worker = {
 };
 // Get analytics events (superadmin only)
 app.get('/debug/analytics/events', async (c) => {
-    if (!(await isSuperadmin(c))) {
-        return c.json({ error: 'Superadmin access required' }, 403);
-    }
-    try {
-        const limit = parseInt(c.req.query('limit') || '100');
-        const cursor = c.req.query('cursor');
-        const list = await c.env.KV_ANALYTICS.list({
-            prefix: 'event:',
-            cursor: cursor || undefined,
-            limit: Math.min(limit, 1000) // Cap at 1000 for safety
-        });
-        const events = [];
-        for (const key of list.keys) {
-            if (key.name.startsWith('event:')) {
-                const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
-                if (eventRaw) {
-                    const event = JSON.parse(eventRaw);
-                    events.push(event);
-                }
-            }
-        }
-        // Sort by timestamp descending (newest first)
-        events.sort((a, b) => b.timestamp - a.timestamp);
-        return c.json({
-            events,
-            cursor: list.cursor,
-            truncated: list.list_complete === false,
-            total: events.length
-        });
-    }
-    catch (error) {
-        console.error('Debug analytics events error:', error);
-        // Track analytics event for debug analytics events error
-        try {
-            const analytics = getAnalyticsManager(c);
-            await analytics.trackEvent('system', 'error_occurred', {
-                context: 'debug_analytics_events',
-                error: error.message || 'Unknown error'
-            });
-        }
-        catch (analyticsError) {
-            console.error('Failed to track analytics for debug analytics events error:', analyticsError);
-        }
-        return c.json({ error: 'Failed to fetch analytics events' }, 500);
-    }
+    const { handleDebugAnalyticsEvents } = await import('./routes/debug');
+    return handleDebugAnalyticsEvents(c);
 });
 // Migration system endpoints (superadmin only)
 app.get('/debug/migration/stats', async (c) => {

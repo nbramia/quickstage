@@ -57,6 +57,40 @@ export default function AdminDashboard() {
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('7d');
   
+  // Activity feed filtering
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
+  const [userFilter, setUserFilter] = useState<string>('all');
+  const [pageFilter, setPageFilter] = useState<string>('all');
+  
+  // Time filtering
+  const [timeFilterType, setTimeFilterType] = useState<'all' | 'before' | 'after' | 'between'>('all');
+  const [timeFilterBefore, setTimeFilterBefore] = useState<string>('');
+  const [timeFilterAfter, setTimeFilterAfter] = useState<string>('');
+  const [timeFilterStart, setTimeFilterStart] = useState<string>('');
+  const [timeFilterEnd, setTimeFilterEnd] = useState<string>('');
+  
+  // Dropdown open states
+  const [isEventTypeOpen, setIsEventTypeOpen] = useState(false);
+  const [isUserFilterOpen, setIsUserFilterOpen] = useState(false);
+  const [isPageFilterOpen, setIsPageFilterOpen] = useState(false);
+  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
+  
+  // Close all dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.custom-dropdown')) {
+        setIsEventTypeOpen(false);
+        setIsUserFilterOpen(false);
+        setIsPageFilterOpen(false);
+        setIsTimeFilterOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
   // Migration state
   const [migrationStats, setMigrationStats] = useState<any>(null);
   const [migrationLoading, setMigrationLoading] = useState(false);
@@ -78,7 +112,28 @@ export default function AdminDashboard() {
     loadUsers();
     loadAnalytics();
     loadMigrationStats();
+    
+    // Track page view
+    const trackPageView = async () => {
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'page_view',
+          eventData: { page: 'Admin Dashboard' }
+        });
+      } catch (error) {
+        console.error('Failed to track page view:', error);
+      }
+    };
+    
+    trackPageView();
   }, []);
+  
+  // Reload analytics when timeframe changes
+  useEffect(() => {
+    if (analyticsTimeframe) {
+      loadAnalytics();
+    }
+  }, [analyticsTimeframe]);
 
   const loadUsers = async () => {
     try {
@@ -97,12 +152,30 @@ export default function AdminDashboard() {
     try {
       setAnalyticsLoading(true);
       
-      // Load comprehensive analytics data
+      // Calculate time range based on selected timeframe
+      const now = Date.now();
+      let startTime: number;
+      
+      switch (analyticsTimeframe) {
+        case '24h':
+          startTime = now - (24 * 60 * 60 * 1000);
+          break;
+        case '7d':
+          startTime = now - (7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startTime = now - (30 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startTime = now - (7 * 24 * 60 * 60 * 1000); // Default to 7 days
+      }
+      
+      // Load comprehensive analytics data with timeframe
       const [statsResponse, usersResponse, snapshotsResponse, eventsResponse] = await Promise.all([
         api.get('/debug/stats'),
         api.get('/debug/users'),
         api.get('/debug/snapshots'),
-        api.get('/debug/analytics/events?limit=50')
+        api.get(`/debug/analytics/events?limit=100&startTime=${startTime}`)
       ]);
       
       setAnalytics(statsResponse);
@@ -181,23 +254,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCleanupCorruptedUsers = async () => {
-    if (!confirm('This will scan all users and fix any corrupted subscription data. Continue?')) {
-      return;
-    }
-    
-    try {
-      setError(null);
-      setLoading(true);
-      const response = await adminApi.cleanupCorruptedUsers();
-      setShowSuccess(`Cleanup completed! Fixed ${response.summary.fixedUsers} users with corrupted data.`);
-      loadUsers(); // Refresh the user list
-    } catch (error: any) {
-      setError(error.message || 'Failed to cleanup corrupted users');
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString();
@@ -276,6 +333,285 @@ export default function AdminDashboard() {
     const labels = { '24h': 'Last 24 Hours', '7d': 'Last 7 Days', '30d': 'Last 30 Days' };
     return labels[timeframe as keyof typeof labels] || timeframe;
   };
+
+  // Filter events based on current filters
+  const filteredEvents = recentEvents.filter(event => {
+    // Skip malformed events
+    if (!event || !event.type) return false;
+    
+    // Event type filter
+    if (eventTypeFilter !== 'all' && event.type !== eventTypeFilter) return false;
+    
+    // User filter - handle both email format and direct userId
+    if (userFilter !== 'all') {
+      if (userFilter.includes('(') && userFilter.includes(')')) {
+        // Extract userId from "email (userId)" format
+        const userIdMatch = userFilter.match(/\(([^)]+)\)/);
+        if (userIdMatch && event.userId !== userIdMatch[1]) return false;
+      } else if (event.userId !== userFilter) {
+        return false;
+      }
+    }
+    
+    // Page filter
+    if (pageFilter !== 'all' && event.page !== pageFilter) return false;
+    
+    // Time filtering
+    if (timeFilterType !== 'all' && event.timestamp) {
+      const eventTime = event.timestamp;
+      
+      switch (timeFilterType) {
+        case 'before':
+          if (timeFilterBefore && eventTime >= new Date(timeFilterBefore).getTime()) return false;
+          break;
+        case 'after':
+          if (timeFilterAfter && eventTime <= new Date(timeFilterAfter).getTime()) return false;
+          break;
+        case 'between':
+          if (timeFilterStart && eventTime < new Date(timeFilterStart).getTime()) return false;
+          if (timeFilterEnd && eventTime > new Date(timeFilterEnd).getTime()) return false;
+          break;
+      }
+    }
+    
+    return true;
+  });
+  
+
+
+  // Custom dropdown component
+  const CustomDropdown = ({ 
+    label, 
+    value, 
+    options, 
+    onChange, 
+    isOpen, 
+    setIsOpen 
+  }: {
+    label: string;
+    value: string;
+    options: { value: string; label: string }[];
+    onChange: (value: string) => void;
+    isOpen: boolean;
+    setIsOpen: (open: boolean) => void;
+  }) => {
+    const selectedOption = options.find(opt => opt.value === value);
+    
+    return (
+      <div className="relative custom-dropdown">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="inline-flex items-center justify-between w-full px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-w-[200px]"
+        >
+          <span className="text-gray-700">{selectedOption?.label || label}</span>
+          <svg 
+            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {isOpen && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
+            <div className="py-1 max-h-60 overflow-auto">
+              {options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full px-4 py-2 text-sm text-left hover:bg-gray-50 transition-colors duration-150 first:rounded-t-lg last:rounded-b-lg ${
+                    option.value === value 
+                      ? 'bg-blue-50 text-blue-700 font-medium' 
+                      : 'text-gray-700'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Get event color scheme
+  const getEventColor = (eventType: string) => {
+    switch (eventType) {
+      // User actions
+      case 'user_login':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'user_logout':
+        return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'user_registered':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'user_deleted':
+        return 'bg-red-100 text-red-800 border-red-200';
+      
+      // Snapshot actions
+      case 'snapshot_created':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'snapshot_viewed':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case 'snapshot_downloaded':
+        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+      case 'snapshot_deleted':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'snapshot_expired':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      
+      // Page views
+      case 'page_view':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      
+      // Comments
+      case 'comment_posted':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'comment_deleted':
+        return 'bg-red-100 text-red-800 border-red-200';
+      
+      // Subscription & payments
+      case 'subscription_started':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'subscription_cancelled':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'subscription_expired':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'payment_succeeded':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'payment_failed':
+        return 'bg-red-100 text-red-800 border-red-200';
+      
+      // System events
+      case 'migration_completed':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'user_migration_completed':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'snapshot_migration_completed':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'system_backup':
+        return 'bg-violet-100 text-violet-800 border-violet-200';
+      case 'system_maintenance':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      
+      // Extension downloads
+      case 'extension_downloaded':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'extension_upgraded':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      
+      // Errors & security
+      case 'error_occurred':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'unauthorized_access':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'rate_limit_exceeded':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      
+      // Default fallback
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Generate human-readable event descriptions
+  const getEventDescription = (event: any) => {
+    // Safety check for event and event.type
+    if (!event || !event.type) {
+      return 'Unknown event';
+    }
+    
+    const baseDescription = event.description;
+    if (baseDescription) return baseDescription;
+    
+    // Generate descriptions based on event type and data
+    switch (event.type) {
+      case 'page_view':
+        return `Viewed page: ${event.page || 'Unknown page'}`;
+      case 'user_login':
+        return 'User logged in';
+      case 'user_logout':
+        return 'User logged out';
+      case 'user_registered':
+        return 'New user registered';
+      case 'snapshot_created':
+        return 'Snapshot created';
+      case 'snapshot_viewed':
+        return 'Snapshot viewed';
+      case 'snapshot_downloaded':
+        return 'Snapshot downloaded';
+      case 'comment_posted':
+        return 'Comment posted';
+      case 'subscription_started':
+        return 'Subscription started';
+      case 'subscription_cancelled':
+        return 'Subscription cancelled';
+      case 'payment_succeeded':
+        return 'Payment successful';
+      case 'payment_failed':
+        return 'Payment failed';
+      case 'extension_downloaded':
+        return `Extension downloaded: ${event.metadata?.version || 'Unknown version'}`;
+      case 'extension_upgraded':
+        return `Extension upgraded: ${event.metadata?.version || 'Unknown version'}`;
+      case 'error_occurred':
+        return `Error: ${event.metadata?.error || 'Unknown error'}`;
+      case 'unauthorized_access':
+        return 'Unauthorized access attempt';
+      default:
+        // Safe fallback for unknown event types
+        return `${event.type.charAt(0).toUpperCase() + event.type.slice(1).replace(/_/g, ' ')}`;
+    }
+  };
+
+  // Get unique event types, users, and pages for filter options
+  const eventTypes = [
+    'all',
+    // Core user events
+    'user_login', 'user_logout', 'user_registered', 'user_deleted',
+    // Snapshot events
+    'snapshot_created', 'snapshot_viewed', 'snapshot_downloaded', 'snapshot_deleted', 'snapshot_expired',
+    // Page views
+    'page_view',
+    // Comments
+    'comment_posted', 'comment_deleted',
+    // Subscription & payments
+    'subscription_started', 'subscription_cancelled', 'subscription_expired', 'payment_succeeded', 'payment_failed',
+    // System events
+    'migration_completed', 'user_migration_completed', 'snapshot_migration_completed', 'system_backup', 'system_maintenance',
+    // Extension downloads
+    'extension_downloaded', 'extension_upgraded',
+    // Errors & security
+    'error_occurred', 'unauthorized_access', 'rate_limit_exceeded',
+    // Dynamic events from analytics
+    ...Array.from(new Set(recentEvents.map(e => e?.type).filter(Boolean)))
+  ];
+  
+  // Get unique users with their emails for better readability
+  const eventUsers = ['all', ...Array.from(new Set(recentEvents.map(e => {
+    if (e?.userId && e?.userId !== 'system' && e?.userId !== 'anonymous') {
+      return `${e.userEmail || 'Unknown'} (${e.userId})`;
+    }
+    return e?.userId;
+  }).filter(Boolean)))];
+  
+  // Get all available pages from actual analytics data
+  const getAllPages = () => {
+    const eventPages = recentEvents.map(e => e?.page).filter(Boolean);
+    const uniquePages = Array.from(new Set(eventPages));
+    
+    // Only include 'all' and pages that actually have analytics data
+    return ['all', ...uniquePages];
+  };
+  
+  const eventPages = getAllPages();
 
   const loadMigrationStats = async () => {
     try {
@@ -398,22 +734,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Admin Actions */}
-        <div className="mb-6 flex space-x-3">
-          <button
-            onClick={handleCleanupCorruptedUsers}
-            className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-            title="Fix users with corrupted subscription data"
-          >
-            🔧 Cleanup Corrupted Users
-          </button>
-          <button
-            onClick={() => setShowCreateUser(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-          >
-            Create New User
-          </button>
-        </div>
+
 
         {/* Tab Navigation */}
         <div className="mb-6 border-b border-gray-200">
@@ -522,7 +843,15 @@ export default function AdminDashboard() {
           /* Users Table */
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="px-4 py-5 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">Users ({users.length})</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">Users ({users.length})</h3>
+              <button
+                onClick={() => setShowCreateUser(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+              >
+                Create New User
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -576,23 +905,32 @@ export default function AdminDashboard() {
                       {user.lastLoginAt ? formatDate(user.lastLoginAt) : 'Never'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {user.activeSnapshots}/{user.totalSnapshots}
+                      <div className="flex flex-col">
+                        <span>{user.activeSnapshots}/{user.totalSnapshots}</span>
+                        {user.totalSnapshots > 0 && user.activeSnapshots === 0 && (
+                          <span className="text-xs text-amber-600" title="Debug: Check snapshot status and expiration">
+                            ⚠️ All snapshots show as inactive
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex flex-col space-y-2">
                         {user.status === 'active' ? (
                           <button
                             onClick={() => handleDeactivateUser(user.uid)}
-                            className="text-red-600 hover:text-red-900 text-xs"
+                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-amber-700 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-colors"
+                            title="Temporarily disable user account (reversible)"
                           >
-                            Deactivate
+                            ⏸️ Deactivate
                           </button>
                         ) : (
                           <button
                             onClick={() => handleActivateUser(user.uid)}
-                            className="text-green-600 hover:text-green-900 text-xs"
+                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 border border-green-300 transition-colors"
+                            title="Re-enable user account"
                           >
-                            Activate
+                            ▶️ Activate
                           </button>
                         )}
                         
@@ -600,8 +938,8 @@ export default function AdminDashboard() {
                         {user.role !== 'superadmin' && (
                           <button
                             onClick={() => handleDeleteUser(user.uid, user.name)}
-                            className="text-red-800 hover:text-red-900 text-xs font-bold border border-red-300 px-2 py-1 rounded bg-red-50 hover:bg-red-100"
-                            title="Permanently delete user and all their data"
+                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-300 transition-colors"
+                            title="Permanently delete user and all their data (irreversible)"
                           >
                             🗑️ Delete
                           </button>
@@ -614,30 +952,12 @@ export default function AdminDashboard() {
             </table>
           </div>
         </div>
+
+
         ) : (
           /* Analytics Content */
           <div className="space-y-6">
-            {/* Timeframe Selector */}
-            <div className="bg-white shadow rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900 font-inconsolata">Analytics Timeframe</h3>
-                <div className="flex space-x-2">
-                  {(['24h', '7d', '30d'] as const).map((timeframe) => (
-                    <button
-                      key={timeframe}
-                      onClick={() => setAnalyticsTimeframe(timeframe)}
-                      className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
-                        analyticsTimeframe === timeframe
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {getTimeframeLabel(timeframe)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+
 
             {/* System Overview - Enhanced */}
             <div className="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -732,8 +1052,27 @@ export default function AdminDashboard() {
             {/* Subscription Analytics - Enhanced */}
             <div className="bg-white shadow overflow-hidden sm:rounded-lg">
               <div className="px-4 py-5 sm:px-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">💳 Subscription Analytics</h3>
-                <p className="mt-1 max-w-2xl text-sm text-gray-500">Detailed subscription breakdown and revenue insights</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">💳 Subscription Analytics</h3>
+                    <p className="mt-1 max-w-2xl text-sm text-gray-500">Detailed subscription breakdown and revenue insights</p>
+                  </div>
+                  <div className="flex space-x-2">
+                    {(['24h', '7d', '30d'] as const).map((timeframe) => (
+                      <button
+                        key={timeframe}
+                        onClick={() => setAnalyticsTimeframe(timeframe)}
+                        className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                          analyticsTimeframe === timeframe
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {getTimeframeLabel(timeframe)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
                 {analytics ? (
@@ -824,40 +1163,142 @@ export default function AdminDashboard() {
               <div className="px-4 py-5 sm:px-6">
                 <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">📋 Recent Activity Feed</h3>
                 <p className="mt-1 max-w-2xl text-sm text-gray-500">Live feed of system events and user activities</p>
+                
+                {/* Activity Feed Filters */}
+                <div className="mt-4 space-y-4">
+                  {/* Basic Filters Row */}
+                  <div className="flex flex-wrap gap-3">
+                    <CustomDropdown
+                      label="All Event Types"
+                      value={eventTypeFilter}
+                      options={eventTypes.map(type => ({
+                        value: type,
+                        label: type === 'all' ? 'All Event Types' : type
+                      }))}
+                      onChange={setEventTypeFilter}
+                      isOpen={isEventTypeOpen}
+                      setIsOpen={setIsEventTypeOpen}
+                    />
+                    
+                    <CustomDropdown
+                      label="All Users"
+                      value={userFilter}
+                      options={eventUsers.map(user => ({
+                        value: user,
+                        label: user === 'all' ? 'All Users' : user
+                      }))}
+                      onChange={setUserFilter}
+                      isOpen={isUserFilterOpen}
+                      setIsOpen={setIsUserFilterOpen}
+                    />
+                    
+                    <CustomDropdown
+                      label="All Pages"
+                      value={pageFilter}
+                      options={eventPages.map(page => ({
+                        value: page,
+                        label: page === 'all' ? 'All Pages' : page
+                      }))}
+                      onChange={setPageFilter}
+                      isOpen={isPageFilterOpen}
+                      setIsOpen={setIsPageFilterOpen}
+                    />
+                  </div>
+                  
+                  {/* Time Filters Row */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <CustomDropdown
+                      label="All Time"
+                      value={timeFilterType}
+                      options={[
+                        { value: 'all', label: 'All Time' },
+                        { value: 'before', label: 'Before' },
+                        { value: 'after', label: 'After' },
+                        { value: 'between', label: 'Between' }
+                      ]}
+                      onChange={(value) => setTimeFilterType(value as any)}
+                      isOpen={isTimeFilterOpen}
+                      setIsOpen={setIsTimeFilterOpen}
+                    />
+                    
+                    {timeFilterType === 'before' && (
+                      <input
+                        type="datetime-local"
+                        value={timeFilterBefore}
+                        onChange={(e) => setTimeFilterBefore(e.target.value)}
+                        className="px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        placeholder="Select date and time"
+                      />
+                    )}
+                    
+                    {timeFilterType === 'after' && (
+                      <input
+                        type="datetime-local"
+                        value={timeFilterAfter}
+                        onChange={(e) => setTimeFilterAfter(e.target.value)}
+                        className="px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                        placeholder="Select date and time"
+                      />
+                    )}
+                    
+                    {timeFilterType === 'between' && (
+                      <>
+                        <input
+                          type="datetime-local"
+                          value={timeFilterStart}
+                          onChange={(e) => setTimeFilterStart(e.target.value)}
+                          className="px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="Start date and time"
+                        />
+                        <span className="text-sm text-gray-500 font-medium">to</span>
+                        <input
+                          type="datetime-local"
+                          value={timeFilterEnd}
+                          onChange={(e) => setTimeFilterEnd(e.target.value)}
+                          className="px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          placeholder="End date and time"
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                {recentEvents.length > 0 ? (
+                {filteredEvents.length > 0 ? (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {recentEvents.map((event, index) => (
+                    {filteredEvents.map((event, index) => (
                       <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          event.type === 'user_login' ? 'bg-blue-100 text-blue-800' :
-                          event.type === 'user_registered' ? 'bg-green-100 text-green-800' :
-                          event.type === 'snapshot_created' ? 'bg-purple-100 text-purple-800' :
-                          event.type === 'snapshot_viewed' ? 'bg-indigo-100 text-indigo-800' :
-                          event.type === 'payment_succeeded' ? 'bg-emerald-100 text-emerald-800' :
-                          event.type === 'error_occurred' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium border ${getEventColor(event.type)}`}>
                           {event.type}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-900 truncate">
-                            {event.description || `Event: ${event.type}`}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {event.userId ? `User: ${event.userId}` : 'System Event'}
-                          </p>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-900 font-medium">
+                                {getEventDescription(event)}
+                              </p>
+                              {event.userId && event.userId !== 'system' && event.userId !== 'anonymous' && (
+                                <div className="mt-1 flex items-center space-x-4 text-xs text-gray-500">
+                                  <span>User: {event.userName || 'Unknown'}</span>
+                                  <span>ID: {event.userId}</span>
+                                  {event.userEmail && <span>Email: {event.userEmail}</span>}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 ml-4">
+                              {new Date(event.timestamp).toLocaleString()}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(event.timestamp).toLocaleString()}
-                        </div>
+
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center py-8">
-                    <p className="text-gray-600">No recent events available</p>
+                    <p className="text-gray-600">
+                      {recentEvents.length === 0 ? 'No recent events available' : 'No events match the current filters'}
+                    </p>
                     <button
                       onClick={loadAnalytics}
                       className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
@@ -1007,38 +1448,81 @@ export default function AdminDashboard() {
               </div>
               <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <a
-                    href="/debug/stats"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await api.get('/debug/stats');
+                        const newWindow = window.open('', '_blank');
+                        if (newWindow) {
+                          newWindow.document.write(`
+                            <html>
+                              <head><title>Raw Stats API</title></head>
+                              <body>
+                                <h1>Raw Stats API Response</h1>
+                                <pre>${JSON.stringify(response, null, 2)}</pre>
+                              </body>
+                            </html>
+                          `);
+                        }
+                      } catch (error) {
+                        alert('Failed to fetch stats: ' + error);
+                      }
+                    }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 transition-colors"
                   >
                     📊 Raw Stats API
-                  </a>
-                  <a
-                    href="/debug/export"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 transition-colors"
-                  >
-                    📥 Data Export
-                  </a>
-                  <a
-                    href="/debug/analytics/events"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await api.get('/debug/analytics/events?limit=100');
+                        const newWindow = window.open('', '_blank');
+                        if (newWindow) {
+                          newWindow.document.write(`
+                            <html>
+                              <head><title>Analytics Events</title></head>
+                              <body>
+                                <h1>Analytics Events</h1>
+                                <pre>${JSON.stringify(response, null, 2)}</pre>
+                              </body>
+                            </html>
+                          `);
+                        }
+                      } catch (error) {
+                        alert('Failed to fetch analytics events: ' + error);
+                      }
+                    }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 transition-colors"
                   >
                     📊 Analytics Events
-                  </a>
-                  <a
-                    href="/debug/health"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  </button>
+                  
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await api.get('/debug/health');
+                        const newWindow = window.open('', '_blank');
+                        if (newWindow) {
+                          newWindow.document.write(`
+                            <html>
+                              <head><title>System Health</title></head>
+                              <body>
+                                <h1>System Health</h1>
+                                <pre>${JSON.stringify(response, null, 2)}</pre>
+                              </body>
+                            </html>
+                          `);
+                        }
+                      } catch (error) {
+                        alert('Failed to fetch system health: ' + error);
+                      }
+                    }}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-purple-700 bg-purple-100 hover:bg-purple-200 transition-colors"
                   >
                     🏥 System Health
-                  </a>
+                  </button>
+                  
                   <button
                     onClick={loadAnalytics}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-orange-700 bg-orange-100 hover:bg-orange-200 transition-colors"

@@ -60,6 +60,20 @@ export default function Dashboard() {
     
     // Check for updates
     checkForUpdates();
+    
+    // Track page view
+    const trackPageView = async () => {
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'page_view',
+          eventData: { page: 'Dashboard' }
+        });
+      } catch (error) {
+        console.error('Failed to track page view:', error);
+      }
+    };
+    
+    trackPageView();
   }, []);
   
   const checkForUpdates = async () => {
@@ -415,6 +429,24 @@ export default function Dashboard() {
         localStorage.setItem('quickstage-downloaded-version', currentVersion);
         setLastDownloadedVersion(currentVersion);
         setNeedsUpdate(false);
+        
+        // Track the download event
+        const isUpgrade = lastDownloadedVersion && lastDownloadedVersion !== currentVersion;
+        const eventType = isUpgrade ? 'extension_upgraded' : 'extension_downloaded';
+        
+        try {
+          await api.post('/analytics/track', {
+            eventType,
+            eventData: { 
+              page: '/dashboard',
+              version: currentVersion,
+              previousVersion: lastDownloadedVersion || null,
+              isUpgrade
+            }
+          });
+        } catch (error) {
+          console.error('Failed to track extension download:', error);
+        }
       }
       
     } catch (error) {

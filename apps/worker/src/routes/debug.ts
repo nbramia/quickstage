@@ -11,6 +11,7 @@ export async function handleDebugAnalyticsEvents(c: any) {
   try {
     const limit = parseInt(c.req.query('limit') || '100');
     const cursor = c.req.query('cursor');
+    const startTime = c.req.query('startTime') ? parseInt(c.req.query('startTime')) : undefined;
     
     const list = await c.env.KV_ANALYTICS.list({ 
       prefix: 'event:', 
@@ -24,7 +25,37 @@ export async function handleDebugAnalyticsEvents(c: any) {
         const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
         if (eventRaw) {
           const event = JSON.parse(eventRaw);
-          events.push(event);
+          
+          // Filter by startTime if provided
+          if (startTime && event.timestamp < startTime) {
+            continue; // Skip events older than startTime
+          }
+          
+          // Normalize event fields for frontend compatibility
+          const normalizedEvent = {
+            ...event,
+            type: event.eventType || event.type || 'unknown', // Map eventType to type
+            page: event.eventData?.page || event.page, // Extract page from eventData
+            metadata: event.eventData || event.metadata || {} // Extract metadata from eventData
+          };
+          
+          // Enhance event with user details if userId is not 'system' or 'anonymous'
+          if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
+            try {
+              const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
+              if (userRaw) {
+                const user = JSON.parse(userRaw);
+                normalizedEvent.userName = user.name || 'Unknown';
+                normalizedEvent.userEmail = user.email || 'No email';
+              }
+            } catch (userError) {
+              console.error('Failed to fetch user details for event:', userError);
+              normalizedEvent.userName = 'Error loading user';
+              normalizedEvent.userEmail = 'Error loading email';
+            }
+          }
+          
+          events.push(normalizedEvent);
         }
       }
     }

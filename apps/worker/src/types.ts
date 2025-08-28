@@ -183,6 +183,7 @@ export type AnalyticsEventType =
   | 'snapshot_extended'
   | 'comment_posted'
   | 'comment_viewed'
+  | 'comment_deleted'
   | 'user_login'
   | 'user_logout'
   | 'user_registered'
@@ -191,6 +192,7 @@ export type AnalyticsEventType =
   | 'password_changed'
   | 'subscription_started'
   | 'subscription_cancelled'
+  | 'subscription_expired'
   | 'subscription_renewed'
   | 'payment_succeeded'
   | 'payment_failed'
@@ -201,11 +203,15 @@ export type AnalyticsEventType =
   | 'user_activated'
   | 'user_deactivated'
   | 'extension_downloaded'
+  | 'extension_upgraded'
   | 'api_call'
   | 'error_occurred'
   | 'migration_completed'
   | 'user_migration_completed'
-  | 'snapshot_migration_completed';
+  | 'snapshot_migration_completed'
+  | 'system_backup'
+  | 'system_maintenance'
+  | 'rate_limit_exceeded';
 
 // Analytics Aggregation Types
 export interface UserAnalytics {

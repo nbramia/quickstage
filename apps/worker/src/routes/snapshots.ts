@@ -199,7 +199,7 @@ export async function handleListSnapshots(c: any) {
   
   // Track analytics event for page view
   const analytics = getAnalyticsManager(c);
-  await analytics.trackEvent(uid, 'page_view', { page: '/snapshots/list' });
+      await analytics.trackEvent(uid, 'page_view', { page: 'Dashboard' });
   
   const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
   const ids: string[] = JSON.parse(listJson);

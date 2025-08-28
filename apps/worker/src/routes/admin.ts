@@ -37,7 +37,7 @@ export async function handleGetUsers(c: any) {
   
   // Track analytics event for page view
   const analytics = getAnalyticsManager(c);
-  await analytics.trackEvent(uid, 'page_view', { page: '/admin/users' });
+      await analytics.trackEvent(uid, 'page_view', { page: 'Admin Dashboard' });
   
   // Get all users
   const users = [];
@@ -67,7 +67,12 @@ export async function handleGetUsers(c: any) {
             const snapshotRaw = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
             if (snapshotRaw) {
               const snapshot = JSON.parse(snapshotRaw);
-              if (snapshot.status === 'active' && snapshot.expiresAt > Date.now()) {
+              
+              // Check if snapshot is active - handle both explicit status and expiration-based logic
+              const isActive = snapshot.status === 'active' || 
+                              (snapshot.status !== 'expired' && snapshot.expiresAt > Date.now());
+              
+              if (isActive) {
                 activeSnapshots++;
               }
             }

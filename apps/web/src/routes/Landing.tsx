@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../api';
 import '../fonts.css';
 
 export default function Landing() {
@@ -42,6 +43,22 @@ export default function Landing() {
   const handleLogIn = () => {
     navigate('/login');
   };
+  
+  // Track page view
+  useEffect(() => {
+    const trackPageView = async () => {
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'page_view',
+          eventData: { page: 'Landing Page' }
+        });
+      } catch (error) {
+        console.error('Failed to track page view:', error);
+      }
+    };
+    
+    trackPageView();
+  }, []);
 
     // Create permanent background stars
   useEffect(() => {

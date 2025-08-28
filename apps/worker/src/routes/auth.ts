@@ -249,7 +249,7 @@ export async function handleMe(c: any) {
   
   // Track analytics event for page view
   const analytics = getAnalyticsManager(c);
-  await analytics.trackEvent(uid, 'page_view', { page: '/me' });
+      await analytics.trackEvent(uid, 'page_view', { page: 'Settings' });
   
   // Get subscription status from new schema with fallback to legacy
   const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';

@@ -22,6 +22,22 @@ export function Settings() {
       role: user?.role
     });
   }, [user]);
+  
+  // Track page view
+  useEffect(() => {
+    const trackPageView = async () => {
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'page_view',
+          eventData: { page: 'Settings' }
+        });
+      } catch (error) {
+        console.error('Failed to track page view:', error);
+      }
+    };
+    
+    trackPageView();
+  }, []);
 
   const handleUpgrade = async () => {
     try {

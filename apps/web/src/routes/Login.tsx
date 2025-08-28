@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../api';
 import '../fonts.css';
 
 // Google API types
@@ -46,9 +47,25 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
-      navigate('/dashboard');
+              navigate('/dashboard');
     }
   }, [user, navigate]);
+  
+  // Track page view
+  useEffect(() => {
+    const trackPageView = async () => {
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'page_view',
+          eventData: { page: 'Login/Signup' }
+        });
+      } catch (error) {
+        console.error('Failed to track page view:', error);
+      }
+    };
+    
+    trackPageView();
+  }, []);
 
   // Check URL parameters for initial auth mode
   useEffect(() => {
