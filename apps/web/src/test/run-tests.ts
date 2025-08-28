@@ -23,7 +23,7 @@ console.log('========================\n');
 const args = process.argv.slice(2);
 const mode = args[0] || 'fast';
 
-const testScripts = {
+const testScripts: Record<string, string> = {
   fast: 'pnpm test:critical',
   full: 'pnpm test',
   watch: 'pnpm test:watch',

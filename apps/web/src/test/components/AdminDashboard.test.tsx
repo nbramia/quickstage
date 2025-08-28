@@ -129,7 +129,7 @@ describe('AdminDashboard Component', () => {
       
       // Check for key admin dashboard elements
       expect(screen.getByText('Manage QuickStage users and accounts')).toBeInTheDocument();
-      expect(screen.getByText(/users \(0\)/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /users \(0\)/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /create new user/i })).toBeInTheDocument();
     });
   });

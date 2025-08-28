@@ -12,6 +12,7 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **Pro Features**: Advanced features for power users and teams
 - **Analytics & Insights**: Comprehensive user and system analytics tracking
 - **Flexible Data Schema**: Modern, extensible data management with backward compatibility
+- **Modular Architecture**: Clean, maintainable codebase with separated concerns
 
 ## Tech Stack
 
@@ -22,6 +23,7 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **Deployment**: Cloudflare Pages, Wrangler
 - **Package Manager**: pnpm (monorepo)
 - **Testing**: Vitest, React Testing Library, MSW
+- **Code Organization**: Modular architecture with separated concerns
 
 ## Quick Start
 
@@ -65,6 +67,23 @@ pnpm build
 
 # Run tests
 pnpm test
+
+## 🚨 CRITICAL: Testing Requirements
+
+**Before ANY deployment, AI agents MUST run tests:**
+
+```bash
+# Quick validation (5 seconds)
+npm run test:quick
+
+# Core functionality (1-2 minutes)  
+npm run test:core
+
+# Automated deployment with testing
+./deploy-with-tests.sh
+```
+
+**Failure to test will result in broken deployments.**
 ```
 
 ### Deployment
@@ -85,6 +104,16 @@ quickstage/
 ├── apps/
 │   ├── web/                 # React web application
 │   ├── worker/              # Cloudflare Worker backend
+│   │   └── src/
+│   │       ├── index.ts     # Main worker entry point (4,659 lines)
+│   │       ├── auth.ts      # Authentication utilities
+│   │       ├── user.ts      # User management functions
+│   │       ├── stripe.ts    # Stripe webhook handlers
+│   │       ├── snapshot.ts  # Snapshot management
+│   │       ├── analytics.ts # Analytics tracking
+│   │       ├── migrate-schema.ts # Schema migration helpers
+│   │       ├── migration-system.ts # Data migration system
+│   │       └── worker-utils.ts # Worker utilities
 │   └── extension/           # VS Code extension
 ├── packages/
 │   └── shared/              # Shared utilities and types
@@ -147,6 +176,29 @@ pnpm test "src/test/components/Dashboard.test.tsx"
 # Run tests in watch mode
 pnpm test:watch
 ```
+
+## Code Architecture
+
+The QuickStage codebase has been refactored for maintainability and scalability:
+
+### **Modular Worker Structure**
+- **`index.ts`** (4,659 lines): Main entry point with all API routes
+- **`auth.ts`**: Authentication utilities (session, PAT, superadmin checks)
+- **`user.ts`**: User management (creation, subscription, trial logic)
+- **`stripe.ts`**: Stripe webhook handlers (payments, subscriptions)
+- **`snapshot.ts`**: Snapshot management (view counting, cleanup)
+- **`analytics.ts`**: Analytics tracking and event management
+- **`migrate-schema.ts`**: Schema migration helpers
+- **`migration-system.ts`**: Data migration system
+- **`worker-utils.ts`**: Shared worker utilities
+
+### **Benefits of Refactoring**
+- **Reduced Complexity**: Main file reduced from 5,217 to 4,659 lines (11% smaller)
+- **Better Maintainability**: Each module has a single responsibility
+- **Easier Testing**: Modules can be tested independently
+- **Team Collaboration**: Multiple developers can work on different modules
+- **Code Reuse**: Modules can be imported where needed
+- **Future Growth**: Easy to add new features without bloating main file
 
 ## Contributing
 

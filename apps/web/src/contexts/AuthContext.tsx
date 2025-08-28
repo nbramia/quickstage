@@ -114,7 +114,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (response.sessionToken) {
           setSessionToken(response.sessionToken);
         }
-        setUser(response.user);
+        // Get complete user data from /me endpoint
+        await refreshUser();
       } else {
         await refreshUser();
       }
@@ -139,7 +140,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (response.sessionToken) {
           setSessionToken(response.sessionToken);
         }
-        setUser(response.user);
+        // Get complete user data from /me endpoint
+        await refreshUser();
       } else {
         await refreshUser();
       }
@@ -164,7 +166,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (response.sessionToken) {
           setSessionToken(response.sessionToken);
         }
-        setUser(response.user);
+        // Get complete user data from /me endpoint
+        await refreshUser();
       } else {
         await refreshUser();
       }

@@ -1,0 +1,107 @@
+// Simple Pages Function to handle /s/* routes
+export async function onRequest(context: any): Promise<Response> {
+  const { request } = context;
+  const url = new URL(request.url);
+  
+  // Serve the redirect page for all /s/* routes
+  const redirectPage = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickStage - Redirecting...</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background: #f5f5f5; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+        }
+        .container { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+            max-width: 400px; 
+            width: 100%; 
+            text-align: center;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 1rem;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h2>Redirecting to QuickStage...</h2>
+        <p>You will be redirected to your staged prototype in a moment.</p>
+        <p>If you're not redirected automatically, click the button below.</p>
+        <a href="#" id="redirect-btn" class="btn">Open Prototype</a>
+    </div>
+
+    <script>
+        // Extract the snapshot ID from the URL
+        const pathParts = window.location.pathname.split('/');
+        const snapshotId = pathParts[2]; // /s/abc123 -> abc123
+        
+        if (snapshotId) {
+            // Create the Worker URL
+            const workerUrl = \`https://quickstage-worker.nbramia.workers.dev/s/\${snapshotId}\`;
+            
+            // Set the button href
+            document.getElementById('redirect-btn').href = workerUrl;
+            
+            // Redirect after a short delay
+            setTimeout(() => {
+                window.location.href = workerUrl;
+            }, 1500);
+        } else {
+            document.querySelector('.container').innerHTML = \`
+                <h2>Invalid URL</h2>
+                <p>Please use a valid QuickStage snapshot URL.</p>
+                <a href="https://quickstage.tech" class="btn">Return to Dashboard</a>
+            \`;
+        }
+    </script>
+</body>
+</html>`;
+
+  return new Response(redirectPage, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    }
+  });
+}
