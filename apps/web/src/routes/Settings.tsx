@@ -348,7 +348,7 @@ export function Settings() {
               </div>
 
               {/* Next Billing Date - Only show for active plans */}
-              {(user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trial') && user.nextBillingDate && (
+              {((user.subscription?.status || user.subscriptionStatus) === 'active' || (user.subscription?.status || user.subscriptionStatus) === 'trial') && user.nextBillingDate && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">Next Billing Date</label>
                   <div className="bg-green-50 rounded-lg px-4 py-3 border border-green-100">
@@ -384,7 +384,7 @@ export function Settings() {
                   No billing management needed - your access is permanent.
                 </div>
               </div>
-            ) : !user.subscriptionStatus || user.subscriptionStatus === 'none' ? (
+            ) : !(user.subscription?.status || user.subscriptionStatus) || (user.subscription?.status || user.subscriptionStatus) === 'none' ? (
               <div>
                 <p className="text-gray-600 mb-4">
                   Upgrade to Pro for unlimited snapshots, larger file sizes, and extended expiry times.
@@ -397,7 +397,7 @@ export function Settings() {
                   {upgrading ? 'Processing...' : 'Upgrade to Pro'}
                 </button>
               </div>
-            ) : user.subscriptionStatus === 'trial' ? (
+            ) : (user.subscription?.status || user.subscriptionStatus) === 'trial' ? (
               <div>
                 <div className="mb-4">
                   <p className="text-blue-600 font-medium mb-2">
@@ -406,9 +406,9 @@ export function Settings() {
                   <p className="text-gray-600 text-sm">
                     You're currently on a 7-day free trial of the Pro plan. Enjoy unlimited snapshots, 100MB per snapshot, and up to 90-day expiry times.
                   </p>
-                  {user.trialEndsAt && (
+                  {(user.subscription?.trialEnd || user.trialEndsAt) && (
                     <p className="text-sm text-gray-500 mt-2">
-                      Trial ends: {new Date(user.trialEndsAt).toLocaleDateString()}
+                      Trial ends: {new Date(user.subscription?.trialEnd || user.trialEndsAt!).toLocaleDateString()}
                     </p>
                   )}
                   {user.nextBillingDate && (
@@ -432,7 +432,7 @@ export function Settings() {
                   </button>
                 </div>
               </div>
-            ) : user.subscriptionStatus === 'active' ? (
+            ) : (user.subscription?.status || user.subscriptionStatus) === 'active' ? (
               <div>
                 <div className="mb-4">
                   <p className="text-green-600 font-medium mb-2">
@@ -462,7 +462,7 @@ export function Settings() {
                   </button>
                 </div>
               </div>
-            ) : user.subscriptionStatus === 'cancelled' ? (
+            ) : (user.subscription?.status || user.subscriptionStatus) === 'cancelled' ? (
               <div>
                 <p className="text-orange-600 font-medium mb-2">
                   ⚠️ Pro (Cancelled)
@@ -478,7 +478,7 @@ export function Settings() {
                   {upgrading ? 'Processing...' : 'Reactivate Pro'}
               </button>
               </div>
-            ) : user.subscriptionStatus === 'past_due' ? (
+            ) : (user.subscription?.status || user.subscriptionStatus) === 'past_due' ? (
               <div>
                 <p className="text-red-600 font-medium mb-2">
                   ⚠️ Pro (Payment Past Due)

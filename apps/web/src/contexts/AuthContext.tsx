@@ -13,7 +13,15 @@ interface User {
   lastLoginAt?: number;
   hasPassword?: boolean;
   hasGoogle?: boolean;
-  // Subscription information
+  // Subscription information - new schema with legacy fallbacks
+  subscription?: {
+    status: 'none' | 'trial' | 'active' | 'cancelled' | 'past_due';
+    trialEnd?: number;
+    currentPeriodStart?: number;
+    lastPaymentAt?: number;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+  };
   subscriptionStatus?: 'none' | 'trial' | 'active' | 'cancelled' | 'past_due';
   subscriptionDisplay?: string;
   trialEndsAt?: number;

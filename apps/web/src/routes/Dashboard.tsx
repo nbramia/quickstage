@@ -171,22 +171,28 @@ export default function Dashboard() {
     // Superadmin accounts never need to upgrade
     if (user?.role === 'superadmin') return false;
     
+    // Use new schema with fallbacks to legacy fields
+    const subscriptionStatus = user?.subscription?.status || user?.subscriptionStatus || 'none';
+    
     // Trial users don't need to upgrade - they already have Pro access
-    if (user?.subscriptionStatus === 'trial') return false;
+    if (subscriptionStatus === 'trial') return false;
     
     // User can upgrade if they have no subscription status or are on a cancelled/past due subscription
-    return user && (!user.subscriptionStatus || 
-                   user.subscriptionStatus === 'none' || 
-                   user.subscriptionStatus === 'cancelled' || 
-                   user.subscriptionStatus === 'past_due');
+    return user && (!subscriptionStatus || 
+                   subscriptionStatus === 'none' || 
+                   subscriptionStatus === 'cancelled' || 
+                   subscriptionStatus === 'past_due');
   };
 
   const canManageBilling = () => {
     // Superadmin accounts don't have billing to manage
     if (user?.role === 'superadmin') return false;
     
+    // Use new schema with fallbacks to legacy fields
+    const subscriptionStatus = user?.subscription?.status || user?.subscriptionStatus || 'none';
+    
     // User can manage billing if they have an active subscription or trial
-    return user && (user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trial');
+    return user && (subscriptionStatus === 'active' || subscriptionStatus === 'trial');
   };
 
   const handleLogout = () => {
@@ -642,7 +648,7 @@ export default function Dashboard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                     </div>
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">VS Code & Cursor Extension</h3>
+                    <h3 className="text-base md:text-xl font-semibold text-gray-900 font-inconsolata">VS Code & Cursor Extension</h3>
                   </div>
                   <p className="text-gray-600 text-xs sm:text-sm">
                     Install the QuickStage extension directly in your code editor to deploy a working protoype of your project in seconds
@@ -657,7 +663,7 @@ export default function Dashboard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                       </svg>
                     </div>
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">Share live prototypes with your team</h3>
+                    <h3 className="text-base md:text-xl font-semibold text-gray-900 font-inconsolata">Share live prototypes with your team</h3>
                   </div>
                   <p className="text-gray-600 text-xs sm:text-sm">
                     Share password-protected URLs with your team. If a picture is worth a thousand words...
@@ -672,7 +678,7 @@ export default function Dashboard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
                     </div>
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 font-inconsolata">Comments & Feedback</h3>
+                    <h3 className="text-base md:text-xl font-semibold text-gray-900 font-inconsolata">Comments & Feedback</h3>
                   </div>
                   <p className="text-gray-600 text-xs sm:text-sm">
                     Share comments to collaborate on next steps and keep everyone on the same page

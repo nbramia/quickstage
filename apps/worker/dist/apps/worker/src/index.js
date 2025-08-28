@@ -1,12 +1,16 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCookie, setCookie } from 'hono/cookie';
+import { AnalyticsManager } from './analytics';
+import { createNewUserWithSchema } from './migrate-schema';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '../../../packages/shared/src/schemas';
 import { DEFAULT_CAPS, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '../../../packages/shared/src/index';
 import { generateIdBase62, hashPasswordArgon2id, verifyPasswordHash, nowMs, randomHex, sha256Hex } from './utils';
 import { signSession, verifySession, generatePassword } from '../../../packages/shared/src/cookies';
 import { presignR2PutURL } from './s3presign';
 import { getExtensionVersion } from './version-info';
+// Initialize analytics manager
+let analyticsManager;
 // Helper function to increment unique view count
 async function incrementUniqueViewCount(c, snapshotId, meta) {
     try {
@@ -78,6 +82,14 @@ async function getUidFromSession(c) {
         return null;
     }
 }
+// Initialize analytics manager when environment is available
+function getAnalyticsManager(c) {
+    if (!analyticsManager) {
+        analyticsManager = new AnalyticsManager(c.env);
+    }
+    return analyticsManager;
+}
+// User helpers
 async function getUserByName(c, name) {
     const uid = await c.env.KV_USERS.get(`user:byname:${name}`);
     if (!uid)
@@ -90,15 +102,17 @@ function getSubscriptionDisplayStatus(user) {
     // Superadmin gets special status
     if (user.role === 'superadmin')
         return 'Superadmin';
-    if (!user.subscriptionStatus || user.subscriptionStatus === 'none')
+    // Use new subscription.status field, fallback to legacy subscriptionStatus for backward compatibility
+    const status = user.subscription?.status || user.subscriptionStatus || 'none';
+    if (status === 'none')
         return 'None';
-    if (user.subscriptionStatus === 'trial')
+    if (status === 'trial')
         return 'Free Trial';
-    if (user.subscriptionStatus === 'active')
+    if (status === 'active')
         return 'Pro';
-    if (user.subscriptionStatus === 'cancelled')
+    if (status === 'cancelled')
         return 'Cancelled';
-    if (user.subscriptionStatus === 'past_due')
+    if (status === 'past_due')
         return 'Past Due';
     return 'None';
 }
@@ -107,18 +121,33 @@ function canAccessProFeatures(user) {
     if (user.role === 'superadmin')
         return true;
     const now = Date.now();
+    // Use new subscription.status field, fallback to legacy subscriptionStatus for backward compatibility
+    const status = user.subscription?.status || user.subscriptionStatus || 'none';
     // Active subscription
-    if (user.subscriptionStatus === 'active')
+    if (status === 'active')
         return true;
-    // Trial period
-    if (user.subscriptionStatus === 'trial' && user.trialEndsAt && now < user.trialEndsAt) {
-        return true;
+    // Trial period - check both new and legacy trial fields
+    if (status === 'trial') {
+        const trialEndsAt = user.subscription?.trialEnd || user.trialEndsAt;
+        if (trialEndsAt && now < trialEndsAt) {
+            return true;
+        }
     }
     return false;
 }
 function startFreeTrial(user) {
     const now = Date.now();
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    // Update new subscription schema
+    if (!user.subscription) {
+        user.subscription = { status: 'trial' };
+    }
+    else {
+        user.subscription.status = 'trial';
+    }
+    user.subscription.trialStart = now;
+    user.subscription.trialEnd = now + sevenDays;
+    // Update legacy fields for backward compatibility
     user.subscriptionStatus = 'trial';
     user.trialStartedAt = now;
     user.trialEndsAt = now + sevenDays;
@@ -129,7 +158,27 @@ async function ensureUserByName(c, name) {
     if (user)
         return user;
     const uid = generateIdBase62(16);
-    user = { uid, createdAt: Date.now(), plan: 'free', role: 'user', subscriptionStatus: 'none' };
+    const now = Date.now();
+    user = {
+        uid,
+        createdAt: now,
+        updatedAt: now,
+        plan: 'free',
+        role: 'user',
+        status: 'active',
+        subscription: { status: 'none' },
+        analytics: {
+            totalSnapshotsCreated: 0,
+            totalSnapshotsViewed: 0,
+            totalDownloads: 0,
+            totalPageVisits: 0,
+            lastActiveAt: now,
+            sessionCount: 0,
+            averageSessionDuration: 0,
+            totalCommentsPosted: 0,
+            totalCommentsReceived: 0,
+        }
+    };
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
     return user;
@@ -148,12 +197,26 @@ app.post('/auth/register', async (c) => {
     const hashedPassword = await hashPasswordArgon2id(password, salt);
     // Create user
     const uid = generateIdBase62(16);
+    const now = Date.now();
     const user = {
         uid,
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
         plan: 'free',
         role: 'user',
-        subscriptionStatus: 'none',
+        status: 'active',
+        subscription: { status: 'none' },
+        analytics: {
+            totalSnapshotsCreated: 0,
+            totalSnapshotsViewed: 0,
+            totalDownloads: 0,
+            totalPageVisits: 0,
+            lastActiveAt: now,
+            sessionCount: 0,
+            averageSessionDuration: 0,
+            totalCommentsPosted: 0,
+            totalCommentsReceived: 0,
+        },
         email,
         passwordHash: hashedPassword,
         name
@@ -187,6 +250,9 @@ app.post('/auth/login', async (c) => {
     // Update last login
     user.lastLoginAt = Date.now();
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'user_login', { method: 'email' });
     // Sign session
     const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
     return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
@@ -234,12 +300,26 @@ app.post('/auth/google', async (c) => {
             else {
                 // Fallback: create user if raw data is missing
                 uid = generateIdBase62(16);
+                const now = Date.now();
                 user = {
                     uid,
-                    createdAt: Date.now(),
+                    createdAt: now,
+                    updatedAt: now,
                     plan: 'free',
                     role: 'user',
-                    subscriptionStatus: 'none',
+                    status: 'active',
+                    subscription: { status: 'none' },
+                    analytics: {
+                        totalSnapshotsCreated: 0,
+                        totalSnapshotsViewed: 0,
+                        totalDownloads: 0,
+                        totalPageVisits: 0,
+                        lastActiveAt: now,
+                        sessionCount: 0,
+                        averageSessionDuration: 0,
+                        totalCommentsPosted: 0,
+                        totalCommentsReceived: 0,
+                    },
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
                     googleId: idToken
@@ -247,26 +327,26 @@ app.post('/auth/google', async (c) => {
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+                // Track analytics event for new user
+                const analytics = getAnalyticsManager(c);
+                await analytics.trackEvent(uid, 'user_registered', { method: 'google' });
             }
         }
         else {
             // Create new user
             uid = generateIdBase62(16);
             const displayName = name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User';
-            user = {
-                uid,
-                createdAt: Date.now(),
-                plan: 'free',
-                role: 'user',
-                subscriptionStatus: 'none',
-                email: email,
-                name: displayName,
-                googleId: idToken
-            };
+            user = createNewUserWithSchema(uid, displayName, email, 'user', 'free', undefined, idToken);
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+            // Track analytics event for new user
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'user_registered', { method: 'google' });
         }
+        // Track analytics event
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'user_login', { method: 'google' });
         // Sign session
         const token = await signSession({ uid }, c.env.SESSION_HMAC_SECRET, 60 * 60 * 24 * 7);
         return c.json({ ok: true, user: { uid, name: user.name, email: user.email, plan: user.plan, role: user.role || 'user' }, sessionToken: token });
@@ -284,13 +364,24 @@ app.get('/me', async (c) => {
     if (!raw)
         return c.json({ user: null });
     const user = JSON.parse(raw);
+    // Track analytics event for page view
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'page_view', { page: '/me' });
+    // Get subscription status from new schema with fallback to legacy
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+    const hasStripe = !!(user.subscription?.stripeCustomerId || user.stripeCustomerId || user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId);
     console.log(`/me endpoint called for user ${uid}:`, {
-        subscriptionStatus: user.subscriptionStatus,
+        subscriptionStatus: subscriptionStatus,
         plan: user.plan,
-        hasStripe: !!(user.stripeCustomerId || user.stripeSubscriptionId)
+        hasStripe: hasStripe
     });
     // Fix users who have incorrect trial status without Stripe subscription
-    if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+    if (subscriptionStatus === 'trial' && !hasStripe) {
+        // Update new schema
+        if (user.subscription) {
+            user.subscription.status = 'none';
+        }
+        // Update legacy fields for backward compatibility
         user.subscriptionStatus = 'none';
         user.plan = 'free';
         user.trialEndsAt = undefined;
@@ -299,7 +390,12 @@ app.get('/me', async (c) => {
         console.log(`Fixed user ${uid}: reset incorrect trial status to free plan`);
     }
     // Fix users who have 'pro' plan but no Stripe subscription (except superadmin)
-    if (user.plan === 'pro' && !user.stripeCustomerId && !user.stripeSubscriptionId && user.role !== 'superadmin') {
+    if (user.plan === 'pro' && !hasStripe && user.role !== 'superadmin') {
+        // Update new schema
+        if (user.subscription) {
+            user.subscription.status = 'none';
+        }
+        // Update legacy fields for backward compatibility
         user.subscriptionStatus = 'none';
         user.plan = 'free';
         user.trialEndsAt = undefined;
@@ -309,50 +405,52 @@ app.get('/me', async (c) => {
     }
     // Calculate subscription display information
     let subscriptionDisplay = 'Free';
-    let subscriptionStatus = 'none';
     let trialEndsAt = null;
     let nextBillingDate = null;
     let canAccessPro = false;
-    console.log(`/me endpoint - User subscription status: "${user.subscriptionStatus}" (type: ${typeof user.subscriptionStatus})`);
+    console.log(`/me endpoint - User subscription status: "${subscriptionStatus}" (type: ${typeof subscriptionStatus})`);
     console.log(`/me endpoint - User plan: "${user.plan}" (type: ${typeof user.plan})`);
     // Superadmin accounts always have Pro access
     if (user.role === 'superadmin') {
         subscriptionDisplay = 'Pro (Superadmin)';
-        subscriptionStatus = 'superadmin';
         canAccessPro = true;
     }
-    else if (user.subscriptionStatus && user.subscriptionStatus !== 'none') {
-        subscriptionStatus = user.subscriptionStatus;
-        if (user.subscriptionStatus === 'trial' && user.trialEndsAt) {
-            subscriptionDisplay = 'Pro (Trial)';
-            trialEndsAt = user.trialEndsAt;
-            canAccessPro = true;
-            // For trial users, next billing date is when the trial ends
-            nextBillingDate = user.trialEndsAt;
+    else if (subscriptionStatus && subscriptionStatus !== 'none') {
+        if (subscriptionStatus === 'trial') {
+            // Check both new and legacy trial fields
+            const trialEnd = user.subscription?.trialEnd || user.trialEndsAt;
+            if (trialEnd) {
+                subscriptionDisplay = 'Pro (Trial)';
+                trialEndsAt = trialEnd;
+                canAccessPro = true;
+                // For trial users, next billing date is when the trial ends
+                nextBillingDate = trialEnd;
+            }
         }
-        else if (user.subscriptionStatus === 'active') {
+        else if (subscriptionStatus === 'active') {
             subscriptionDisplay = 'Pro';
             canAccessPro = true;
             // Calculate next billing date (30 days from last payment or subscription start)
-            if (user.lastPaymentAt) {
-                nextBillingDate = user.lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
+            const lastPaymentAt = user.subscription?.lastPaymentAt || user.lastPaymentAt;
+            const subscriptionStartedAt = user.subscription?.currentPeriodStart || user.subscriptionStartedAt;
+            if (lastPaymentAt) {
+                nextBillingDate = lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
             }
-            else if (user.subscriptionStartedAt) {
-                nextBillingDate = user.subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
+            else if (subscriptionStartedAt) {
+                nextBillingDate = subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
             }
         }
-        else if (user.subscriptionStatus === 'cancelled') {
+        else if (subscriptionStatus === 'cancelled') {
             subscriptionDisplay = 'Pro (Cancelled)';
             canAccessPro = false;
         }
-        else if (user.subscriptionStatus === 'past_due') {
+        else if (subscriptionStatus === 'past_due') {
             subscriptionDisplay = 'Pro (Past Due)';
             canAccessPro = false;
         }
     }
     else {
         // No subscription status or subscriptionStatus is 'none', user is on free plan
-        subscriptionStatus = user.subscriptionStatus || 'none';
         canAccessPro = false;
         subscriptionDisplay = 'Free';
     }
@@ -373,8 +471,8 @@ app.get('/me', async (c) => {
         trialEndsAt: trialEndsAt,
         nextBillingDate: nextBillingDate,
         canAccessPro: canAccessPro,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId
+        stripeCustomerId: user.subscription?.stripeCustomerId || user.stripeCustomerId,
+        stripeSubscriptionId: user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId
     };
     console.log(`/me endpoint returning for user ${uid}:`, responseUser);
     // Return safe user data with subscription information
@@ -384,14 +482,32 @@ app.get('/me', async (c) => {
 });
 // Logout endpoint
 app.post('/auth/logout', async (c) => {
+    const uid = await getUidFromSession(c);
+    // Track analytics event for logout if user was authenticated
+    if (uid) {
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'user_logout', {});
+    }
     // No need to clear cookies - just return success
     return c.json({ ok: true });
 });
 // Update user profile
 app.put('/auth/profile', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/auth/profile',
+                method: 'PUT'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const { name, email } = await c.req.json();
     if (!name && !email)
         return c.json({ error: 'no_changes' }, 400);
@@ -430,14 +546,31 @@ app.put('/auth/profile', async (c) => {
     }
     if (updated) {
         await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+        // Track analytics event for profile update
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'profile_updated', {
+            fieldsUpdated: { name: !!name, email: !!email }
+        });
     }
     return c.json({ ok: true, user: { uid: user.uid, name: user.name, email: user.email, plan: user.plan } });
 });
 // Change password
 app.post('/auth/change-password', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/auth/change-password',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const { currentPassword, newPassword } = await c.req.json();
     if (!currentPassword || !newPassword)
         return c.json({ error: 'missing_fields' }, 400);
@@ -457,27 +590,43 @@ app.post('/auth/change-password', async (c) => {
     // Update password
     user.passwordHash = hashedPassword;
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for password change
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'password_changed', {});
     return c.json({ ok: true });
 });
 // Start free trial with credit card required for auto-billing after trial
 app.post('/billing/start-trial', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/billing/start-trial',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
     const user = JSON.parse(userRaw);
-    // Check if user already has trial/subscription
-    if (user.subscriptionStatus && user.subscriptionStatus !== 'none' && user.subscriptionStatus !== 'cancelled') {
+    // Check if user already has trial/subscription - use new schema with fallback
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+    if (subscriptionStatus && subscriptionStatus !== 'none' && subscriptionStatus !== 'cancelled') {
         return c.json({ error: 'already_subscribed' }, 400);
     }
     const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
         apiVersion: '2023-10-16',
         httpClient: Stripe.createFetchHttpClient(),
     });
-    // Create or get Stripe customer
-    let customerId = user.stripeCustomerId;
+    // Create or get Stripe customer - use new schema with fallback
+    let customerId = user.subscription?.stripeCustomerId || user.stripeCustomerId;
     if (!customerId) {
         const customer = await stripe.customers.create({
             email: user.email,
@@ -485,6 +634,11 @@ app.post('/billing/start-trial', async (c) => {
             metadata: { uid }
         });
         customerId = customer.id;
+        // Update both new and legacy fields
+        if (!user.subscription) {
+            user.subscription = { status: 'none' };
+        }
+        user.subscription.stripeCustomerId = customerId;
         user.stripeCustomerId = customerId;
     }
     // Create checkout session for trial with required payment method
@@ -500,13 +654,31 @@ app.post('/billing/start-trial', async (c) => {
         cancel_url: `${c.env.PUBLIC_BASE_URL}/?trial=cancelled`,
         metadata: { uid, action: 'start_trial' },
     });
+    // Track analytics event for trial start
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_started', {
+        method: 'trial',
+        trialDays: 7
+    });
     return c.json({ url: session.url });
 });
 // Manual subscription for existing users (after trial ends or reactivation)
 app.post('/billing/subscribe', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/billing/subscribe',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
@@ -515,8 +687,8 @@ app.post('/billing/subscribe', async (c) => {
         apiVersion: '2023-10-16',
         httpClient: Stripe.createFetchHttpClient(),
     });
-    // Create or get Stripe customer
-    let customerId = user.stripeCustomerId;
+    // Create or get Stripe customer - use new schema with fallback
+    let customerId = user.subscription?.stripeCustomerId || user.stripeCustomerId;
     if (!customerId) {
         const customer = await stripe.customers.create({
             email: user.email,
@@ -524,6 +696,11 @@ app.post('/billing/subscribe', async (c) => {
             metadata: { uid }
         });
         customerId = customer.id;
+        // Update both new and legacy fields
+        if (!user.subscription) {
+            user.subscription = { status: 'none' };
+        }
+        user.subscription.stripeCustomerId = customerId;
         user.stripeCustomerId = customerId;
     }
     const session = await stripe.checkout.sessions.create({
@@ -533,6 +710,11 @@ app.post('/billing/subscribe', async (c) => {
         success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
         cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
         metadata: { uid, action: 'subscribe' },
+    });
+    // Track analytics event for subscription start
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_started', {
+        method: 'direct_subscription'
     });
     return c.json({ url: session.url });
 });
@@ -548,22 +730,36 @@ app.get('/billing/status', async (c) => {
     return c.json({
         status: getSubscriptionDisplayStatus(user),
         canAccessPro: canAccessProFeatures(user),
-        trialEndsAt: user.trialEndsAt,
-        subscriptionStartedAt: user.subscriptionStartedAt,
-        lastPaymentAt: user.lastPaymentAt,
-        stripeCustomerId: user.stripeCustomerId
+        trialEndsAt: user.subscription?.trialEnd || user.trialEndsAt,
+        subscriptionStartedAt: user.subscription?.currentPeriodStart || user.subscriptionStartedAt,
+        lastPaymentAt: user.subscription?.lastPaymentAt || user.lastPaymentAt,
+        stripeCustomerId: user.subscription?.stripeCustomerId || user.stripeCustomerId
     });
 });
 // Cancel subscription
 app.post('/billing/cancel', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/billing/cancel',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
     const user = JSON.parse(userRaw);
-    if (!user.stripeSubscriptionId) {
+    // Check for subscription ID in both new and legacy fields
+    const stripeSubscriptionId = user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId;
+    if (!stripeSubscriptionId) {
         return c.json({ error: 'no_subscription' }, 400);
     }
     try {
@@ -576,15 +772,24 @@ app.post('/billing/cancel', async (c) => {
         const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
             apiVersion: '2023-10-16',
         });
-        console.log(`Cancelling subscription ${user.stripeSubscriptionId} for user ${uid}`);
+        console.log(`Cancelling subscription ${stripeSubscriptionId} for user ${uid}`);
         // Cancel the subscription at period end (user keeps access until paid period ends)
-        const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        const subscription = await stripe.subscriptions.update(stripeSubscriptionId, {
             cancel_at_period_end: true
         });
-        // Update user status
+        // Update user status - update both new and legacy fields
+        if (user.subscription) {
+            user.subscription.status = 'cancelled';
+        }
         user.subscriptionStatus = 'cancelled';
         await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
-        console.log(`Subscription ${user.stripeSubscriptionId} cancelled for user ${uid}`);
+        // Track analytics event for subscription cancellation
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'subscription_cancelled', {
+            stripeSubscriptionId: stripeSubscriptionId,
+            cancelAt: subscription.cancel_at
+        });
+        console.log(`Subscription ${stripeSubscriptionId} cancelled for user ${uid}`);
         return c.json({
             ok: true,
             message: 'Subscription cancelled. You will retain access until the end of your current billing period.',
@@ -608,8 +813,20 @@ app.post('/snapshots/create', async (c) => {
             uid = await getUidFromPAT(c, token);
         }
     }
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/snapshots/create',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const body = await c.req.json();
     const parsed = CreateSnapshotBodySchema.safeParse(body);
     if (!parsed.success)
@@ -935,11 +1152,18 @@ app.post('/snapshots/finalize', async (c) => {
                 console.log(`KV write failed with 429, retrying (${retryCountWrite}/${maxRetriesWrite})...`);
                 // Wait with exponential backoff: 1s, 2s, 4s
                 await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountWrite - 1) * 1000));
-                continue;
+                break;
             }
             throw error; // Re-throw if max retries reached or non-429 error
         }
     }
+    // Track analytics event
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'snapshot_created', {
+        snapshotId: id,
+        expiryDays: Math.ceil((meta.expiresAt - meta.createdAt) / (24 * 60 * 60 * 1000)),
+        isPublic: meta.public || false
+    });
     return c.json({ url: `${c.env.PUBLIC_BASE_URL}/s/${id}`, password: 'hidden' });
 });
 // Add /snapshots/list route BEFORE /snapshots/:id to avoid conflicts
@@ -947,6 +1171,9 @@ app.get('/snapshots/list', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
+    // Track analytics event for page view
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'page_view', { page: '/snapshots/list' });
     const listJson = (await c.env.KV_USERS.get(`user:${uid}:snapshots`)) || '[]';
     const ids = JSON.parse(listJson);
     const metas = await Promise.all(ids.map(async (id) => JSON.parse((await c.env.KV_SNAPS.get(`snap:${id}`)) || '{}')));
@@ -1017,6 +1244,9 @@ app.post('/snapshots/:id/expire', async (c) => {
     meta.status = 'expired';
     meta.expiresAt = nowMs() - 1000;
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    // Track analytics event for snapshot expiration
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'snapshot_expired', { snapshotId: id });
     // Don't remove from index - keep expired snapshots visible when "All" is selected
     return c.json({ ok: true });
 });
@@ -1038,6 +1268,13 @@ app.post('/snapshots/:id/extend', async (c) => {
     const added = Math.min(Math.max(1, days || 1), cap);
     meta.expiresAt += added * 24 * 60 * 60 * 1000;
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    // Track analytics event for snapshot extension
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'snapshot_extended', {
+        snapshotId: id,
+        daysAdded: added,
+        newExpiryDate: meta.expiresAt
+    });
     return c.json({ ok: true, expiresAt: meta.expiresAt });
 });
 // Rotate password
@@ -1057,6 +1294,12 @@ app.post('/snapshots/:id/rotate-password', async (c) => {
     meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
     meta.password = newPass; // Store plain text password for display
     await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+    // Track analytics event for password rotation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'snapshot_extended', {
+        snapshotId: id,
+        action: 'password_rotated'
+    });
     return c.json({ password: newPass });
 });
 // Add /api/snapshots/list route BEFORE the /api/snapshots/:id route to avoid conflicts
@@ -1064,6 +1307,9 @@ app.get('/api/snapshots/list', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
+    // Track analytics event for page view
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'page_view', { page: '/api/snapshots/list' });
     const listJson = await c.env.KV_USERS.get(`user:${uid}:snapshots`) || '[]';
     const ids = JSON.parse(listJson);
     const snapshots = [];
@@ -1207,6 +1453,10 @@ app.get('/s/:id', async (c) => {
     }
     // Increment view count for unique viewers
     await incrementUniqueViewCount(c, id, meta);
+    // Track analytics event for snapshot viewing
+    // Note: We don't have user ID here for anonymous viewers, so we'll track it as a system event
+    // In a real implementation, you'd want to pass user context when available
+    console.log(`👁️ Snapshot viewed: ${id} (public: ${meta.public}, password protected: ${!meta.public})`);
     // Get the main index.html file
     const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
     if (!indexObj) {
@@ -1556,6 +1806,9 @@ app.post('/s/:id/gate', async (c) => {
             maxAge: 60 * 60,
         });
         console.log(`✅ Password verified, cookie set for: ${id}`);
+        // Track analytics event for password verification
+        // Note: We don't have user ID here for anonymous viewers, so we'll track it as a system event
+        console.log(`🔐 Password verified for snapshot: ${id}`);
         return c.json({ ok: true });
     }
     catch (error) {
@@ -1625,6 +1878,16 @@ app.post('/api/snapshots/:id/comments', async (c) => {
         }
         catch { }
     }
+    // Track analytics event for comment posting
+    if (uid) {
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'comment_posted', {
+            snapshotId: id,
+            commentLength: body.text.length,
+            hasFile: !!body.file,
+            hasLine: !!body.line
+        });
+    }
     return new Response(res.body, { headers: { 'Content-Type': 'application/json' } });
 });
 // Legacy comments endpoints for backward compatibility
@@ -1664,6 +1927,9 @@ app.post('/comments', async (c) => {
         }
         catch { }
     }
+    // Track analytics event for comment posting (legacy endpoint)
+    // Note: We don't have user ID here, so we'll track it as a system event
+    console.log(`💬 Comment posted to snapshot: ${body.id} by ${body.author || 'Anonymous'}`);
     return new Response(res.body, { headers: { 'Content-Type': 'application/json' } });
 });
 // Cron purge
@@ -1760,8 +2026,15 @@ app.post('/api/auth/google', async (c) => {
                 user.googleId = idToken; // Store Google ID for future reference
                 if (!user.name && name)
                     user.name = name;
-                // Fix users who have incorrect trial status without Stripe subscription
-                if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+                // Fix users who have incorrect trial status without Stripe subscription - use new schema with fallbacks
+                const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+                const hasStripe = !!(user.subscription?.stripeCustomerId || user.stripeCustomerId || user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId);
+                if (subscriptionStatus === 'trial' && !hasStripe) {
+                    // Update new schema
+                    if (user.subscription) {
+                        user.subscription.status = 'none';
+                    }
+                    // Update legacy fields for backward compatibility
                     user.subscriptionStatus = 'none';
                     user.plan = 'free';
                     user.trialEndsAt = undefined;
@@ -1769,7 +2042,12 @@ app.post('/api/auth/google', async (c) => {
                     console.log(`Fixed user ${uid}: reset incorrect trial status to free plan`);
                 }
                 // Fix users who have 'pro' plan but no Stripe subscription (except superadmin)
-                if (user.plan === 'pro' && !user.stripeCustomerId && !user.stripeSubscriptionId && user.role !== 'superadmin') {
+                if (user.plan === 'pro' && !hasStripe && user.role !== 'superadmin') {
+                    // Update new schema
+                    if (user.subscription) {
+                        user.subscription.status = 'none';
+                    }
+                    // Update legacy fields for backward compatibility
                     user.subscriptionStatus = 'none';
                     user.plan = 'free';
                     user.trialEndsAt = undefined;
@@ -1781,16 +2059,7 @@ app.post('/api/auth/google', async (c) => {
             else {
                 // Fallback: create user if raw data is missing
                 uid = generateIdBase62(16);
-                user = {
-                    uid,
-                    createdAt: Date.now(),
-                    plan: 'free',
-                    role: 'user',
-                    subscriptionStatus: 'none',
-                    email: email,
-                    name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
-                    googleId: idToken
-                };
+                user = createNewUserWithSchema(uid, name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User', email, 'user', 'free', undefined, idToken);
                 await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
                 await c.env.KV_USERS.put(`user:byname:${user.name}`, uid);
                 await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
@@ -1800,16 +2069,7 @@ app.post('/api/auth/google', async (c) => {
             // Create new user
             uid = generateIdBase62(16);
             const displayName = name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User';
-            user = {
-                uid,
-                createdAt: Date.now(),
-                plan: 'free',
-                role: 'user',
-                subscriptionStatus: 'none',
-                email: email,
-                name: displayName,
-                googleId: idToken
-            };
+            user = createNewUserWithSchema(uid, displayName, email, 'user', 'free', undefined, idToken);
             await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
             await c.env.KV_USERS.put(`user:byname:${displayName}`, uid);
             await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
@@ -1836,14 +2096,29 @@ app.get('/api/me', async (c) => {
 // Admin endpoints
 app.get('/admin/users', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/users',
+                method: 'GET'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
     const user = JSON.parse(userRaw);
     if (user.role !== 'superadmin')
         return c.json({ error: 'forbidden' }, 403);
+    // Track analytics event for page view
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'page_view', { page: '/admin/users' });
     // Get all users
     const users = [];
     let cursor = undefined;
@@ -1883,13 +2158,13 @@ app.get('/admin/users', async (c) => {
                         totalSnapshots,
                         activeSnapshots,
                         status: userData.status || 'active',
-                        // Subscription fields
+                        // Subscription fields - use new schema with fallbacks
                         subscriptionStatus: getSubscriptionDisplayStatus(userData),
                         canAccessPro: canAccessProFeatures(userData),
-                        trialEndsAt: userData.trialEndsAt,
-                        subscriptionStartedAt: userData.subscriptionStartedAt,
-                        lastPaymentAt: userData.lastPaymentAt,
-                        stripeCustomerId: userData.stripeCustomerId
+                        trialEndsAt: userData.subscription?.trialEnd || userData.trialEndsAt,
+                        subscriptionStartedAt: userData.subscription?.currentPeriodStart || userData.subscriptionStartedAt,
+                        lastPaymentAt: userData.subscription?.lastPaymentAt || userData.lastPaymentAt,
+                        stripeCustomerId: userData.subscription?.stripeCustomerId || userData.stripeCustomerId
                     });
                 }
             }
@@ -1899,104 +2174,369 @@ app.get('/admin/users', async (c) => {
 });
 app.post('/admin/users', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/users',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-    if (!userRaw)
+    if (!userRaw) {
+        // Track analytics event for user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_creation',
+                error: 'user_not_found',
+                uid: uid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user not found:', analyticsError);
+        }
         return c.json({ error: 'user_not_found' }, 404);
+    }
     const user = JSON.parse(userRaw);
-    if (user.role !== 'superadmin')
+    if (user.role !== 'superadmin') {
+        // Track analytics event for insufficient permissions
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_creation',
+                error: 'insufficient_permissions',
+                userRole: user.role
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for insufficient permissions:', analyticsError);
+        }
         return c.json({ error: 'forbidden' }, 403);
+    }
     const { name, email, password, role } = await c.req.json();
-    if (!name || !email || !password || !role)
+    if (!name || !email || !password || !role) {
+        // Track analytics event for missing fields
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_creation',
+                error: 'missing_fields',
+                providedFields: { name: !!name, email: !!email, password: !!password, role: !!role }
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for missing fields:', analyticsError);
+        }
         return c.json({ error: 'missing_fields' }, 400);
+    }
     // Check if user already exists
     const existingUser = await getUserByName(c, name);
-    if (existingUser)
+    if (existingUser) {
+        // Track analytics event for user already exists
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_creation',
+                error: 'user_exists',
+                attemptedName: name
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user already exists:', analyticsError);
+        }
         return c.json({ error: 'user_exists' }, 400);
+    }
     const existingEmail = await c.env.KV_USERS.get(`user:byemail:${email}`);
-    if (existingEmail)
+    if (existingEmail) {
+        // Track analytics event for email already exists
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_creation',
+                error: 'email_exists',
+                attemptedEmail: email
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for email already exists:', analyticsError);
+        }
         return c.json({ error: 'email_exists' }, 400);
+    }
     // Hash password
     const salt = randomHex(16);
     const hashedPassword = await hashPasswordArgon2id(password, salt);
     // Create user
     const newUid = generateIdBase62(16);
-    const newUser = {
-        uid: newUid,
-        createdAt: Date.now(),
-        plan: 'free',
-        role: role,
-        subscriptionStatus: 'none',
-        email,
-        passwordHash: hashedPassword,
-        name
-    };
+    const newUser = createNewUserWithSchema(newUid, name, email, role, 'free', hashedPassword);
     await c.env.KV_USERS.put(`user:${newUid}`, JSON.stringify(newUser));
     await c.env.KV_USERS.put(`user:byname:${name}`, newUid);
     await c.env.KV_USERS.put(`user:byemail:${email}`, newUid);
+    // Track analytics event
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(newUid, 'user_registered', {
+        method: 'admin',
+        role: role,
+        createdBy: uid
+    });
     return c.json({ ok: true, user: { uid: newUid, name, email, role } });
 });
 app.post('/admin/users/:uid/deactivate', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/users/:uid/deactivate',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-    if (!userRaw)
+    if (!userRaw) {
+        // Track analytics event for user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deactivation',
+                error: 'user_not_found',
+                uid: uid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user not found:', analyticsError);
+        }
         return c.json({ error: 'user_not_found' }, 404);
+    }
     const user = JSON.parse(userRaw);
-    if (user.role !== 'superadmin')
+    if (user.role !== 'superadmin') {
+        // Track analytics event for insufficient permissions
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deactivation',
+                error: 'insufficient_permissions',
+                userRole: user.role
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for insufficient permissions:', analyticsError);
+        }
         return c.json({ error: 'forbidden' }, 403);
+    }
     const targetUid = c.req.param('uid');
     const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
-    if (!targetUserRaw)
+    if (!targetUserRaw) {
+        // Track analytics event for target user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deactivation',
+                error: 'target_user_not_found',
+                targetUid: targetUid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for target user not found:', analyticsError);
+        }
         return c.json({ error: 'target_user_not_found' }, 404);
+    }
     const targetUser = JSON.parse(targetUserRaw);
     targetUser.status = 'deactivated';
     await c.env.KV_USERS.put(`user:${targetUid}`, JSON.stringify(targetUser));
+    // Track analytics event for user deactivation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'user_deactivated', {
+        targetUserId: targetUid,
+        targetUserRole: targetUser.role
+    });
     return c.json({ ok: true });
 });
 app.post('/admin/users/:uid/activate', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/users/:uid/activate',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-    if (!userRaw)
+    if (!userRaw) {
+        // Track analytics event for user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_activation',
+                error: 'user_not_found',
+                uid: uid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user not found:', analyticsError);
+        }
         return c.json({ error: 'user_not_found' }, 404);
+    }
     const user = JSON.parse(userRaw);
-    if (user.role !== 'superadmin' && user.role !== 'admin')
+    if (user.role !== 'superadmin' && user.role !== 'admin') {
+        // Track analytics event for insufficient permissions
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_activation',
+                error: 'insufficient_permissions',
+                userRole: user.role
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for insufficient permissions:', analyticsError);
+        }
         return c.json({ error: 'forbidden' }, 403);
+    }
     const targetUid = c.req.param('uid');
     const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
-    if (!targetUserRaw)
+    if (!targetUserRaw) {
+        // Track analytics event for target user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_activation',
+                error: 'target_user_not_found',
+                targetUid: targetUid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for target user not found:', analyticsError);
+        }
         return c.json({ error: 'target_user_not_found' }, 404);
+    }
     const targetUser = JSON.parse(targetUserRaw);
     targetUser.status = 'active';
     await c.env.KV_USERS.put(`user:${targetUid}`, JSON.stringify(targetUser));
+    // Track analytics event for user activation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'user_activated', {
+        targetUserId: targetUid,
+        targetUserRole: targetUser.role
+    });
     return c.json({ ok: true });
 });
 // Delete user completely (superadmin only)
 app.delete('/admin/users/:uid', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/users/:uid',
+                method: 'DELETE'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-    if (!userRaw)
+    if (!userRaw) {
+        // Track analytics event for user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deletion',
+                error: 'user_not_found',
+                uid: uid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user not found:', analyticsError);
+        }
         return c.json({ error: 'user_not_found' }, 404);
+    }
     const user = JSON.parse(userRaw);
-    if (user.role !== 'superadmin')
+    if (user.role !== 'superadmin') {
+        // Track analytics event for insufficient permissions
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deletion',
+                error: 'insufficient_permissions',
+                userRole: user.role
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for insufficient permissions:', analyticsError);
+        }
         return c.json({ error: 'insufficient_permissions' }, 403);
+    }
     const targetUid = c.req.param('uid');
     const targetUserRaw = await c.env.KV_USERS.get(`user:${targetUid}`);
-    if (!targetUserRaw)
+    if (!targetUserRaw) {
+        // Track analytics event for target user not found
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deletion',
+                error: 'target_user_not_found',
+                targetUid: targetUid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for target user not found:', analyticsError);
+        }
         return c.json({ error: 'target_user_not_found' }, 404);
+    }
     const targetUser = JSON.parse(targetUserRaw);
     // Cannot delete superadmin
-    if (targetUser.role === 'superadmin')
+    if (targetUser.role === 'superadmin') {
+        // Track analytics event for cannot delete superadmin
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deletion',
+                error: 'cannot_delete_superadmin',
+                targetUserRole: targetUser.role
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for cannot delete superadmin:', analyticsError);
+        }
         return c.json({ error: 'cannot_delete_superadmin' }, 400);
+    }
     // Cannot delete self
-    if (targetUid === uid)
+    if (targetUid === uid) {
+        // Track analytics event for cannot delete self
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'error_occurred', {
+                context: 'admin_user_deletion',
+                error: 'cannot_delete_self'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for cannot delete self:', analyticsError);
+        }
         return c.json({ error: 'cannot_delete_self' }, 400);
+    }
     console.log(`Superadmin ${uid} deleting user ${targetUid} (${targetUser.email}) completely`);
     // Delete all user data from KV
     await c.env.KV_USERS.delete(`user:${targetUid}`);
@@ -2023,6 +2563,16 @@ app.delete('/admin/users/:uid', async (c) => {
     for (const key of comments.keys) {
         await c.env.KV_USERS.delete(key.name);
     }
+    // Track analytics event for user deletion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'user_deleted', {
+        targetUserId: targetUid,
+        targetUserRole: targetUser.role,
+        targetUserPlan: targetUser.subscription?.status || 'unknown',
+        snapshotsDeleted: snapshots.keys.length,
+        patsDeleted: pats.keys.length,
+        commentsDeleted: comments.keys.length
+    });
     return c.json({
         success: true,
         message: 'User completely deleted from system',
@@ -2036,8 +2586,21 @@ app.delete('/admin/users/:uid', async (c) => {
 // Create superadmin user (one-time setup)
 app.post('/admin/setup-superadmin', async (c) => {
     const { name, email, password } = await c.req.json();
-    if (!name || !email || !password)
+    if (!name || !email || !password) {
+        // Track analytics event for missing fields
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'error_occurred', {
+                context: 'superadmin_setup',
+                error: 'missing_fields',
+                providedFields: { name: !!name, email: !!email, password: !!password }
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for missing fields:', analyticsError);
+        }
         return c.json({ error: 'missing_fields' }, 400);
+    }
     // Check if superadmin already exists
     let cursor = undefined;
     let superadminExists = false;
@@ -2059,33 +2622,68 @@ app.post('/admin/setup-superadmin', async (c) => {
         }
     } while (cursor && !superadminExists);
     if (superadminExists) {
+        // Track analytics event for superadmin already exists
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'error_occurred', {
+                context: 'superadmin_setup',
+                error: 'superadmin_already_exists'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for superadmin already exists:', analyticsError);
+        }
         return c.json({ error: 'superadmin_already_exists' }, 400);
     }
     // Check if user already exists
     const existingUser = await getUserByName(c, name);
-    if (existingUser)
+    if (existingUser) {
+        // Track analytics event for user already exists
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'error_occurred', {
+                context: 'superadmin_setup',
+                error: 'user_exists',
+                attemptedName: name
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for user already exists:', analyticsError);
+        }
         return c.json({ error: 'user_exists' }, 400);
+    }
     const existingEmail = await c.env.KV_USERS.get(`user:byemail:${email}`);
-    if (existingEmail)
+    if (existingEmail) {
+        // Track analytics event for email already exists
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'error_occurred', {
+                context: 'superadmin_setup',
+                error: 'email_exists',
+                attemptedEmail: email
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for email already exists:', analyticsError);
+        }
         return c.json({ error: 'email_exists' }, 400);
+    }
     // Hash password
     const salt = randomHex(16);
     const hashedPassword = await hashPasswordArgon2id(password, salt);
     // Create superadmin user
     const uid = generateIdBase62(16);
-    const user = {
-        uid,
-        createdAt: Date.now(),
-        plan: 'pro',
-        role: 'superadmin',
-        subscriptionStatus: 'none',
-        email,
-        passwordHash: hashedPassword,
-        name
-    };
+    const user = createNewUserWithSchema(uid, name, email, 'superadmin', 'pro', hashedPassword);
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
     await c.env.KV_USERS.put(`user:byname:${name}`, uid);
     await c.env.KV_USERS.put(`user:byemail:${email}`, uid);
+    // Track analytics event for new superadmin user
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'user_registered', {
+        method: 'admin',
+        role: 'superadmin',
+        isFirstSuperadmin: true
+    });
     return c.json({ ok: true, user: { uid, name, email, role: 'superadmin' } });
 });
 // Add missing /api endpoints for the extension
@@ -2099,8 +2697,20 @@ app.post('/api/snapshots/create', async (c) => {
             uid = await getUidFromPAT(c, token);
         }
     }
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/api/snapshots/create',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const { expiryDays = 7, public: isPublic = false } = await c.req.json();
     const id = generateIdBase62(16);
     const realPassword = generatePassword(8);
@@ -2130,13 +2740,32 @@ app.post('/api/snapshots/create', async (c) => {
     const ids = JSON.parse(listJson);
     ids.push(id);
     await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
+    // Track analytics event
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'snapshot_created', {
+        snapshotId: id,
+        expiryDays: expiryDays || 7,
+        isPublic: isPublic || false
+    });
     return c.json({ id, password: realPassword });
 });
 // PAT (Personal Access Token) endpoints for extension authentication
 app.post('/api/tokens/create', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/api/tokens/create',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     // Generate a new PAT
     const tokenId = generateIdBase62(16);
     const token = `qs_pat_${tokenId}`;
@@ -2158,6 +2787,13 @@ app.post('/api/tokens/create', async (c) => {
     const patIds = JSON.parse(patListJson);
     patIds.push(token);
     await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(patIds));
+    // Track analytics event for token creation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'api_call', {
+        action: 'token_created',
+        tokenType: 'PAT',
+        expiresIn: 90
+    });
     return c.json({
         token,
         expiresAt,
@@ -2168,6 +2804,9 @@ app.get('/api/tokens/list', async (c) => {
     const uid = await getUidFromSession(c);
     if (!uid)
         return c.json({ error: 'unauthorized' }, 401);
+    // Track analytics event for page view
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'page_view', { page: '/api/tokens/list' });
     const patListJson = await c.env.KV_USERS.get(`user:${uid}:pats`) || '[]';
     const patIds = JSON.parse(patListJson);
     const pats = [];
@@ -2189,8 +2828,20 @@ app.get('/api/tokens/list', async (c) => {
 });
 app.delete('/api/tokens/:tokenId', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/api/tokens/:tokenId',
+                method: 'DELETE'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const tokenId = c.req.param('tokenId');
     const fullToken = `qs_pat_${tokenId}`;
     // Verify ownership
@@ -2207,6 +2858,12 @@ app.delete('/api/tokens/:tokenId', async (c) => {
     const patIds = JSON.parse(patListJson);
     const updatedPatIds = patIds.filter(id => id !== fullToken);
     await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(updatedPatIds));
+    // Track analytics event for token deletion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'api_call', {
+        action: 'token_deleted',
+        tokenType: 'PAT'
+    });
     return c.json({ message: 'PAT revoked successfully' });
 });
 // Add tokens endpoints without /api prefix for web app compatibility
@@ -2235,6 +2892,13 @@ app.post('/tokens/create', async (c) => {
     const patIds = JSON.parse(patListJson);
     patIds.push(token);
     await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(patIds));
+    // Track analytics event for token creation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'api_call', {
+        action: 'token_created',
+        tokenType: 'PAT',
+        expiresIn: 90
+    });
     return c.json({
         token,
         expiresAt,
@@ -2266,8 +2930,20 @@ app.get('/tokens/list', async (c) => {
 });
 app.delete('/tokens/:tokenId', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/tokens/:tokenId',
+                method: 'DELETE'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const tokenId = c.req.param('tokenId');
     const fullToken = `qs_pat_${tokenId}`;
     // Verify ownership
@@ -2284,6 +2960,12 @@ app.delete('/tokens/:tokenId', async (c) => {
     const patIds = JSON.parse(patListJson);
     const updatedPatIds = patIds.filter(id => id !== fullToken);
     await c.env.KV_USERS.put(`user:${uid}:pats`, JSON.stringify(updatedPatIds));
+    // Track analytics event for token deletion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'api_call', {
+        action: 'token_deleted',
+        tokenType: 'PAT'
+    });
     return c.json({ message: 'PAT revoked successfully' });
 });
 // Helper function to get user ID from PAT
@@ -2300,7 +2982,8 @@ async function getUidFromPAT(c, token) {
         return null;
     const user = JSON.parse(userRaw);
     if (!canAccessProFeatures(user)) {
-        console.log(`PAT access denied for user ${pat.userId}: subscription status ${user.subscriptionStatus}`);
+        const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+        console.log(`PAT access denied for user ${pat.userId}: subscription status ${subscriptionStatus}`);
         return null; // PAT is invalid if subscription is cancelled
     }
     // Update last used timestamp
@@ -2472,6 +3155,12 @@ app.get('/api/extensions/download', async (c) => {
         headers.set('Pragma', 'no-cache');
         headers.set('Expires', '0');
         console.log(`VSIX download authorized for user ${uid} (${getSubscriptionDisplayStatus(user)})`);
+        // Track analytics event
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'extension_downloaded', {
+            version: getExtensionVersion().version,
+            filename: filename
+        });
         return new Response(vsixData, { headers });
     }
     catch (error) {
@@ -2535,6 +3224,12 @@ app.get('/extensions/download', async (c) => {
         headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         headers.set('Pragma', 'no-cache');
         headers.set('Expires', '0');
+        // Track analytics event
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'extension_downloaded', {
+            version: versionInfo.version,
+            filename: filename
+        });
         return new Response(vsixData, { headers });
     }
     catch (error) {
@@ -2591,6 +3286,10 @@ app.post('/comments/:snapshotId', async (c) => {
         }
         const data = await response.json();
         console.log(`✅ Comment added successfully to snapshot: ${snapshotId}`);
+        // Track analytics event for comment posting
+        // Note: We don't have user ID here, so we'll track it as a system event
+        // In a real implementation, you'd want to pass user context
+        console.log(`💬 Comment posted to snapshot: ${snapshotId} by ${author}`);
         return c.json(data);
     }
     catch (error) {
@@ -2748,8 +3447,20 @@ app.post('/billing/change-payment', async (c) => {
 });
 app.post('/billing/portal', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/billing/portal',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
@@ -2859,6 +3570,17 @@ app.post('/webhooks/stripe', async (c) => {
     }
     catch (error) {
         console.error('Webhook processing error:', error);
+        // Track analytics event for webhook processing error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'stripe_webhook',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for webhook error:', analyticsError);
+        }
         return c.json({ error: 'webhook_processing_failed' }, 500);
     }
 });
@@ -2907,7 +3629,16 @@ app.post('/billing/cancel', async (c) => {
 });
 // Helper function to start a trial for a user
 async function startTrialForUser(c, user) {
-    if (!user.subscriptionStatus || user.subscriptionStatus === 'none') {
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+    if (!subscriptionStatus || subscriptionStatus === 'none') {
+        // Initialize subscription object if it doesn't exist
+        if (!user.subscription) {
+            user.subscription = { status: 'trial' };
+        }
+        else {
+            user.subscription.status = 'trial';
+        }
+        // Update legacy fields for backward compatibility
         user.subscriptionStatus = 'trial';
         user.plan = 'pro'; // Set plan to pro during trial
         user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
@@ -2918,10 +3649,15 @@ async function startTrialForUser(c, user) {
 }
 // Helper function to check and update trial status
 async function checkAndUpdateTrialStatus(c, user) {
-    if (user.subscriptionStatus === 'trial' && user.trialEndsAt) {
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+    const trialEndsAt = user.subscription?.trialEnd || user.trialEndsAt;
+    if (subscriptionStatus === 'trial' && trialEndsAt) {
         const now = Date.now();
-        if (now >= user.trialEndsAt) {
-            // Trial expired, mark as cancelled
+        if (now >= trialEndsAt) {
+            // Trial expired, mark as cancelled - update both new and legacy fields
+            if (user.subscription) {
+                user.subscription.status = 'cancelled';
+            }
             user.subscriptionStatus = 'cancelled';
             user.plan = 'free'; // Revert to free plan after trial expires
             await c.env.KV_USERS.put(`user:${user.uid}`, JSON.stringify(user));
@@ -2938,8 +3674,15 @@ app.post('/debug/fix-subscription/:uid', async (c) => {
         return c.json({ error: 'user_not_found' }, 404);
     const user = JSON.parse(raw);
     console.log(`Fixing user ${uid}:`, user);
-    // Fix users who have 'trial' status but no actual Stripe subscription
-    if (user.subscriptionStatus === 'trial' && !user.stripeCustomerId && !user.stripeSubscriptionId) {
+    // Fix users who have 'trial' status but no actual Stripe subscription - use new schema with fallbacks
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+    const hasStripe = !!(user.subscription?.stripeCustomerId || user.stripeCustomerId || user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId);
+    if (subscriptionStatus === 'trial' && !hasStripe) {
+        // Update new schema
+        if (user.subscription) {
+            user.subscription.status = 'none';
+        }
+        // Update legacy fields for backward compatibility
         user.subscriptionStatus = 'none';
         user.plan = 'free';
         user.trialEndsAt = null;
@@ -2957,9 +3700,9 @@ app.post('/debug/fix-subscription/:uid', async (c) => {
         success: false,
         message: 'User does not need fixing',
         current: {
-            subscriptionStatus: user.subscriptionStatus,
+            subscriptionStatus: user.subscription?.status || user.subscriptionStatus || 'none',
             plan: user.plan,
-            hasStripe: !!(user.stripeCustomerId || user.stripeSubscriptionId)
+            hasStripe: !!(user.subscription?.stripeCustomerId || user.stripeCustomerId || user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId)
         }
     });
 });
@@ -2976,11 +3719,11 @@ app.get('/debug/user/:uid', async (c) => {
         email: user.email,
         plan: user.plan,
         role: user.role,
-        subscriptionStatus: user.subscriptionStatus,
-        trialEndsAt: user.trialEndsAt,
-        subscriptionStartedAt: user.subscriptionStartedAt,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId,
+        subscriptionStatus: user.subscription?.status || user.subscriptionStatus || 'none',
+        trialEndsAt: user.subscription?.trialEnd || user.trialEndsAt,
+        subscriptionStartedAt: user.subscription?.currentPeriodStart || user.subscriptionStartedAt,
+        stripeCustomerId: user.subscription?.stripeCustomerId || user.stripeCustomerId,
+        stripeSubscriptionId: user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId,
         canAccessPro: canAccessProFeatures(user),
         subscriptionDisplay: getSubscriptionDisplayStatus(user)
     });
@@ -3001,11 +3744,11 @@ app.get('/debug/user-by-email/:email', async (c) => {
         email: user.email,
         plan: user.plan,
         role: user.role,
-        subscriptionStatus: user.subscriptionStatus,
-        trialEndsAt: user.trialEndsAt,
-        subscriptionStartedAt: user.subscriptionStartedAt,
-        stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId,
+        subscriptionStatus: user.subscription?.status || user.subscriptionStatus || 'none',
+        trialEndsAt: user.subscription?.trialEnd || user.trialEndsAt,
+        subscriptionStartedAt: user.subscription?.currentPeriodStart || user.subscriptionStartedAt,
+        stripeCustomerId: user.subscription?.stripeCustomerId || user.stripeCustomerId,
+        stripeSubscriptionId: user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId,
         canAccessPro: canAccessProFeatures(user),
         subscriptionDisplay: getSubscriptionDisplayStatus(user),
         rawUser: user
@@ -3014,8 +3757,20 @@ app.get('/debug/user-by-email/:email', async (c) => {
 // Cleanup endpoint to fix all users with corrupted subscription data (superadmin only)
 app.post('/admin/cleanup-corrupted-users', async (c) => {
     const uid = await getUidFromSession(c);
-    if (!uid)
+    if (!uid) {
+        // Track analytics event for unauthorized access attempt
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('anonymous', 'unauthorized_access', {
+                endpoint: '/admin/cleanup-corrupted-users',
+                method: 'POST'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for unauthorized access:', analyticsError);
+        }
         return c.json({ error: 'unauthorized' }, 401);
+    }
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
@@ -3038,9 +3793,15 @@ app.post('/admin/cleanup-corrupted-users', async (c) => {
                 if (userDataRaw) {
                     totalUsers++;
                     const userData = JSON.parse(userDataRaw);
-                    // Check for corrupted subscription data
-                    if (userData.subscriptionStatus === 'trial' && !userData.stripeCustomerId && !userData.stripeSubscriptionId) {
-                        // Fix corrupted trial status
+                    // Check for corrupted subscription data - use new schema with fallbacks
+                    const subscriptionStatus = userData.subscription?.status || userData.subscriptionStatus || 'none';
+                    const hasStripe = !!(userData.subscription?.stripeCustomerId || userData.stripeCustomerId || userData.subscription?.stripeSubscriptionId || userData.stripeSubscriptionId);
+                    if (subscriptionStatus === 'trial' && !hasStripe) {
+                        // Fix corrupted trial status - update new schema
+                        if (userData.subscription) {
+                            userData.subscription.status = 'none';
+                        }
+                        // Update legacy fields for backward compatibility
                         userData.subscriptionStatus = 'none';
                         userData.plan = 'free';
                         userData.trialEndsAt = null;
@@ -3057,8 +3818,12 @@ app.post('/admin/cleanup-corrupted-users', async (c) => {
                         console.log(`Fixed user ${userData.uid}: reset corrupted trial status`);
                     }
                     // Check for users with 'pro' plan but no subscription
-                    if (userData.plan === 'pro' && !userData.stripeCustomerId && !userData.stripeSubscriptionId && userData.role !== 'superadmin') {
-                        // Fix corrupted pro plan
+                    if (userData.plan === 'pro' && !hasStripe && userData.role !== 'superadmin') {
+                        // Fix corrupted pro plan - update new schema
+                        if (userData.subscription) {
+                            userData.subscription.status = 'none';
+                        }
+                        // Update legacy fields for backward compatibility
                         userData.plan = 'free';
                         userData.subscriptionStatus = 'none';
                         userData.trialEndsAt = null;
@@ -3078,6 +3843,14 @@ app.post('/admin/cleanup-corrupted-users', async (c) => {
             }
         }
     } while (cursor);
+    // Track analytics event for cleanup completion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'cleanup_completed', {
+        totalUsers,
+        fixedUsers,
+        deletedUsers,
+        resultsCount: results.length
+    });
     return c.json({
         success: true,
         message: 'Cleanup completed',
@@ -3092,6 +3865,16 @@ app.post('/admin/cleanup-corrupted-users', async (c) => {
 // Webhook handler functions
 async function handleCustomerCreated(c, customer) {
     console.log(`Processing customer creation: ${customer.id}`);
+    // Find user by Stripe customer ID to track analytics
+    const uid = await getUidByStripeCustomerId(c, customer.id);
+    if (uid) {
+        // Track analytics event for customer creation
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent(uid, 'customer_created', {
+            stripeCustomerId: customer.id,
+            email: customer.email
+        });
+    }
     // Customer created event doesn't require immediate action
     // The subscription creation will handle the user status update
 }
@@ -3108,23 +3891,39 @@ async function handleCheckoutSessionCompleted(c, session) {
         return;
     }
     const user = JSON.parse(raw);
-    // Update user with Stripe customer ID
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
+    // Update user with Stripe customer ID - update both new and legacy fields
     if (session.customer) {
+        user.subscription.stripeCustomerId = session.customer;
         user.stripeCustomerId = session.customer;
     }
-    // Update user with subscription ID if available
+    // Update user with subscription ID if available - update both new and legacy fields
     if (session.subscription) {
+        user.subscription.stripeSubscriptionId = session.subscription;
         user.stripeSubscriptionId = session.subscription;
     }
-    // Set user to trial status when checkout is completed
+    // Set user to trial status when checkout is completed - update both new and legacy fields
+    user.subscription.status = 'trial';
     user.subscriptionStatus = 'trial';
     user.plan = 'pro';
+    user.subscription.trialEnd = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
     user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
     if (!user.subscriptionStartedAt) {
         user.subscriptionStartedAt = Date.now();
     }
     // Save updated user
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for checkout completion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_started', {
+        method: 'checkout_session',
+        sessionId: session.id,
+        customerId: session.customer,
+        subscriptionId: session.subscription
+    });
     console.log(`Updated user ${uid} to trial status with checkout session data`);
 }
 async function handleSubscriptionCreated(c, subscription) {
@@ -3139,8 +3938,16 @@ async function handleSubscriptionCreated(c, subscription) {
     if (!raw)
         return;
     const user = JSON.parse(raw);
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
+    // Update new schema
+    user.subscription.stripeSubscriptionId = subscription.id;
+    // Update legacy fields for backward compatibility
     user.stripeSubscriptionId = subscription.id;
     if (subscription.status === 'trialing') {
+        user.subscription.status = 'trial';
         user.subscriptionStatus = 'trial';
         user.plan = 'pro';
         if (!user.subscriptionStartedAt) {
@@ -3149,6 +3956,7 @@ async function handleSubscriptionCreated(c, subscription) {
         console.log(`User ${uid} marked as trial`);
     }
     else if (subscription.status === 'active') {
+        user.subscription.status = 'active';
         user.subscriptionStatus = 'active';
         user.plan = 'pro';
         if (!user.subscriptionStartedAt) {
@@ -3157,6 +3965,14 @@ async function handleSubscriptionCreated(c, subscription) {
         console.log(`User ${uid} marked as active subscription`);
     }
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for subscription creation
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_started', {
+        method: 'stripe_webhook',
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        trialEnd: subscription.trial_end
+    });
 }
 async function handleSubscriptionUpdated(c, subscription) {
     const customerId = subscription.customer;
@@ -3168,22 +3984,38 @@ async function handleSubscriptionUpdated(c, subscription) {
     if (!raw)
         return;
     const user = JSON.parse(raw);
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
     if (subscription.status === 'trialing') {
+        user.subscription.status = 'trial';
         user.subscriptionStatus = 'trial';
         user.plan = 'pro';
     }
     else if (subscription.status === 'active') {
+        user.subscription.status = 'active';
         user.subscriptionStatus = 'active';
         user.plan = 'pro';
     }
     else if (subscription.status === 'canceled' || subscription.status === 'incomplete_expired') {
+        user.subscription.status = 'cancelled';
         user.subscriptionStatus = 'cancelled';
         user.plan = 'free';
     }
     else if (subscription.status === 'past_due') {
+        user.subscription.status = 'past_due';
         user.subscriptionStatus = 'past_due';
     }
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for subscription update
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_renewed', {
+        method: 'stripe_webhook',
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        previousStatus: user.subscriptionStatus
+    });
 }
 async function handleSubscriptionDeleted(c, subscription) {
     const customerId = subscription.customer;
@@ -3195,9 +4027,21 @@ async function handleSubscriptionDeleted(c, subscription) {
     if (!raw)
         return;
     const user = JSON.parse(raw);
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
+    // Update both new and legacy fields
+    user.subscription.status = 'cancelled';
     user.subscriptionStatus = 'cancelled';
     user.plan = 'free';
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for subscription deletion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'subscription_cancelled', {
+        method: 'stripe_webhook',
+        subscriptionId: subscription.id
+    });
 }
 async function handleCustomerDeleted(c, customer) {
     const customerId = customer.id;
@@ -3212,6 +4056,11 @@ async function handleCustomerDeleted(c, customer) {
     user.stripeCustomerId = undefined;
     user.stripeSubscriptionId = undefined;
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for customer deletion
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'customer_deleted', {
+        stripeCustomerId: customer.id
+    });
 }
 async function handlePaymentSucceeded(c, invoice) {
     const customerId = invoice.customer;
@@ -3223,8 +4072,21 @@ async function handlePaymentSucceeded(c, invoice) {
     if (!raw)
         return;
     const user = JSON.parse(raw);
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
+    // Update both new and legacy fields
+    user.subscription.lastPaymentAt = Date.now();
     user.lastPaymentAt = Date.now();
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for successful payment
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'payment_succeeded', {
+        invoiceId: invoice.id,
+        amount: invoice.amount_paid,
+        currency: invoice.currency
+    });
 }
 async function handlePaymentFailed(c, invoice) {
     const customerId = invoice.customer;
@@ -3236,8 +4098,22 @@ async function handlePaymentFailed(c, invoice) {
     if (!raw)
         return;
     const user = JSON.parse(raw);
+    // Initialize subscription object if it doesn't exist
+    if (!user.subscription) {
+        user.subscription = { status: 'none' };
+    }
+    // Update both new and legacy fields
+    user.subscription.status = 'past_due';
     user.subscriptionStatus = 'past_due';
     await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+    // Track analytics event for failed payment
+    const analytics = getAnalyticsManager(c);
+    await analytics.trackEvent(uid, 'payment_failed', {
+        invoiceId: invoice.id,
+        amount: invoice.amount_due,
+        currency: invoice.currency,
+        attemptCount: invoice.attempt_count
+    });
 }
 async function getUidByStripeCustomerId(c, customerId) {
     let cursor = undefined;
@@ -3249,7 +4125,8 @@ async function getUidByStripeCustomerId(c, customerId) {
                 const userRaw = await c.env.KV_USERS.get(key.name);
                 if (userRaw) {
                     const user = JSON.parse(userRaw);
-                    if (user.stripeCustomerId === customerId) {
+                    // Check both new and legacy fields
+                    if ((user.subscription?.stripeCustomerId || user.stripeCustomerId) === customerId) {
                         return user.uid;
                     }
                 }
@@ -3258,3 +4135,395 @@ async function getUidByStripeCustomerId(c, customerId) {
     } while (cursor);
     return null;
 }
+// ============================================================================
+// DEBUG ENDPOINTS - Superadmin Only Access
+// ============================================================================
+// Helper function to check if user is superadmin
+async function isSuperadmin(c) {
+    const uid = await getUidFromSession(c);
+    if (!uid)
+        return false;
+    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+    if (!userRaw)
+        return false;
+    const user = JSON.parse(userRaw);
+    return user.role === 'superadmin';
+}
+// List all users with pagination
+app.get('/debug/users', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    const cursor = c.req.query('cursor');
+    const limit = parseInt(c.req.query('limit') || '100');
+    try {
+        const list = await c.env.KV_USERS.list({
+            prefix: 'user:',
+            cursor: cursor || undefined,
+            limit: Math.min(limit, 1000) // Cap at 1000 for safety
+        });
+        const users = [];
+        for (const key of list.keys) {
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userRaw = await c.env.KV_USERS.get(key.name);
+                if (userRaw) {
+                    const user = JSON.parse(userRaw);
+                    // Remove sensitive fields
+                    delete user.googleId;
+                    delete user.passwordHash;
+                    users.push(user);
+                }
+            }
+        }
+        return c.json({
+            users,
+            cursor: list.cursor,
+            truncated: list.list_complete === false,
+            total: users.length
+        });
+    }
+    catch (error) {
+        console.error('Debug users error:', error);
+        // Track analytics event for debug users error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_users',
+                error: error.message || 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug users error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to fetch users' }, 500);
+    }
+});
+// Get specific user by UID
+app.get('/debug/user/:uid', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    const uid = c.req.param('uid');
+    try {
+        const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+        if (!userRaw) {
+            return c.json({ error: 'User not found' }, 404);
+        }
+        const user = JSON.parse(userRaw);
+        // Remove sensitive fields
+        delete user.googleId;
+        delete user.passwordHash;
+        return c.json(user);
+    }
+    catch (error) {
+        console.error('Debug user error:', error);
+        // Track analytics event for debug user error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_user',
+                error: error.message || 'Unknown error',
+                uid: uid
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug user error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to fetch user' }, 500);
+    }
+});
+// Search users by email
+app.get('/debug/search/email/:email', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    const email = c.req.param('email');
+    try {
+        const list = await c.env.KV_USERS.list({ prefix: 'user:' });
+        const users = [];
+        for (const key of list.keys) {
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userRaw = await c.env.KV_USERS.get(key.name);
+                if (userRaw) {
+                    const user = JSON.parse(userRaw);
+                    if (user.email && user.email.toLowerCase().includes(email.toLowerCase())) {
+                        // Remove sensitive fields
+                        delete user.googleId;
+                        delete user.passwordHash;
+                        users.push(user);
+                    }
+                }
+            }
+        }
+        return c.json({
+            users,
+            total: users.length,
+            searchTerm: email
+        });
+    }
+    catch (error) {
+        console.error('Debug search error:', error);
+        // Track analytics event for debug search error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_search',
+                error: error.message || 'Unknown error',
+                searchTerm: email
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug search error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to search users' }, 500);
+    }
+});
+// List all snapshots with pagination
+app.get('/debug/snapshots', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    const cursor = c.req.query('cursor');
+    const limit = parseInt(c.req.query('limit') || '100');
+    try {
+        const list = await c.env.KV_SNAPS.list({
+            prefix: 'snap:',
+            cursor: cursor || undefined,
+            limit: Math.min(limit, 1000)
+        });
+        const snapshots = [];
+        for (const key of list.keys) {
+            if (key.name.startsWith('snap:') && !key.name.includes(':', 5)) {
+                const snapRaw = await c.env.KV_SNAPS.get(key.name);
+                if (snapRaw) {
+                    const snapshot = JSON.parse(snapRaw);
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+        return c.json({
+            snapshots,
+            cursor: list.cursor,
+            truncated: list.list_complete === false,
+            total: snapshots.length
+        });
+    }
+    catch (error) {
+        console.error('Debug snapshots error:', error);
+        // Track analytics event for debug snapshots error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_snapshots',
+                error: error.message || 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug snapshots error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to fetch snapshots' }, 500);
+    }
+});
+// Get specific snapshot by ID
+app.get('/debug/snapshot/:id', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    const id = c.req.param('id');
+    try {
+        const snapRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+        if (!snapRaw) {
+            return c.json({ error: 'Snapshot not found' }, 404);
+        }
+        const snapshot = JSON.parse(snapRaw);
+        return c.json(snapshot);
+    }
+    catch (error) {
+        console.error('Debug snapshot error:', error);
+        // Track analytics event for debug snapshot error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_snapshot',
+                error: error.message || 'Unknown error',
+                snapshotId: id
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug snapshot error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to fetch snapshot' }, 500);
+    }
+});
+// Get system statistics
+app.get('/debug/stats', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    try {
+        // Count users
+        const userList = await c.env.KV_USERS.list({ prefix: 'user:' });
+        const userCount = userList.keys.filter((key) => key.name.startsWith('user:') && !key.name.includes(':', 5)).length;
+        // Count snapshots
+        const snapList = await c.env.KV_SNAPS.list({ prefix: 'snap:' });
+        const snapCount = snapList.keys.filter((key) => key.name.startsWith('snap:') && !key.name.includes(':', 5)).length;
+        // Count active sessions
+        const sessionList = await c.env.KV_USERS.list({ prefix: 'session:' });
+        const sessionCount = sessionList.keys.length;
+        // Get subscription breakdown
+        const users = [];
+        for (const key of userList.keys) {
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userRaw = await c.env.KV_USERS.get(key.name);
+                if (userRaw) {
+                    const user = JSON.parse(userRaw);
+                    users.push(user);
+                }
+            }
+        }
+        const subscriptionStats = {
+            free: users.filter(u => (u.subscription?.status || u.subscriptionStatus) === 'none' || (u.subscription?.status || u.subscriptionStatus) === 'Free').length,
+            trial: users.filter(u => (u.subscription?.status || u.subscriptionStatus) === 'trial').length,
+            active: users.filter(u => (u.subscription?.status || u.subscriptionStatus) === 'active').length,
+            cancelled: users.filter(u => (u.subscription?.status || u.subscriptionStatus) === 'cancelled').length,
+            pastDue: users.filter(u => (u.subscription?.status || u.subscriptionStatus) === 'past_due').length,
+            superadmin: users.filter(u => u.role === 'superadmin').length
+        };
+        return c.json({
+            system: {
+                totalUsers: userCount,
+                totalSnapshots: snapCount,
+                activeSessions: sessionCount,
+                timestamp: new Date().toISOString()
+            },
+            subscriptions: subscriptionStats,
+            storage: {
+                users: userList.keys.length,
+                snapshots: snapList.keys.length,
+                sessions: sessionList.keys.length
+            }
+        });
+    }
+    catch (error) {
+        console.error('Debug stats error:', error);
+        // Track analytics event for debug stats error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_stats',
+                error: error.message || 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug stats error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to fetch system stats' }, 500);
+    }
+});
+// Export all data for backup/analysis (superadmin only)
+app.get('/debug/export', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    try {
+        // Get all users
+        const userList = await c.env.KV_USERS.list({ prefix: 'user:' });
+        const users = [];
+        for (const key of userList.keys) {
+            if (key.name.startsWith('user:') && !key.name.includes(':', 5)) {
+                const userRaw = await c.env.KV_USERS.get(key.name);
+                if (userRaw) {
+                    const user = JSON.parse(userRaw);
+                    // Remove sensitive fields
+                    delete user.googleId;
+                    delete user.passwordHash;
+                    users.push(user);
+                }
+            }
+        }
+        // Get all snapshots
+        const snapList = await c.env.KV_SNAPS.list({ prefix: 'snap:' });
+        const snapshots = [];
+        for (const key of snapList.keys) {
+            if (key.name.startsWith('snap:') && !key.name.includes(':', 5)) {
+                const snapRaw = await c.env.KV_SNAPS.get(key.name);
+                if (snapRaw) {
+                    const snapshot = JSON.parse(snapRaw);
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+        const exportData = {
+            exportDate: new Date().toISOString(),
+            version: '1.0',
+            data: {
+                users,
+                snapshots,
+                summary: {
+                    totalUsers: users.length,
+                    totalSnapshots: snapshots.length,
+                    exportTimestamp: new Date().toISOString()
+                }
+            }
+        };
+        // Set headers for file download
+        c.header('Content-Type', 'application/json');
+        c.header('Content-Disposition', `attachment; filename="quickstage-export-${new Date().toISOString().split('T')[0]}.json"`);
+        return c.json(exportData);
+    }
+    catch (error) {
+        console.error('Debug export error:', error);
+        // Track analytics event for debug export error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'debug_export',
+                error: error.message || 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for debug export error:', analyticsError);
+        }
+        return c.json({ error: 'Failed to export data' }, 500);
+    }
+});
+// Health check endpoint (public, no auth required)
+app.get('/debug/health', async (c) => {
+    try {
+        // Test KV access
+        const userCount = await c.env.KV_USERS.list({ prefix: 'user:', limit: 1 });
+        const snapCount = await c.env.KV_SNAPS.list({ prefix: 'snap:', limit: 1 });
+        return c.json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            services: {
+                kv_users: 'operational',
+                kv_snapshots: 'operational',
+                worker: 'operational'
+            },
+            metrics: {
+                userKeys: userCount.keys.length,
+                snapshotKeys: snapCount.keys.length
+            }
+        });
+    }
+    catch (error) {
+        console.error('Health check error:', error);
+        // Track analytics event for health check error
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent('system', 'error_occurred', {
+                context: 'health_check',
+                error: error.message || 'Unknown error'
+            });
+        }
+        catch (analyticsError) {
+            console.error('Failed to track analytics for health check error:', analyticsError);
+        }
+        return c.json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        }, 500);
+    }
+});

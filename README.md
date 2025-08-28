@@ -10,15 +10,18 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **Secure Access Control**: Role-based permissions and secure sharing
 - **Mobile Responsive**: Optimized for all devices and screen sizes
 - **Pro Features**: Advanced features for power users and teams
+- **Analytics & Insights**: Comprehensive user and system analytics tracking
+- **Flexible Data Schema**: Modern, extensible data management with backward compatibility
 
 ## Tech Stack
 
 - **Frontend**: React 18, TypeScript, Tailwind CSS 4, Vite 5
 - **Backend**: Cloudflare Workers, Hono.js, TypeScript
 - **Authentication**: Custom JWT-like tokens, Google OAuth
-- **Storage**: Cloudflare KV, Cloudflare R2
+- **Storage**: Cloudflare KV, Cloudflare R2, Cloudflare Analytics
 - **Deployment**: Cloudflare Pages, Wrangler
 - **Package Manager**: pnpm (monorepo)
+- **Testing**: Vitest, React Testing Library, MSW
 
 ## Quick Start
 
@@ -88,6 +91,27 @@ quickstage/
 ├── infra/                   # Infrastructure configuration
 └── docs/                    # Documentation
 ```
+
+## Data Schema & Analytics
+
+The project uses a modern, extensible data schema designed for future growth and analytics:
+
+### User Data Schema
+- **Nested Structure**: Organized subscription and analytics data in dedicated objects
+- **Backward Compatibility**: Maintains legacy fields while introducing new schema
+- **Analytics Tracking**: Comprehensive event tracking for user interactions
+- **Migration Support**: Built-in migration functions for schema evolution
+
+### Analytics Capabilities
+- **User Events**: Login, registration, page views, downloads
+- **Snapshot Events**: Creation, viewing, expiration, extension
+- **System Events**: Error tracking, performance monitoring
+- **Real-time Metrics**: Live user activity and system health
+
+### Schema Migration
+- **Zero Downtime**: Seamless migration from legacy to new schema
+- **Automatic Fallbacks**: Graceful handling of missing fields
+- **Data Integrity**: Preserves all existing user data during transitions
 
 ## Testing
 

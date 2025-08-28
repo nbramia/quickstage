@@ -23,6 +23,10 @@ id = "2808162d18d0411d9b05ab8ae76fa500"
 binding = "KV_SNAPS"
 id = "9480e24f0477412ea9500030f599e16b"
 
+[[kv_namespaces]]
+binding = "KV_ANALYTICS"
+id = "a44c5d74f9dd42b3aa378f45e19fb5ba"
+
 [[r2_buckets]]
 binding = "R2_SNAPSHOTS"
 bucket_name = "snapshots"

@@ -67,6 +67,85 @@ pnpm test:ui          # Visual test runner
 
 **Remember**: Tests are not optional - they're your safety net to ensure QuickStage continues to "just work" as Nathan expects.
 
+## 📊 Data Schema & Analytics
+
+### **⚠️ CRITICAL: Schema Evolution Requirements**
+
+**Future developers and AI agents working on this project MUST:**
+
+1. **Maintain Backward Compatibility**: Always preserve legacy fields when adding new schema features
+2. **Use Migration Functions**: Use the built-in migration helpers in `apps/worker/src/migrate-schema.ts`
+3. **Update Both Schemas**: When modifying user/snapshot data, update both new and legacy fields
+4. **Test Schema Changes**: Verify that existing data continues to work after schema modifications
+5. **Document Changes**: Update this guide and `README.md` when making schema changes
+
+**Why This Matters**: The application maintains backward compatibility to ensure zero downtime during schema evolution. Neglecting this will break existing user data and cause application failures.
+
+### **Current Schema Structure**
+
+#### **User Record Schema**
+```typescript
+interface UserRecord {
+  // Core fields
+  uid: string;
+  name: string;
+  email: string;
+  role: 'user' | 'admin' | 'superadmin';
+  createdAt: number;
+  updatedAt: number;
+  lastActivityAt: number;
+  status: 'active' | 'deactivated';
+  
+  // New nested subscription schema
+  subscription?: {
+    status: 'none' | 'trial' | 'active' | 'cancelled' | 'past_due';
+    trialEnd?: number;
+    currentPeriodStart?: number;
+    lastPaymentAt?: number;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+  };
+  
+  // Legacy fields (maintained for backward compatibility)
+  plan: 'free' | 'pro';
+  subscriptionStatus?: string;
+  trialEndsAt?: number;
+  subscriptionStartedAt?: number;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  
+  // Analytics data
+  analytics: UserAnalytics;
+}
+```
+
+#### **Analytics Event Types**
+- **User Events**: `user_login`, `user_registered`, `user_deleted`, `profile_updated`
+- **Snapshot Events**: `snapshot_created`, `snapshot_viewed`, `snapshot_expired`
+- **System Events**: `error_occurred`, `unauthorized_access`, `cleanup_completed`
+- **Billing Events**: `payment_succeeded`, `payment_failed`, `subscription_started`
+
+### **Schema Migration Workflow**
+
+**When Adding New Fields:**
+1. **Add to New Schema**: Extend the nested objects (e.g., `user.subscription.newField`)
+2. **Maintain Legacy Fields**: Keep existing fields functional for backward compatibility
+3. **Use Fallback Pattern**: Implement `newField || legacyField || defaultValue`
+4. **Update Migration Functions**: Add migration logic in `migrate-schema.ts`
+5. **Test Both Paths**: Verify new and legacy data access work correctly
+
+**Example Fallback Pattern:**
+```typescript
+// ✅ Correct: Use fallbacks for backward compatibility
+const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'none';
+const trialEnd = user.subscription?.trialEnd || user.trialEndsAt;
+
+// ❌ Incorrect: Only use new schema
+const subscriptionStatus = user.subscription.status; // Will fail for legacy users
+```
+
+**Remember**: The goal is seamless schema evolution without breaking existing functionality.
+
 ## 🚀 Development Workflow
 
 ### **Pre-Development Setup**
