@@ -2,7 +2,7 @@
   "name": "quickstage",
   "displayName": "QuickStage",
   "description": "Stage and share static prototypes privately in 1 click.",
-  "version": "0.0.31",
+  "version": "0.0.32",
   "publisher": "quickstage",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -16,7 +16,10 @@
     "onCommand:quickstage.stage",
     "onCommand:quickstage.stageManual",
     "onCommand:quickstage.openDashboard",
-    "onCommand:quickstage.settings"
+    "onCommand:quickstage.settings",
+    "onCommand:quickstage.login",
+    "onCommand:quickstage.setToken",
+    "onCommand:quickstage.clearToken"
   ],
   "main": "dist/extension.js",
   "contributes": {
@@ -36,6 +39,18 @@
       {
         "command": "quickstage.settings",
         "title": "QuickStage: Settings"
+      },
+      {
+        "command": "quickstage.login",
+        "title": "QuickStage: Login"
+      },
+      {
+        "command": "quickstage.setToken",
+        "title": "QuickStage: Set Token"
+      },
+      {
+        "command": "quickstage.clearToken",
+        "title": "QuickStage: Clear Token"
       }
     ]
   },

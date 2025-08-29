@@ -1423,7 +1423,10 @@ Please create this prototype step by step, ensuring it's production-ready and ca
                     Personal Access Tokens for VS Code/Cursor Extension
                   </h3>
                       <button
-                        onClick={() => setShowPATModal(false)}
+                        onClick={() => {
+                          setShowPATModal(false);
+                          setNewPAT(''); // Clear the new token when closing modal
+                        }}
                         className="text-gray-400 hover:text-gray-600"
                       >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1529,7 +1532,10 @@ Please create this prototype step by step, ensuring it's production-ready and ca
 
                       <div className="mt-6 flex justify-end">
                         <button
-                          onClick={() => setShowPATModal(false)}
+                          onClick={() => {
+                            setShowPATModal(false);
+                            setNewPAT(''); // Clear the new token when closing modal
+                          }}
                           className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
                         >
                           Close

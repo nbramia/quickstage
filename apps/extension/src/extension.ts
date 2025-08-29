@@ -42,6 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
       await authenticateUser(context, output);
     }),
 
+    vscode.commands.registerCommand('quickstage.setToken', async () => {
+      await setTokenCommand(context, output);
+    }),
+
+    vscode.commands.registerCommand('quickstage.clearToken', async () => {
+      await clearTokenCommand(context, output);
+    }),
+
     vscode.commands.registerCommand('quickstage.settings', async () => {
       const ws = vscode.workspace.workspaceFolders?.[0];
       if (!ws) {
@@ -183,6 +191,89 @@ async function getPAT(context: vscode.ExtensionContext): Promise<string | null> 
     return await context.secrets.get('quickstage-pat') || null;
   } catch {
     return null;
+  }
+}
+
+async function setTokenCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+  output.show(true);
+  output.appendLine('🔑 QuickStage - Set Token');
+  
+  // Check if user already has a token
+  const existingToken = await getPAT(context);
+  if (existingToken) {
+    const action = await vscode.window.showWarningMessage(
+      'You already have a token configured. Do you want to replace it?',
+      'Replace Token',
+      'Cancel'
+    );
+    
+    if (action !== 'Replace Token') {
+      output.appendLine('❌ Token replacement cancelled');
+      return;
+    }
+  }
+  
+  output.appendLine('📝 Please enter your Personal Access Token...');
+  
+  const pat = await vscode.window.showInputBox({
+    prompt: 'Enter your QuickStage Personal Access Token',
+    placeHolder: 'Paste your PAT here (e.g., qs_pat_ABC123...)',
+    password: true,
+    ignoreFocusOut: true,
+    validateInput: (value) => {
+      if (!value || !value.trim()) {
+        return 'Token cannot be empty';
+      }
+      if (!value.trim().startsWith('qs_pat_')) {
+        return 'Invalid token format. QuickStage tokens start with "qs_pat_"';
+      }
+      return null;
+    }
+  });
+  
+  if (pat && pat.trim()) {
+    try {
+      await context.secrets.store('quickstage-pat', pat.trim());
+      output.appendLine('✅ Personal Access Token updated successfully!');
+      vscode.window.showInformationMessage('Token updated successfully! You can now use QuickStage.');
+    } catch (error) {
+      output.appendLine(`❌ Failed to store PAT: ${error}`);
+      vscode.window.showErrorMessage('Failed to store token. Please try again.');
+    }
+  } else {
+    output.appendLine('❌ Token input cancelled or empty');
+  }
+}
+
+async function clearTokenCommand(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+  output.show(true);
+  output.appendLine('🗑️ QuickStage - Clear Token');
+  
+  // Check if user has a token
+  const existingToken = await getPAT(context);
+  if (!existingToken) {
+    output.appendLine('ℹ️ No token configured');
+    vscode.window.showInformationMessage('No token is currently configured.');
+    return;
+  }
+  
+  const action = await vscode.window.showWarningMessage(
+    'Are you sure you want to clear your stored token? You\'ll need to set a new one to use QuickStage.',
+    'Clear Token',
+    'Cancel'
+  );
+  
+  if (action === 'Clear Token') {
+    try {
+      await context.secrets.delete('quickstage-pat');
+      output.appendLine('✅ Personal Access Token cleared successfully!');
+      vscode.window.showInformationMessage('Token cleared. Use "QuickStage: Set Token" to configure a new one.');
+    } catch (error) {
+      output.appendLine(`❌ Failed to clear PAT: ${error}`);
+      vscode.window.showErrorMessage('Failed to clear token.');
+    }
+  } else {
+    output.appendLine('❌ Token clearing cancelled');
   }
 }
 
