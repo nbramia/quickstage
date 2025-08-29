@@ -172,7 +172,7 @@ export function PricingPage() {
         {/* Back Button */}
         <div className="text-center">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/dashboard')}
             className="text-gray-600 hover:text-gray-900 font-medium"
           >
             ← Back to Dashboard

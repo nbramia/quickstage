@@ -82,8 +82,8 @@ export async function handleStartTrial(c: any) {
       trial_period_days: 7,
       metadata: { uid, plan }
     },
-    success_url: `${c.env.PUBLIC_BASE_URL}/?trial=started`,
-    cancel_url: `${c.env.PUBLIC_BASE_URL}/?trial=cancelled`,
+    success_url: `${c.env.PUBLIC_BASE_URL}/dashboard?trial=started`,
+    cancel_url: `${c.env.PUBLIC_BASE_URL}/dashboard?trial=cancelled`,
     metadata: { uid, action: 'start_trial', plan },
   };
   
@@ -175,8 +175,8 @@ export async function handleSubscribe(c: any) {
     mode: 'subscription',
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
-    cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
+    success_url: `${c.env.PUBLIC_BASE_URL}/dashboard?billing=success`,
+    cancel_url: `${c.env.PUBLIC_BASE_URL}/dashboard?billing=canceled`,
     metadata: { uid, action: 'subscribe', plan },
   };
   

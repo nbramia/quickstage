@@ -24,6 +24,7 @@ export default function Landing() {
   // Rotating text options
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [showRotatingText, setShowRotatingText] = useState(true);
+  const [textOpacity, setTextOpacity] = useState(1);
   const rotatingTexts = [
     "No <strong>DevOps</strong>",
     "No <strong>GitHub</strong>", 
@@ -88,8 +89,11 @@ export default function Landing() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Rotate text every 1 second
+  // Rotate text every 2 seconds with fade-out effect
   useEffect(() => {
+    // Reset opacity to 1 when text changes
+    setTextOpacity(1);
+    
     const interval = setInterval(() => {
       setCurrentTextIndex((prevIndex) => {
         const nextIndex = prevIndex + 1;
@@ -101,10 +105,18 @@ export default function Landing() {
         }
         return nextIndex;
       });
-    }, 1000);
+    }, 2000); // Changed to 2 seconds total display time
 
-    return () => clearInterval(interval);
-  }, [rotatingTexts.length]);
+    // Start fade out 1.5 seconds before text change
+    const fadeOutTimer = setTimeout(() => {
+      setTextOpacity(0);
+    }, 500); // Start fading after 0.5 seconds (so it fades over 1.5 seconds)
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(fadeOutTimer);
+    };
+  }, [currentTextIndex, rotatingTexts.length]);
 
   // Handle mouse movement and create star particles
   useEffect(() => {
@@ -251,7 +263,8 @@ export default function Landing() {
               in One Click
             </h1>
             {showRotatingText && (
-              <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed" 
+              <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed transition-opacity duration-1500" 
+                 style={{ opacity: textOpacity }}
                  dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}>
               </p>
             )}
