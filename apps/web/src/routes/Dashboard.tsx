@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import config from '../config';
@@ -16,6 +16,7 @@ type Snapshot = {
 };
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,18 +132,9 @@ export default function Dashboard() {
   };
 
   // Billing functions
-  const handleUpgradeToPro = async () => {
-    try {
-      setIsLoadingBilling(true);
-      const response = await api.post('/billing/checkout');
-      if (response.url) {
-        window.location.href = response.url;
-      }
-    } catch (error: any) {
-      showError(error.message || 'Failed to start checkout');
-    } finally {
-      setIsLoadingBilling(false);
-    }
+  const handleUpgradeToPro = () => {
+    // Navigate to pricing page to select plan
+    navigate('/pricing?mode=trial');
   };
 
   const handleManageBilling = async () => {
@@ -719,7 +711,7 @@ export default function Dashboard() {
                     )}
                   </button>
                   <p className="text-xs text-gray-500 mt-2">
-                    $6/month after trial • Billed monthly • Cancel anytime
+                    From $5/month (annual) or $6/month • Cancel anytime
                   </p>
                 </div>
               </div>

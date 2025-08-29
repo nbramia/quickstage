@@ -7,20 +7,32 @@ import Stripe from 'stripe';
 
 // Billing route handlers
 export async function handleStartTrial(c: any) {
-  const uid = await getUidFromSession(c);
-  if (!uid) {
-    // Track analytics event for unauthorized access attempt
-    try {
-      const analytics = getAnalyticsManager(c);
-      await analytics.trackEvent('anonymous', 'unauthorized_access', { 
-        endpoint: '/billing/start-trial',
-        method: 'POST'
-      });
-    } catch (analyticsError) {
-      console.error('Failed to track analytics for unauthorized access:', analyticsError);
+  try {
+    console.log('🔥 handleStartTrial: Starting trial handler');
+    const uid = await getUidFromSession(c);
+    if (!uid) {
+      // Track analytics event for unauthorized access attempt
+      try {
+        const analytics = getAnalyticsManager(c);
+        await analytics.trackEvent('anonymous', 'unauthorized_access', { 
+          endpoint: '/billing/start-trial',
+          method: 'POST'
+        });
+      } catch (analyticsError) {
+        console.error('Failed to track analytics for unauthorized access:', analyticsError);
+      }
+      return c.json({ error: 'unauthorized' }, 401);
     }
-    return c.json({ error: 'unauthorized' }, 401);
+  
+  // Parse request body for plan selection
+  let body: any = {};
+  try {
+    body = await c.req.json();
+  } catch (e) {
+    // If no body, default to monthly
+    body = { plan: 'monthly' };
   }
+  const plan = body.plan || 'monthly'; // 'monthly' or 'annual'
   
   const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
   if (!userRaw) return c.json({ error: 'user_not_found' }, 404);
@@ -56,18 +68,29 @@ export async function handleStartTrial(c: any) {
   }
   
   // Create checkout session for trial with required payment method
-  const session = await stripe.checkout.sessions.create({
+  // Select the correct price ID based on plan
+  const priceId = plan === 'annual' 
+    ? (c.env.STRIPE_ANNUAL_PRICE_ID && c.env.STRIPE_ANNUAL_PRICE_ID !== 'your_annual_price_id_here' ? c.env.STRIPE_ANNUAL_PRICE_ID : c.env.STRIPE_PRICE_ID) // Fallback to monthly if annual not configured
+    : c.env.STRIPE_PRICE_ID;
+  
+  // Build checkout session configuration
+  const sessionConfig: any = {
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
       trial_period_days: 7,
-      metadata: { uid }
+      metadata: { uid, plan }
     },
     success_url: `${c.env.PUBLIC_BASE_URL}/?trial=started`,
     cancel_url: `${c.env.PUBLIC_BASE_URL}/?trial=cancelled`,
-    metadata: { uid, action: 'start_trial' },
-  });
+    metadata: { uid, action: 'start_trial', plan },
+  };
+  
+  // Always allow promotion codes to be entered during checkout
+  sessionConfig.allow_promotion_codes = true;
+  
+  const session = await stripe.checkout.sessions.create(sessionConfig);
   
   // Track analytics event for trial start
   const analytics = getAnalyticsManager(c);
@@ -77,6 +100,16 @@ export async function handleStartTrial(c: any) {
   });
   
   return c.json({ url: session.url });
+  } catch (error: any) {
+    console.error('🔥 handleStartTrial: Error occurred:', error);
+    console.error('🔥 handleStartTrial: Error message:', error.message);
+    console.error('🔥 handleStartTrial: Error stack:', error.stack);
+    return c.json({ 
+      error: 'internal_server_error', 
+      details: error.message,
+      stack: error.stack 
+    }, 500);
+  }
 }
 
 export async function handleSubscribe(c: any) {
@@ -94,6 +127,16 @@ export async function handleSubscribe(c: any) {
     }
     return c.json({ error: 'unauthorized' }, 401);
   }
+  
+  // Parse request body for plan selection
+  let body: any = {};
+  try {
+    body = await c.req.json();
+  } catch (e) {
+    // If no body, default to monthly
+    body = { plan: 'monthly' };
+  }
+  const plan = body.plan || 'monthly'; // 'monthly' or 'annual'
   
   const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
   if (!userRaw) return c.json({ error: 'user_not_found' }, 404);
@@ -122,14 +165,25 @@ export async function handleSubscribe(c: any) {
     user.stripeCustomerId = customerId;
   }
   
-  const session = await stripe.checkout.sessions.create({
+  // Select the correct price ID based on plan
+  const priceId = plan === 'annual' 
+    ? (c.env.STRIPE_ANNUAL_PRICE_ID && c.env.STRIPE_ANNUAL_PRICE_ID !== 'your_annual_price_id_here' ? c.env.STRIPE_ANNUAL_PRICE_ID : c.env.STRIPE_PRICE_ID) // Fallback to monthly if annual not configured
+    : c.env.STRIPE_PRICE_ID;
+  
+  // Build checkout session configuration
+  const sessionConfig: any = {
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
     cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
-    metadata: { uid, action: 'subscribe' },
-  });
+    metadata: { uid, action: 'subscribe', plan },
+  };
+  
+  // Always allow promotion codes to be entered during checkout
+  sessionConfig.allow_promotion_codes = true;
+  
+  const session = await stripe.checkout.sessions.create(sessionConfig);
   
   // Track analytics event for subscription start
   const analytics = getAnalyticsManager(c);

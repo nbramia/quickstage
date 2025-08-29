@@ -20,6 +20,17 @@ export async function handleStartTrial(c) {
         }
         return c.json({ error: 'unauthorized' }, 401);
     }
+    // Parse request body for plan selection
+    let body = {};
+    try {
+        body = await c.req.json();
+    }
+    catch (e) {
+        // If no body, default to monthly
+        body = { plan: 'monthly' };
+    }
+    const plan = body.plan || 'monthly'; // 'monthly' or 'annual'
+    const promoCode = body.promoCode; // Optional promo code
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
@@ -50,18 +61,29 @@ export async function handleStartTrial(c) {
         user.stripeCustomerId = customerId;
     }
     // Create checkout session for trial with required payment method
-    const session = await stripe.checkout.sessions.create({
+    // Select the correct price ID based on plan
+    const priceId = plan === 'annual'
+        ? (c.env.STRIPE_ANNUAL_PRICE_ID && c.env.STRIPE_ANNUAL_PRICE_ID !== 'your_annual_price_id_here' ? c.env.STRIPE_ANNUAL_PRICE_ID : c.env.STRIPE_PRICE_ID) // Fallback to monthly if annual not configured
+        : c.env.STRIPE_PRICE_ID;
+    // Build checkout session configuration
+    const sessionConfig = {
         mode: 'subscription',
         customer: customerId,
-        line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+        line_items: [{ price: priceId, quantity: 1 }],
         subscription_data: {
             trial_period_days: 7,
-            metadata: { uid }
+            metadata: { uid, plan }
         },
         success_url: `${c.env.PUBLIC_BASE_URL}/?trial=started`,
         cancel_url: `${c.env.PUBLIC_BASE_URL}/?trial=cancelled`,
-        metadata: { uid, action: 'start_trial' },
-    });
+        metadata: { uid, action: 'start_trial', plan },
+        allow_promotion_codes: !promoCode, // Allow codes in checkout if not pre-applied
+    };
+    // If a promo code was provided, apply it
+    if (promoCode) {
+        sessionConfig.discounts = [{ promotion_code: promoCode }];
+    }
+    const session = await stripe.checkout.sessions.create(sessionConfig);
     // Track analytics event for trial start
     const analytics = getAnalyticsManager(c);
     await analytics.trackEvent(uid, 'subscription_started', {
@@ -86,6 +108,17 @@ export async function handleSubscribe(c) {
         }
         return c.json({ error: 'unauthorized' }, 401);
     }
+    // Parse request body for plan selection
+    let body = {};
+    try {
+        body = await c.req.json();
+    }
+    catch (e) {
+        // If no body, default to monthly
+        body = { plan: 'monthly' };
+    }
+    const plan = body.plan || 'monthly'; // 'monthly' or 'annual'
+    const promoCode = body.promoCode; // Optional promo code
     const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
     if (!userRaw)
         return c.json({ error: 'user_not_found' }, 404);
@@ -110,14 +143,25 @@ export async function handleSubscribe(c) {
         user.subscription.stripeCustomerId = customerId;
         user.stripeCustomerId = customerId;
     }
-    const session = await stripe.checkout.sessions.create({
+    // Select the correct price ID based on plan
+    const priceId = plan === 'annual'
+        ? (c.env.STRIPE_ANNUAL_PRICE_ID && c.env.STRIPE_ANNUAL_PRICE_ID !== 'your_annual_price_id_here' ? c.env.STRIPE_ANNUAL_PRICE_ID : c.env.STRIPE_PRICE_ID) // Fallback to monthly if annual not configured
+        : c.env.STRIPE_PRICE_ID;
+    // Build checkout session configuration
+    const sessionConfig = {
         mode: 'subscription',
         customer: customerId,
-        line_items: [{ price: c.env.STRIPE_PRICE_ID, quantity: 1 }],
+        line_items: [{ price: priceId, quantity: 1 }],
         success_url: `${c.env.PUBLIC_BASE_URL}/?billing=success`,
         cancel_url: `${c.env.PUBLIC_BASE_URL}/?billing=canceled`,
-        metadata: { uid, action: 'subscribe' },
-    });
+        metadata: { uid, action: 'subscribe', plan },
+        allow_promotion_codes: !promoCode, // Allow codes in checkout if not pre-applied
+    };
+    // If a promo code was provided, apply it
+    if (promoCode) {
+        sessionConfig.discounts = [{ promotion_code: promoCode }];
+    }
+    const session = await stripe.checkout.sessions.create(sessionConfig);
     // Track analytics event for subscription start
     const analytics = getAnalyticsManager(c);
     await analytics.trackEvent(uid, 'subscription_started', {

@@ -5,6 +5,8 @@ compatibility_date = "2024-05-12"
 # Stripe configuration
 [vars]
 STRIPE_PRICE_ID = "price_1RuSJcPDkQopAc5hGO0qLNvU"  # Your $6/mo price ID
+STRIPE_ANNUAL_PRICE_ID = "price_1S1WrMPDkQopAc5hDDKEpr5c"  # Your $60/year price ID
+PUBLIC_BASE_URL = "https://quickstage.tech"  # Base URL for Stripe success/cancel redirects
 
 # Stripe secrets (set these with: wrangler secret put STRIPE_SECRET_KEY)
 # wrangler secret put STRIPE_SECRET_KEY

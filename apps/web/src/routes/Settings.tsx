@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
 import '../fonts.css';
 
 export function Settings() {
+  const navigate = useNavigate();
   const { user, logout, loading: authLoading, cancelSubscription } = useAuth();
   const [upgrading, setUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,22 +40,10 @@ export function Settings() {
     trackPageView();
   }, []);
 
-  const handleUpgrade = async () => {
-    try {
-      setUpgrading(true);
-      setError(null);
-      const response = await api.post('/billing/checkout');
-      if (response.url) {
-        window.location.href = response.url;
-      } else {
-        setError('No checkout URL received');
-      }
-    } catch (error) {
-      console.error('Checkout error:', error);
-      setError('Checkout failed');
-    } finally {
-      setUpgrading(false);
-    }
+  const handleUpgrade = () => {
+    // Navigate to pricing page to select plan
+    const mode = (user?.subscription?.status || user?.subscriptionStatus) === 'trial' ? 'upgrade' : 'trial';
+    navigate(`/pricing?mode=${mode}`);
   };
 
   const handleManageBilling = async () => {

@@ -7,6 +7,7 @@ import { Viewer } from './routes/Viewer'
 import Landing from './routes/Landing'
 import Login from './routes/Login'
 import AdminDashboard from './routes/AdminDashboard'
+import { PricingPage } from './routes/PricingPage'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import './index.css'
 
@@ -55,6 +56,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/admin" element={
             <ProtectedRoute>
               <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/pricing" element={
+            <ProtectedRoute>
+              <PricingPage />
             </ProtectedRoute>
           } />
           
