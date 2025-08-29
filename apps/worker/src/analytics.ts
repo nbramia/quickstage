@@ -90,6 +90,8 @@ export class AnalyticsManager {
     referrer?: string
   ): Promise<void> {
     try {
+      console.log(`🎯 Starting analytics tracking: ${eventType} for user ${userId}`);
+      
       const event: AnalyticsEvent = {
         id: this.generateEventId(),
         userId,
@@ -103,21 +105,34 @@ export class AnalyticsManager {
         userAgentParsed: userAgent ? this.parseUserAgent(userAgent) : undefined
       };
 
+      console.log(`📝 Generated event with ID: ${event.id} at timestamp: ${event.timestamp}`);
+
       // Store event in analytics KV
       await this.env.KV_ANALYTICS.put(`event:${event.id}`, JSON.stringify(event));
+      console.log(`✅ Event stored in KV_ANALYTICS with key: event:${event.id}`);
       
       // Update real-time analytics based on event type
+      console.log(`🔄 Updating real-time analytics for event type: ${eventType}`);
       await this.updateRealTimeAnalytics(event);
+      console.log(`✅ Real-time analytics updated successfully`);
       
-      console.log(`Analytics event tracked: ${eventType} for user ${userId}`);
+      console.log(`🎉 Analytics event tracked successfully: ${eventType} for user ${userId}`);
     } catch (error) {
-      console.error('Failed to track analytics event:', error);
+      console.error('❌ Failed to track analytics event:', error);
+      console.error('❌ Error details:', {
+        userId,
+        eventType,
+        eventData,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
     }
   }
 
   // Update real-time analytics when events occur
   private async updateRealTimeAnalytics(event: AnalyticsEvent): Promise<void> {
     try {
+      console.log(`🔍 Processing real-time analytics for event type: ${event.eventType}`);
       switch (event.eventType) {
         case 'page_view':
           await this.incrementUserMetric(event.userId, 'totalPageVisits');
@@ -153,6 +168,13 @@ export class AnalyticsManager {
         case 'user_login':
           await this.incrementUserMetric(event.userId, 'sessionCount');
           await this.updateUserLastActivity(event.userId);
+          break;
+          
+        case 'extension_downloaded':
+          console.log(`📊 Processing extension_downloaded event for user ${event.userId}`);
+          await this.incrementUserMetric(event.userId, 'totalDownloads');
+          await this.updateUserLastActivity(event.userId);
+          console.log(`✅ Extension download analytics updated for user ${event.userId}`);
           break;
       }
     } catch (error) {

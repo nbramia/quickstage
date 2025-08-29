@@ -55,7 +55,7 @@ export default function AdminDashboard() {
   const [snapshotAnalytics, setSnapshotAnalytics] = useState<any>(null);
   const [systemAnalytics, setSystemAnalytics] = useState<any>(null);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
-  const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('7d');
+  const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('24h');
   
   // Activity feed filtering
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
         api.get('/debug/stats'),
         api.get('/debug/users'),
         api.get('/debug/snapshots'),
-        api.get(`/debug/analytics/events?limit=100&startTime=${startTime}`)
+        api.get(`/debug/analytics/events?limit=500&startTime=${startTime}`)
       ]);
       
       setAnalytics(statsResponse);
@@ -1476,7 +1476,7 @@ export default function AdminDashboard() {
                   <button
                     onClick={async () => {
                       try {
-                        const response = await api.get('/debug/analytics/events?limit=100');
+                        const response = await api.get('/debug/analytics/events?limit=500');
                         const newWindow = window.open('', '_blank');
                         if (newWindow) {
                           newWindow.document.write(`

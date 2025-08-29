@@ -46,3 +46,6 @@ cwd = "../" # project root
 
 [triggers]
 crons = ["0 4 * * *"]
+
+[observability.logs]
+enabled = true

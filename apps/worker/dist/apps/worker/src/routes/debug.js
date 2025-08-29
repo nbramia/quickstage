@@ -7,22 +7,32 @@ export async function handleDebugAnalyticsEvents(c) {
         return c.json({ error: 'Superadmin access required' }, 403);
     }
     try {
-        const limit = parseInt(c.req.query('limit') || '100');
+        const limit = parseInt(c.req.query('limit') || '500'); // Increase default limit
         const cursor = c.req.query('cursor');
         const startTime = c.req.query('startTime') ? parseInt(c.req.query('startTime')) : undefined;
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Requested limit: ${limit}`);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: KV.list() limit will be: ${Math.min(limit, 1000)}`);
         const list = await c.env.KV_ANALYTICS.list({
             prefix: 'event:',
             cursor: cursor || undefined,
             limit: Math.min(limit, 1000) // Cap at 1000 for safety
         });
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Found ${list.keys.length} keys in KV`);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: First few keys:`, list.keys.slice(0, 5).map((k) => k.name));
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Last few keys:`, list.keys.slice(-5).map((k) => k.name));
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: StartTime filter: ${startTime} (${startTime ? new Date(startTime).toISOString() : 'none'})`);
         const events = [];
+        let processedCount = 0;
+        let skippedByTime = 0;
         for (const key of list.keys) {
             if (key.name.startsWith('event:')) {
                 const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
                 if (eventRaw) {
                     const event = JSON.parse(eventRaw);
+                    processedCount++;
                     // Filter by startTime if provided
                     if (startTime && event.timestamp < startTime) {
+                        skippedByTime++;
                         continue; // Skip events older than startTime
                     }
                     // Normalize event fields for frontend compatibility
@@ -54,11 +64,24 @@ export async function handleDebugAnalyticsEvents(c) {
         }
         // Sort by timestamp descending (newest first)
         events.sort((a, b) => b.timestamp - a.timestamp);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Processed ${processedCount} events, skipped ${skippedByTime} by time filter`);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Returning ${events.length} events after filtering`);
+        if (events.length > 0) {
+            console.log(`🔍 DEBUG ANALYTICS EVENTS: Newest event: ${events[0].id} at ${new Date(events[0].timestamp).toISOString()}`);
+            console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest event: ${events[events.length - 1].id} at ${new Date(events[events.length - 1].timestamp).toISOString()}`);
+        }
         return c.json({
             events,
             cursor: list.cursor,
             truncated: list.list_complete === false,
-            total: events.length
+            total: events.length,
+            debug: {
+                totalKeysFound: list.keys.length,
+                processedEvents: processedCount,
+                skippedByTimeFilter: skippedByTime,
+                finalEventCount: events.length,
+                startTimeFilter: startTime ? new Date(startTime).toISOString() : null
+            }
         });
     }
     catch (error) {

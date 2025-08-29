@@ -1115,11 +1115,13 @@ app.get('/api/extensions/download', async (c: any) => {
     console.log(`VSIX download authorized for user ${uid} (${getSubscriptionDisplayStatus(user)})`);
     
     // Track analytics event
+    console.log(`🎯 EXTENSION DOWNLOAD: Starting analytics tracking for user ${uid}`);
     const analytics = getAnalyticsManager(c);
     await analytics.trackEvent(uid, 'extension_downloaded', { 
       version: getExtensionVersion().version,
       filename: filename
     });
+    console.log(`✅ EXTENSION DOWNLOAD: Analytics tracking completed for user ${uid}`);
     
     return new Response(vsixData, { headers });
     
@@ -1194,11 +1196,13 @@ app.get('/extensions/download', async (c: any) => {
     headers.set('Expires', '0');
     
     // Track analytics event
+    console.log(`🎯 EXTENSION DOWNLOAD (alt route): Starting analytics tracking for user ${uid}`);
     const analytics = getAnalyticsManager(c);
     await analytics.trackEvent(uid, 'extension_downloaded', { 
       version: versionInfo.version,
       filename: filename
     });
+    console.log(`✅ EXTENSION DOWNLOAD (alt route): Analytics tracking completed for user ${uid}`);
     
     return new Response(vsixData, { headers });
     
@@ -1215,8 +1219,53 @@ app.post('/comments/:snapshotId', handlePostSnapshotCommentAlt);
 
 // Analytics tracking endpoint
 app.post('/analytics/track', async (c: any) => {
-  const { handleAnalyticsTrack } = await import('./routes/analytics');
-  return handleAnalyticsTrack(c);
+  console.log('🔥🔥🔥 ANALYTICS ENDPOINT HIT');
+  console.log('Method:', c.req.method);
+  console.log('URL:', c.req.url);
+  
+  try {
+    console.log('🔥 Step 1: Reading request body...');
+    const body = await c.req.json();
+    console.log('🔥 Step 1 SUCCESS: Body =', JSON.stringify(body));
+    
+    console.log('🔥 Step 2: Importing analytics handler...');
+    const { handleAnalyticsTrack } = await import('./routes/analytics');
+    console.log('🔥 Step 2 SUCCESS: Handler imported');
+    
+    console.log('🔥 Step 3: Calling analytics handler...');
+    const result = await handleAnalyticsTrack(c);
+    console.log('🔥 Step 3 SUCCESS: Handler completed, returning result');
+    return result;
+  } catch (error: any) {
+    console.error('🔥🔥🔥 ANALYTICS ENDPOINT ERROR:', error);
+    console.error('🔥 Error message:', error.message);
+    console.error('🔥 Error stack:', error.stack);
+    console.error('🔥 Error name:', error.name);
+    return c.json({ 
+      error: 'Analytics endpoint failed', 
+      details: error.message,
+      name: error.name,
+      stack: error.stack 
+    }, 500);
+  }
+});
+
+// Simple analytics test endpoint
+app.post('/analytics/test', async (c: any) => {
+  try {
+    console.log('🔧 SIMPLE ANALYTICS TEST');
+    const body = await c.req.json();
+    console.log('🔧 Request body:', JSON.stringify(body));
+    
+    return c.json({ 
+      success: true, 
+      message: 'Simple test passed',
+      receivedData: body 
+    });
+  } catch (error: any) {
+    console.error('🔧 SIMPLE TEST ERROR:', error);
+    return c.json({ error: 'Simple test failed', details: error.message }, 500);
+  }
 });
 
 // Original web app serving (keep as primary)
@@ -2080,4 +2129,126 @@ app.get('/debug/health', async (c: any) => {
   }
 });
 
+// Test analytics endpoint (for debugging)
+app.get('/debug/test-analytics', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  try {
+    console.log('🔧 DEBUG: Testing analytics manually...');
+    
+    const analytics = getAnalyticsManager(c);
+    const testUserId = 'test_analytics_' + Date.now();
+    
+    // Track a test extension download event
+    console.log(`🔧 DEBUG: Tracking test extension_downloaded event for ${testUserId}`);
+    await analytics.trackEvent(testUserId, 'extension_downloaded', {
+      version: 'test-1.0.0',
+      filename: 'test-quickstage.vsix',
+      testEvent: true,
+      timestamp: Date.now()
+    });
+    console.log('🔧 DEBUG: Test event tracking completed');
+    
+    // Try to retrieve recent events to see if it was stored
+    console.log('🔧 DEBUG: Attempting to retrieve recent events...');
+    const recentEvents = await c.env.KV_ANALYTICS.list({ prefix: 'event:', limit: 10 });
+    console.log(`🔧 DEBUG: Found ${recentEvents.keys.length} recent event keys`);
+    
+    const events = [];
+    for (const key of recentEvents.keys) {
+      const eventData = await c.env.KV_ANALYTICS.get(key.name);
+      if (eventData) {
+        const event = JSON.parse(eventData);
+        events.push({
+          id: event.id,
+          type: event.eventType,
+          userId: event.userId,
+          timestamp: event.timestamp,
+          isTestEvent: event.eventData?.testEvent || false
+        });
+      }
+    }
+    
+    const testEvents = events.filter(e => e.isTestEvent);
+    console.log(`🔧 DEBUG: Found ${testEvents.length} test events`);
+    
+    return c.json({
+      message: 'Analytics test completed',
+      testUserId,
+      totalRecentEvents: events.length,
+      testEventsFound: testEvents.length,
+      events: events.slice(0, 5), // Return first 5 events
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error('🔧 DEBUG: Analytics test failed:', error);
+    return c.json({ 
+      error: 'Analytics test failed', 
+      message: error.message,
+      stack: error.stack 
+    }, 500);
+  }
+});
+
+// Debug analytics events without time filter
+app.get('/debug/analytics/events/all', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  
+  try {
+    console.log('🔧 DEBUG: Fetching ALL analytics events (no time filter)...');
+    
+    const limit = parseInt(c.req.query('limit') || '20');
+    
+    const list = await c.env.KV_ANALYTICS.list({ 
+      prefix: 'event:', 
+      limit: Math.min(limit, 100)
+    });
+    
+    console.log(`🔧 DEBUG: Found ${list.keys.length} event keys in KV`);
+    
+    const events = [];
+    for (const key of list.keys) {
+      if (key.name.startsWith('event:')) {
+        const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+        if (eventRaw) {
+          const event = JSON.parse(eventRaw);
+          console.log(`🔧 DEBUG: Event ${event.id}: ${event.eventType} at ${new Date(event.timestamp).toISOString()}`);
+          
+          events.push({
+            id: event.id,
+            type: event.eventType,
+            userId: event.userId,
+            timestamp: event.timestamp,
+            page: event.eventData?.page || 'unknown',
+            eventData: event.eventData,
+            timestampISO: new Date(event.timestamp).toISOString()
+          });
+        }
+      }
+    }
+    
+    // Sort by timestamp descending
+    events.sort((a, b) => b.timestamp - a.timestamp);
+    
+    console.log(`🔧 DEBUG: Returning ${events.length} events`);
+    
+    return c.json({
+      message: `Found ${events.length} total events`,
+      events,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error: any) {
+    console.error('🔧 DEBUG: Failed to fetch all events:', error);
+    return c.json({ 
+      error: 'Failed to fetch events', 
+      message: error.message 
+    }, 500);
+  }
+});
 
