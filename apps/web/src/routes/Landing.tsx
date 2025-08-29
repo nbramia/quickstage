@@ -89,11 +89,8 @@ export default function Landing() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Rotate text every 2 seconds with fade-out effect
+  // Rotate text every 1.5 seconds with fade-out effect
   useEffect(() => {
-    // Reset opacity to 1 when text changes
-    setTextOpacity(1);
-    
     const interval = setInterval(() => {
       setCurrentTextIndex((prevIndex) => {
         const nextIndex = prevIndex + 1;
@@ -105,18 +102,23 @@ export default function Landing() {
         }
         return nextIndex;
       });
-    }, 2000); // Changed to 2 seconds total display time
+    }, 1500); // 1.5 seconds total display time
 
-    // Start fade out 1.5 seconds before text change
+    // Start fade out 1.2 seconds before text change
     const fadeOutTimer = setTimeout(() => {
       setTextOpacity(0);
-    }, 500); // Start fading after 0.5 seconds (so it fades over 1.5 seconds)
+    }, 300); // Start fading after 0.3 seconds (so it fades over 1.2 seconds)
 
     return () => {
       clearInterval(interval);
       clearTimeout(fadeOutTimer);
     };
-  }, [currentTextIndex, rotatingTexts.length]);
+  }, [rotatingTexts.length]);
+
+  // Reset opacity when text index changes
+  useEffect(() => {
+    setTextOpacity(1);
+  }, [currentTextIndex]);
 
   // Handle mouse movement and create star particles
   useEffect(() => {
@@ -263,8 +265,11 @@ export default function Landing() {
               in One Click
             </h1>
             {showRotatingText && (
-              <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed transition-opacity duration-1500" 
-                 style={{ opacity: textOpacity }}
+              <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed" 
+                 style={{ 
+                   opacity: textOpacity,
+                   transition: 'opacity 1.2s ease-out'
+                 }}
                  dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}>
               </p>
             )}

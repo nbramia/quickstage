@@ -26,6 +26,7 @@ interface User {
   subscriptionDisplay?: string;
   trialEndsAt?: number;
   nextBillingDate?: number;
+  nextBillingAmount?: number;
   canAccessPro?: boolean;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;

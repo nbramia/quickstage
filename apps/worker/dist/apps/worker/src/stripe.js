@@ -50,12 +50,27 @@ export async function handleCheckoutSessionCompleted(c, session, analytics) {
         user.subscription.stripeSubscriptionId = session.subscription;
         user.stripeSubscriptionId = session.subscription;
     }
-    // Set user to trial status when checkout is completed - update both new and legacy fields
-    user.subscription.status = 'trial';
-    user.subscriptionStatus = 'trial';
-    user.plan = 'pro';
-    user.subscription.trialEnd = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-    user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+    // Check if this was a $0 checkout (100% discount applied)
+    const wasFreeCheckout = session.amount_total === 0;
+    if (wasFreeCheckout) {
+        // If checkout was $0 due to coupon, give them full pro access
+        user.subscription.status = 'active';
+        user.subscriptionStatus = 'active';
+        user.plan = 'pro';
+        // No trial end date for full pro access
+        user.subscription.trialEnd = null;
+        user.trialEndsAt = null;
+        console.log(`User ${uid} received full pro access due to $0 checkout (100% discount)`);
+    }
+    else {
+        // Normal trial flow
+        user.subscription.status = 'trial';
+        user.subscriptionStatus = 'trial';
+        user.plan = 'pro';
+        user.subscription.trialEnd = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+        user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+        console.log(`User ${uid} started 7-day trial`);
+    }
     if (!user.subscriptionStartedAt) {
         user.subscriptionStartedAt = Date.now();
     }

@@ -372,13 +372,18 @@ export function Settings() {
               {/* Next Billing Date - Only show for active plans */}
               {((user.subscription?.status || user.subscriptionStatus) === 'active' || (user.subscription?.status || user.subscriptionStatus) === 'trial') && user.nextBillingDate && (
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Next Billing Date</label>
+                  <label className="block text-sm font-medium text-gray-700">Next Billing</label>
                   <div className="bg-green-50 rounded-lg px-4 py-3 border border-green-100">
                     <p className="text-green-900 font-medium">{new Date(user.nextBillingDate).toLocaleDateString('en-US', { 
                       year: 'numeric', 
                       month: 'long', 
                       day: 'numeric' 
                     })}</p>
+                    {user.nextBillingAmount !== null && user.nextBillingAmount !== undefined && (
+                      <p className="text-green-700 text-sm mt-1">
+                        Amount: {user.nextBillingAmount === 0 ? 'Free' : `$${(user.nextBillingAmount / 100).toFixed(2)}`}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -434,9 +439,12 @@ export function Settings() {
                     </p>
                   )}
                   {user.nextBillingDate && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}
-                    </p>
+                    <div className="text-sm text-gray-500 mt-2">
+                      <p>Next billing: {new Date(user.nextBillingDate).toLocaleDateString()}</p>
+                      {user.nextBillingAmount !== null && user.nextBillingAmount !== undefined && (
+                        <p>Amount: {user.nextBillingAmount === 0 ? 'Free' : `$${(user.nextBillingAmount / 100).toFixed(2)}`}</p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-3">
@@ -464,9 +472,12 @@ export function Settings() {
                     You have full access to all Pro features: unlimited snapshots, 100MB per snapshot, and up to 90-day expiry times.
                   </p>
                   {user.nextBillingDate && (
-                    <p className="text-sm text-gray-500 mt-2">
-                      Next billing date: {new Date(user.nextBillingDate).toLocaleDateString()}
-                    </p>
+                    <div className="text-sm text-gray-500 mt-2">
+                      <p>Next billing: {new Date(user.nextBillingDate).toLocaleDateString()}</p>
+                      {user.nextBillingAmount !== null && user.nextBillingAmount !== undefined && (
+                        <p>Amount: {user.nextBillingAmount === 0 ? 'Free' : `$${(user.nextBillingAmount / 100).toFixed(2)}`}</p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="flex gap-3">
