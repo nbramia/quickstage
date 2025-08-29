@@ -4,6 +4,7 @@ import { signSession } from '@quickstage/shared/cookies';
 import { getUidFromSession } from '../auth';
 import { getUserByName } from '../user';
 import { getAnalyticsManager } from '../worker-utils';
+import Stripe from 'stripe';
 // Authentication route handlers
 export async function handleRegister(c) {
     const { email, password, name } = await c.req.json();
@@ -236,6 +237,7 @@ export async function handleMe(c) {
     let subscriptionDisplay = 'Free';
     let trialEndsAt = null;
     let nextBillingDate = null;
+    let nextBillingAmount = null;
     let canAccessPro = false;
     console.log(`/me endpoint - User subscription status: "${subscriptionStatus}" (type: ${typeof subscriptionStatus})`);
     console.log(`/me endpoint - User plan: "${user.plan}" (type: ${typeof user.plan})`);
@@ -259,14 +261,56 @@ export async function handleMe(c) {
         else if (subscriptionStatus === 'active') {
             subscriptionDisplay = 'Pro';
             canAccessPro = true;
-            // Calculate next billing date (30 days from last payment or subscription start)
-            const lastPaymentAt = user.subscription?.lastPaymentAt || user.lastPaymentAt;
-            const subscriptionStartedAt = user.subscription?.currentPeriodStart || user.subscriptionStartedAt;
-            if (lastPaymentAt) {
-                nextBillingDate = lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
+            // If user has a Stripe subscription ID, get billing details from Stripe
+            const stripeSubscriptionId = user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId;
+            if (stripeSubscriptionId) {
+                try {
+                    const stripe = new Stripe(c.env.STRIPE_SECRET_KEY);
+                    const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+                    if (subscription.current_period_end) {
+                        nextBillingDate = subscription.current_period_end * 1000; // Convert to milliseconds
+                        // Get the next billing amount from the subscription
+                        if (subscription.items && subscription.items.data.length > 0) {
+                            const item = subscription.items.data[0];
+                            if (item && item.price && item.price.unit_amount) {
+                                nextBillingAmount = item.price.unit_amount; // Amount in cents
+                                // If there's a discount/coupon applied, calculate the discounted amount
+                                if (subscription.discount && subscription.discount.coupon) {
+                                    const coupon = subscription.discount.coupon;
+                                    if (coupon.percent_off && nextBillingAmount !== null) {
+                                        nextBillingAmount = nextBillingAmount * (100 - coupon.percent_off) / 100;
+                                    }
+                                    else if (coupon.amount_off && nextBillingAmount !== null) {
+                                        nextBillingAmount = Math.max(0, nextBillingAmount - coupon.amount_off);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (error) {
+                    console.error(`Failed to fetch Stripe subscription details for ${uid}:`, error);
+                    // Fallback to legacy calculation
+                    const lastPaymentAt = user.subscription?.lastPaymentAt || user.lastPaymentAt;
+                    const subscriptionStartedAt = user.subscription?.currentPeriodStart || user.subscriptionStartedAt;
+                    if (lastPaymentAt) {
+                        nextBillingDate = lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
+                    }
+                    else if (subscriptionStartedAt) {
+                        nextBillingDate = subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
+                    }
+                }
             }
-            else if (subscriptionStartedAt) {
-                nextBillingDate = subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
+            else {
+                // Fallback to legacy calculation if no Stripe subscription ID
+                const lastPaymentAt = user.subscription?.lastPaymentAt || user.lastPaymentAt;
+                const subscriptionStartedAt = user.subscription?.currentPeriodStart || user.subscriptionStartedAt;
+                if (lastPaymentAt) {
+                    nextBillingDate = lastPaymentAt + (30 * 24 * 60 * 60 * 1000);
+                }
+                else if (subscriptionStartedAt) {
+                    nextBillingDate = subscriptionStartedAt + (30 * 24 * 60 * 60 * 1000);
+                }
             }
         }
         else if (subscriptionStatus === 'cancelled') {
@@ -299,6 +343,7 @@ export async function handleMe(c) {
         subscriptionDisplay: subscriptionDisplay,
         trialEndsAt: trialEndsAt,
         nextBillingDate: nextBillingDate,
+        nextBillingAmount: nextBillingAmount,
         canAccessPro: canAccessPro,
         stripeCustomerId: user.subscription?.stripeCustomerId || user.stripeCustomerId,
         stripeSubscriptionId: user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId

@@ -335,16 +335,18 @@ export async function handleMe(c: any) {
             // Get the next billing amount from the subscription
             if (subscription.items && subscription.items.data.length > 0) {
               const item = subscription.items.data[0];
-              nextBillingAmount = item.price.unit_amount; // Amount in cents
-            }
-            
-            // If there's a discount/coupon applied, calculate the discounted amount
-            if (subscription.discount && subscription.discount.coupon) {
-              const coupon = subscription.discount.coupon;
-              if (coupon.percent_off) {
-                nextBillingAmount = nextBillingAmount * (100 - coupon.percent_off) / 100;
-              } else if (coupon.amount_off) {
-                nextBillingAmount = Math.max(0, nextBillingAmount - coupon.amount_off);
+              if (item && item.price && item.price.unit_amount) {
+                nextBillingAmount = item.price.unit_amount; // Amount in cents
+                
+                // If there's a discount/coupon applied, calculate the discounted amount
+                if (subscription.discount && subscription.discount.coupon) {
+                  const coupon = subscription.discount.coupon;
+                  if (coupon.percent_off && nextBillingAmount !== null) {
+                    nextBillingAmount = nextBillingAmount * (100 - coupon.percent_off) / 100;
+                  } else if (coupon.amount_off && nextBillingAmount !== null) {
+                    nextBillingAmount = Math.max(0, nextBillingAmount - coupon.amount_off);
+                  }
+                }
               }
             }
           }
