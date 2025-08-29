@@ -1,0 +1,13 @@
+{
+  "outputDir": "dist",
+  "ignore": [
+    "**/*.map",
+    "**/.DS_Store",
+    "**/*.test.*"
+  ],
+  "maxFileSizeMB": 5,
+  "expiryDays": 7,
+  "passwordMode": "auto",
+  "spaFallback": true,
+  "public": false
+}

@@ -9,94 +9,202 @@ export async function handleDebugAnalyticsEvents(c: any) {
   }
   
   try {
-    const limit = parseInt(c.req.query('limit') || '500'); // Increase default limit
-    const cursor = c.req.query('cursor');
+    const requestedLimit = parseInt(c.req.query('limit') || '500');
     const startTime = c.req.query('startTime') ? parseInt(c.req.query('startTime')) : undefined;
+    const fullRetrieval = c.req.query('fullRetrieval') === 'true';
     
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: Requested limit: ${limit}`);
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: KV.list() limit will be: ${Math.min(limit, 1000)}`);
-    
-    const list = await c.env.KV_ANALYTICS.list({ 
-      prefix: 'event:', 
-      cursor: cursor || undefined,
-      limit: Math.min(limit, 1000) // Cap at 1000 for safety
-    });
-    
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: Found ${list.keys.length} keys in KV`);
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: First few keys:`, list.keys.slice(0, 5).map((k: any) => k.name));
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: Last few keys:`, list.keys.slice(-5).map((k: any) => k.name));
+    console.log(`🔍 DEBUG ANALYTICS EVENTS: Requested limit: ${requestedLimit}`);
     console.log(`🔍 DEBUG ANALYTICS EVENTS: StartTime filter: ${startTime} (${startTime ? new Date(startTime).toISOString() : 'none'})`);
+    console.log(`🔍 DEBUG ANALYTICS EVENTS: Full retrieval mode: ${fullRetrieval}`);
     
-    const events = [];
-    let processedCount = 0;
-    let skippedByTime = 0;
+    if (fullRetrieval) {
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Starting full chronological retrieval...`);
+      // Fetch ALL events using cursor-based pagination to ensure chronological order
+      const allEvents = [];
+      let cursor: string | undefined = undefined;
+      let totalKeys = 0;
+      let processedCount = 0;
+      let skippedByTime = 0;
+      let paginationCount = 0;
+      let isComplete = false;
     
-    for (const key of list.keys) {
-      if (key.name.startsWith('event:')) {
-        const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
-        if (eventRaw) {
-          const event = JSON.parse(eventRaw);
-          
-          processedCount++;
-          
-          // Filter by startTime if provided
-          if (startTime && event.timestamp < startTime) {
-            skippedByTime++;
-            continue; // Skip events older than startTime
-          }
-          
-          // Normalize event fields for frontend compatibility
-          const normalizedEvent = {
-            ...event,
-            type: event.eventType || event.type || 'unknown', // Map eventType to type
-            page: event.eventData?.page || event.page, // Extract page from eventData
-            metadata: event.eventData || event.metadata || {} // Extract metadata from eventData
-          };
-          
-          // Enhance event with user details if userId is not 'system' or 'anonymous'
-          if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
-            try {
-              const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
-              if (userRaw) {
-                const user = JSON.parse(userRaw);
-                normalizedEvent.userName = user.name || 'Unknown';
-                normalizedEvent.userEmail = user.email || 'No email';
-              }
-            } catch (userError) {
-              console.error('Failed to fetch user details for event:', userError);
-              normalizedEvent.userName = 'Error loading user';
-              normalizedEvent.userEmail = 'Error loading email';
+    while (!isComplete) {
+      paginationCount++;
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Pagination ${paginationCount}, cursor: ${cursor || 'initial'}`);
+      
+      const listResult: any = await c.env.KV_ANALYTICS.list({ 
+        prefix: 'event:', 
+        cursor: cursor,
+        limit: 1000 // Max KV.list() limit per batch
+      });
+      
+      totalKeys += listResult.keys.length;
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Batch ${paginationCount}: ${listResult.keys.length} keys, complete: ${listResult.list_complete}`);
+      
+      // Process events in this batch
+      for (const key of listResult.keys) {
+        if (key.name.startsWith('event:')) {
+          const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+          if (eventRaw) {
+            const event = JSON.parse(eventRaw);
+            processedCount++;
+            
+            // Filter by startTime if provided (do this early to save memory)
+            if (startTime && event.timestamp < startTime) {
+              skippedByTime++;
+              continue; // Skip events older than startTime
             }
+            
+            // Normalize event fields for frontend compatibility
+            const normalizedEvent = {
+              ...event,
+              type: event.eventType || event.type || 'unknown', // Map eventType to type
+              page: event.eventData?.page || event.page, // Extract page from eventData
+              metadata: event.eventData || event.metadata || {} // Extract metadata from eventData
+            };
+            
+            // Enhance event with user details if userId is not 'system' or 'anonymous'
+            if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
+              try {
+                const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
+                if (userRaw) {
+                  const user = JSON.parse(userRaw);
+                  normalizedEvent.userName = user.name || 'Unknown';
+                  normalizedEvent.userEmail = user.email || 'No email';
+                }
+              } catch (userError) {
+                console.error('Failed to fetch user details for event:', userError);
+                normalizedEvent.userName = 'Error loading user';
+                normalizedEvent.userEmail = 'Error loading email';
+              }
+            }
+            
+            allEvents.push(normalizedEvent);
           }
-          
-          events.push(normalizedEvent);
         }
       }
+      
+      cursor = listResult.cursor;
+      isComplete = listResult.list_complete || !cursor;
     }
     
-    // Sort by timestamp descending (newest first)
-    events.sort((a, b) => b.timestamp - a.timestamp);
-    
+    console.log(`🔍 DEBUG ANALYTICS EVENTS: Fetched ${totalKeys} total keys in ${paginationCount} batches`);
     console.log(`🔍 DEBUG ANALYTICS EVENTS: Processed ${processedCount} events, skipped ${skippedByTime} by time filter`);
-    console.log(`🔍 DEBUG ANALYTICS EVENTS: Returning ${events.length} events after filtering`);
+    console.log(`🔍 DEBUG ANALYTICS EVENTS: Events after filtering: ${allEvents.length}`);
+    
+    // Sort ALL events by timestamp descending (newest first)
+    allEvents.sort((a, b) => b.timestamp - a.timestamp);
+    
+    // Apply the requested limit AFTER sorting chronologically
+    const events = allEvents.slice(0, requestedLimit);
+    
+    console.log(`🔍 DEBUG ANALYTICS EVENTS: Final result: ${events.length} events (limited from ${allEvents.length} total)`);
     if (events.length > 0) {
       console.log(`🔍 DEBUG ANALYTICS EVENTS: Newest event: ${events[0].id} at ${new Date(events[0].timestamp).toISOString()}`);
-      console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest event: ${events[events.length-1].id} at ${new Date(events[events.length-1].timestamp).toISOString()}`);
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest returned event: ${events[events.length-1].id} at ${new Date(events[events.length-1].timestamp).toISOString()}`);
+    }
+    if (allEvents.length > events.length) {
+      const oldestAvailable = allEvents[allEvents.length-1];
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest available event: ${oldestAvailable.id} at ${new Date(oldestAvailable.timestamp).toISOString()}`);
     }
     
-    return c.json({
-      events,
-      cursor: list.cursor,
-      truncated: list.list_complete === false,
-      total: events.length,
-      debug: {
-        totalKeysFound: list.keys.length,
-        processedEvents: processedCount,
-        skippedByTimeFilter: skippedByTime,
-        finalEventCount: events.length,
-        startTimeFilter: startTime ? new Date(startTime).toISOString() : null
+      return c.json({
+        events,
+        cursor: null, // Not applicable with chronological retrieval
+        truncated: allEvents.length > events.length, // True if we had to limit results
+        total: events.length,
+        debug: {
+          totalKeysFound: totalKeys,
+          processedEvents: processedCount,
+          skippedByTimeFilter: skippedByTime,
+          finalEventCount: events.length,
+          availableEventCount: allEvents.length,
+          paginationBatches: paginationCount,
+          chronologicalRetrieval: true,
+          startTimeFilter: startTime ? new Date(startTime).toISOString() : null
+        }
+      });
+    } else {
+      // Fast path: Limited KV.list() for regular dashboard loads
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Using fast retrieval (limited to ${requestedLimit} events)`);
+      
+      const list = await c.env.KV_ANALYTICS.list({ 
+        prefix: 'event:', 
+        limit: Math.min(requestedLimit, 1000) // Cap at 1000 for safety
+      });
+      
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Found ${list.keys.length} keys in KV (fast mode)`);
+      
+      const events = [];
+      let processedCount = 0;
+      let skippedByTime = 0;
+      
+      for (const key of list.keys) {
+        if (key.name.startsWith('event:')) {
+          const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+          if (eventRaw) {
+            const event = JSON.parse(eventRaw);
+            processedCount++;
+            
+            // Filter by startTime if provided
+            if (startTime && event.timestamp < startTime) {
+              skippedByTime++;
+              continue; // Skip events older than startTime
+            }
+            
+            // Normalize event fields for frontend compatibility
+            const normalizedEvent = {
+              ...event,
+              type: event.eventType || event.type || 'unknown', // Map eventType to type
+              page: event.eventData?.page || event.page, // Extract page from eventData
+              metadata: event.eventData || event.metadata || {} // Extract metadata from eventData
+            };
+            
+            // Enhance event with user details if userId is not 'system' or 'anonymous'
+            if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
+              try {
+                const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
+                if (userRaw) {
+                  const user = JSON.parse(userRaw);
+                  normalizedEvent.userName = user.name || 'Unknown';
+                  normalizedEvent.userEmail = user.email || 'No email';
+                }
+              } catch (userError) {
+                console.error('Failed to fetch user details for event:', userError);
+                normalizedEvent.userName = 'Error loading user';
+                normalizedEvent.userEmail = 'Error loading email';
+              }
+            }
+            
+            events.push(normalizedEvent);
+          }
+        }
       }
-    });
+      
+      // Sort by timestamp descending (newest first)
+      events.sort((a, b) => b.timestamp - a.timestamp);
+      
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Fast mode result: ${events.length} events`);
+      if (events.length > 0) {
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Newest event: ${events[0].id} at ${new Date(events[0].timestamp).toISOString()}`);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest returned event: ${events[events.length-1].id} at ${new Date(events[events.length-1].timestamp).toISOString()}`);
+      }
+      
+      return c.json({
+        events,
+        cursor: list.cursor,
+        truncated: list.list_complete === false,
+        total: events.length,
+        debug: {
+          totalKeysFound: list.keys.length,
+          processedEvents: processedCount,
+          skippedByTimeFilter: skippedByTime,
+          finalEventCount: events.length,
+          chronologicalRetrieval: false,
+          startTimeFilter: startTime ? new Date(startTime).toISOString() : null
+        }
+      });
+    }
   } catch (error: any) {
     console.error('Debug analytics events error:', error);
     

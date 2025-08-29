@@ -295,11 +295,8 @@ export default function Dashboard() {
   const handleShowPATModal = async () => {
     try {
       // Load existing PATs
-      const response = await fetch(`${config.API_BASE_URL}/tokens/list`, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setExistingPATs(data.pats || []);
-      }
+      const response = await api.get('/tokens/list');
+      setExistingPATs(response.pats || []);
       setShowPATModal(true);
     } catch (error) {
       console.error('Failed to load PATs:', error);
@@ -310,24 +307,11 @@ export default function Dashboard() {
   const handleGeneratePAT = async () => {
     setIsGeneratingPAT(true);
     try {
-      const response = await fetch('/tokens/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setNewPAT(data.token);
-        // Reload existing PATs
-        const listResponse = await fetch('/tokens/list', { credentials: 'include' });
-        if (listResponse.ok) {
-          const listData = await listResponse.json();
-          setExistingPATs(listData.pats || []);
-        }
-      } else {
-        console.error('Failed to generate PAT');
-      }
+      const data = await api.post('/tokens/create', {});
+      setNewPAT(data.token);
+      // Reload existing PATs
+      const listData = await api.get('/tokens/list');
+      setExistingPATs(listData.pats || []);
     } catch (error) {
       console.error('Failed to generate PAT:', error);
     } finally {
@@ -337,19 +321,10 @@ export default function Dashboard() {
 
   const handleRevokePAT = async (patId: string) => {
     try {
-      const response = await fetch(`/tokens/${patId}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        // Reload existing PATs
-        const listResponse = await fetch('/tokens/list', { credentials: 'include' });
-        if (listResponse.ok) {
-          const listData = await listResponse.json();
-          setExistingPATs(listData.pats || []);
-        }
-      }
+      await api.delete(`/tokens/${patId}`);
+      // Reload existing PATs
+      const listData = await api.get('/tokens/list');
+      setExistingPATs(listData.pats || []);
     } catch (error) {
       console.error('Failed to revoke PAT:', error);
     }
@@ -979,7 +954,42 @@ export default function Dashboard() {
                   </div>
 
                   <div>
-                    <h4 className="font-medium text-gray-900 mb-2">Step 3: Use QuickStage</h4>
+                    <h4 className="font-medium text-gray-900 mb-2">Step 3: Configure Authentication Token</h4>
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg space-y-3">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-sm font-medium">1</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Click the <strong>"Tokens"</strong> button above to generate a Personal Access Token (PAT)</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-sm font-medium">2</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Copy the generated token (it starts with <code className="bg-gray-200 px-1 rounded text-xs">qs_pat_</code>)</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-sm font-medium">3</div>
+                        <div>
+                          <p className="text-sm text-gray-700">In VS Code/Cursor, open Command Palette and type <code className="bg-gray-200 px-1 rounded text-xs">QuickStage: Set Token</code></p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-6 h-6 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-sm font-medium">4</div>
+                        <div>
+                          <p className="text-sm text-gray-700">Paste your token when prompted and press Enter</p>
+                        </div>
+                      </div>
+                      <div className="bg-amber-100 p-3 rounded-md">
+                        <p className="text-xs text-amber-800">
+                          <strong>⚠️ Important:</strong> Keep your token secure! It provides access to your QuickStage account.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-2">Step 4: Use QuickStage</h4>
                     <div className="bg-gray-50 p-4 rounded-lg space-y-3">
                       <div className="flex items-start space-x-3">
                         <div className="flex-shrink-0 w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm font-medium">1</div>

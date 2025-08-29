@@ -57,6 +57,92 @@ export default function AdminDashboard() {
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('24h');
   
+  // Sorting state for user table
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Sort function
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort users based on current sort settings
+  const sortedUsers = React.useMemo(() => {
+    if (!sortField || !users.length) return users;
+
+    return [...users].sort((a, b) => {
+      let aValue, bValue;
+
+      switch (sortField) {
+        case 'name':
+          aValue = a.name?.toLowerCase() || '';
+          bValue = b.name?.toLowerCase() || '';
+          break;
+        case 'email':
+          aValue = a.email?.toLowerCase() || '';
+          bValue = b.email?.toLowerCase() || '';
+          break;
+        case 'status':
+          aValue = a.status || '';
+          bValue = b.status || '';
+          break;
+        case 'plan':
+          aValue = a.plan || '';
+          bValue = b.plan || '';
+          break;
+        case 'createdAt':
+          aValue = new Date(a.createdAt || 0).getTime();
+          bValue = new Date(b.createdAt || 0).getTime();
+          break;
+        case 'lastLoginAt':
+          aValue = new Date(a.lastLoginAt || 0).getTime();
+          bValue = new Date(b.lastLoginAt || 0).getTime();
+          break;
+        case 'totalSnapshots':
+          aValue = a.totalSnapshots || 0;
+          bValue = b.totalSnapshots || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [users, sortField, sortDirection]);
+
+  // Sortable header component
+  const SortableHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
+    <th 
+      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center space-x-1">
+        <span>{children}</span>
+        {sortField === field && (
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            {sortDirection === 'asc' ? (
+              <path d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" />
+            ) : (
+              <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+            )}
+          </svg>
+        )}
+        {sortField !== field && (
+          <svg className="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+          </svg>
+        )}
+      </div>
+    </th>
+  );
+  
   // Activity feed filtering
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
@@ -857,31 +943,19 @@ export default function AdminDashboard() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Account Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Subscription
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    First Login
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Login
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Snapshots
-                  </th>
+                  <SortableHeader field="name">User</SortableHeader>
+                  <SortableHeader field="status">Account Status</SortableHeader>
+                  <SortableHeader field="plan">Subscription</SortableHeader>
+                  <SortableHeader field="createdAt">First Login</SortableHeader>
+                  <SortableHeader field="lastLoginAt">Last Login</SortableHeader>
+                  <SortableHeader field="totalSnapshots">Snapshots</SortableHeader>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
+                {sortedUsers.map((user) => (
                   <tr key={user.uid}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
@@ -1161,8 +1235,57 @@ export default function AdminDashboard() {
             {/* Recent Activity Feed */}
             <div className="bg-white shadow overflow-hidden sm:rounded-lg">
               <div className="px-4 py-5 sm:px-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">📋 Recent Activity Feed</h3>
-                <p className="mt-1 max-w-2xl text-sm text-gray-500">Live feed of system events and user activities</p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-lg leading-6 font-medium text-gray-900 font-inconsolata">📋 Recent Activity Feed</h3>
+                    <p className="mt-1 max-w-2xl text-sm text-gray-500">Live feed of system events and user activities</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setLoading(true);
+                        const now = Date.now();
+                        let startTime;
+                        switch (analyticsTimeframe) {
+                          case '24h':
+                            startTime = now - (24 * 60 * 60 * 1000);
+                            break;
+                          case '7d':
+                            startTime = now - (7 * 24 * 60 * 60 * 1000);
+                            break;
+                          case '30d':
+                            startTime = now - (30 * 24 * 60 * 60 * 1000);
+                            break;
+                          default:
+                            startTime = now - (24 * 60 * 60 * 1000); // Default to 24h
+                        }
+                        const response = await api.get(`/debug/analytics/events?limit=500&startTime=${startTime}&fullRetrieval=true`);
+                        const events = response?.events || [];
+                        setRecentEvents(events);
+                      } catch (error) {
+                        console.error('Failed to refresh activity feed:', error);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading}
+                    className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-gray-300 border-t-gray-900 rounded-full"></div>
+                        Refreshing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh All
+                      </>
+                    )}
+                  </button>
+                </div>
                 
                 {/* Activity Feed Filters */}
                 <div className="mt-4 space-y-4">
