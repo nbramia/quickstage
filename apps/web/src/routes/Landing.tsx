@@ -24,14 +24,15 @@ export default function Landing() {
   // Rotating text options
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [showRotatingText, setShowRotatingText] = useState(true);
-  const [textOpacity, setTextOpacity] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
   const rotatingTexts = [
     "No <strong>DevOps</strong>",
     "No <strong>GitHub</strong>", 
     "No finnicky <strong>envs</strong>",
     "No deployment <strong>pipelines</strong>",
-    "No <strong>configs</strong>"
+    "No <strong>configs</strong>",
+    "No <strong>Kubernetes</strong>"
   ];
 
   const handleGetStarted = () => {
@@ -105,63 +106,24 @@ export default function Landing() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Rotate text every 2 seconds
+  // Simple rotation without fading
   useEffect(() => {
+    if (!showRotatingText) return;
+    
     const interval = setInterval(() => {
-      setCurrentTextIndex((prevIndex) => {
-        const nextIndex = prevIndex + 1;
+      setCurrentTextIndex(prev => {
+        const nextIndex = prev + 1;
         if (nextIndex >= rotatingTexts.length) {
-          // Stop the rotation and hide the text when we reach the end
           setShowRotatingText(false);
           clearInterval(interval);
-          return prevIndex; // Keep the last index
+          return prev;
         }
         return nextIndex;
       });
-    }, 2000); // 2 seconds total display time
-
-    return () => {
-      clearInterval(interval);
-    };
+    }, 1200); // Change text every 1.2 seconds
+    
+    return () => clearInterval(interval);
   }, [rotatingTexts.length]);
-
-  // Handle opacity and fade-out for each text change
-  useEffect(() => {
-    if (isMobile) {
-      // On mobile: no opacity changes at all - let text change naturally
-      // This prevents any fade-in/fade-out effects
-      return;
-    } else {
-      // Desktop: manipulate transitions for instant appearance
-      const textElement = document.querySelector('[data-rotating-text]') as HTMLElement;
-      if (textElement) {
-        // Force disable transition for instant appearance
-        textElement.style.transition = 'none';
-        textElement.style.webkitTransition = 'none'; // Safari/iOS support
-        // Force a reflow to ensure the transition is disabled
-        textElement.offsetHeight;
-        setTextOpacity(1);
-        // Re-enable transition after a brief moment
-        setTimeout(() => {
-          if (textElement) {
-            textElement.style.transition = 'opacity 1.75s ease-out';
-            textElement.style.webkitTransition = 'opacity 1.75s ease-out'; // Safari/iOS support
-          }
-        }, 10);
-      } else {
-        setTextOpacity(1);
-      }
-    }
-    
-    // Start fade out 1.75 seconds before text change (at 0.25 seconds)
-    const fadeOutTimer = setTimeout(() => {
-      setTextOpacity(0);
-    }, 250); // Start fading after 0.25 seconds
-    
-    return () => {
-      clearTimeout(fadeOutTimer);
-    };
-  }, [currentTextIndex]);
 
   // Handle mouse movement and create star particles
   useEffect(() => {
@@ -308,18 +270,10 @@ export default function Landing() {
               in One Click
             </h1>
             {showRotatingText && (
-              <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed" 
-                 data-rotating-text
-                 style={isMobile ? {} : { 
-                   opacity: textOpacity,
-                   transition: 'opacity 1.75s ease-out',
-                   WebkitTransition: 'opacity 1.75s ease-out', // Safari/iOS support
-                   willChange: 'opacity', // Optimize for desktop
-                   backfaceVisibility: 'hidden', // Prevent flickering
-                   transform: 'translateZ(0)' // Force hardware acceleration
-                 }}
-                 dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}>
-              </p>
+              <p 
+                className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}
+              />
             )}
             <p className="text-xl md:text-2xl text-gray-300 mb-10 leading-relaxed">
               Just your prototype, online in seconds.
@@ -331,12 +285,15 @@ export default function Landing() {
               >
                 Start Staging Free
               </button>
-              <a
-                href="#how-it-works"
-                className="border-2 border-gray-600 hover:border-gray-500 text-gray-100 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 bg-gray-800/50 hover:bg-gray-700/50 shadow-lg hover:shadow-xl backdrop-blur-sm font-poppins"
+              <button
+                onClick={() => setShowVideoModal(true)}
+                className="border-1 border-gray-600 hover:border-gray-500 text-gray-100 font-semibold py-4 px-10 rounded-xl text-lg transition-all duration-300 bg-gray-800/50 hover:bg-gray-700/50 shadow-lg hover:shadow-xl backdrop-blur-sm font-poppins flex items-center justify-center gap-3"
               >
-                How It Works
-              </a>
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Quick Video Explainer
+              </button>
             </div>
           </div>
         </div>
@@ -349,7 +306,16 @@ export default function Landing() {
             <h2 className="text-5xl md:text-6xl font-bold text-white mb-6 font-inconsolata">
               How QuickStage Works
             </h2>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto font-poppins">
+            <button
+              onClick={() => setShowVideoModal(true)}
+              className="text-xl text-gray-300 hover:text-blue-400 transition-colors duration-200 flex items-center justify-center gap-2 mx-auto font-poppins mb-4"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              Quick Video Explainer
+            </button>
+            <p className="text-lg text-gray-400 max-w-2xl mx-auto font-poppins">
               Three quick steps to a shareable prototype
             </p>
           </div>
@@ -512,6 +478,33 @@ export default function Landing() {
           </button>
         </div>
       </section>
+
+      {/* Video Modal */}
+      {showVideoModal && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="relative max-w-4xl w-full">
+            {/* Close button */}
+            <button
+              onClick={() => setShowVideoModal(false)}
+              className="absolute -top-12 right-0 text-white hover:text-gray-300 text-xl font-bold z-10 bg-black/50 rounded-full w-10 h-10 flex items-center justify-center transition-colors duration-200"
+            >
+              ✕
+            </button>
+            
+            {/* Video container with responsive aspect ratio */}
+            <div className="relative bg-black rounded-lg overflow-hidden shadow-2xl" style={{paddingBottom: '56.25%'}}>
+              <iframe 
+                src="https://player.vimeo.com/video/1114461563?badge=0&autopause=0&player_id=0&app_id=58479&autoplay=1&dnt=1" 
+                frameBorder="0" 
+                allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" 
+                referrerPolicy="strict-origin-when-cross-origin" 
+                style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%'}} 
+                title="QuickStage - Shortcut the development cycle"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="bg-black text-white py-12 font-poppins">
