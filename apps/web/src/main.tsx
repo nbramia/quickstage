@@ -8,6 +8,7 @@ import Landing from './routes/Landing'
 import Login from './routes/Login'
 import AdminDashboard from './routes/AdminDashboard'
 import { PricingPage } from './routes/PricingPage'
+import Documentation from './routes/Documentation'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import './index.css'
 
@@ -42,6 +43,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/docs" element={<Documentation />} />
           
           {/* Protected routes */}
           <Route path="/dashboard" element={

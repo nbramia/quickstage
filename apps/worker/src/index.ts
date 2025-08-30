@@ -30,6 +30,9 @@ import * as TokenRoutes from './routes/tokens';
 import * as ExtensionRoutes from './routes/extensions';
 import * as DebugRoutes from './routes/debug';
 import * as WebhookRoutes from './routes/webhooks';
+import * as ProjectRoutes from './routes/projects';
+import * as ReviewRoutes from './routes/reviews';
+import * as EnhancedCommentRoutes from './routes/enhanced-comments';
 import { 
   getUserByName, 
   ensureUserByName, 
@@ -453,16 +456,29 @@ app.get('/api/snapshots/list', async (c: any) => {
     const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
     if (metaRaw) {
       try {
-        const meta = JSON.parse(metaRaw);
+        const meta = JSON.parse(metaRaw) as SnapshotRecord;
         // Always include the snapshot, let the frontend handle filtering
         snapshots.push({
           id: meta.id,
           name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
+          projectId: meta.projectId,
           createdAt: meta.createdAt,
+          updatedAt: meta.updatedAt || meta.createdAt,
           expiresAt: meta.expiresAt,
-                      password: meta.password || (meta.passwordHash ? 'Password protected' : null),
+          lastModifiedAt: meta.lastModifiedAt || meta.updatedAt || meta.createdAt,
+          password: meta.password || (meta.passwordHash ? 'Password protected' : null),
           isPublic: meta.public || false,
-          viewCount: meta.viewCount || 0
+          viewCount: meta.analytics?.viewCount || 0,
+          uniqueViewers: meta.analytics?.uniqueViewers || 0,
+          commentCount: meta.analytics?.commentCount || meta.commentsCount || 0,
+          metadata: meta.metadata || {},
+          review: meta.review,
+          status: meta.status || 'active',
+          tags: meta.metadata?.tags || [],
+          description: meta.metadata?.description,
+          version: meta.metadata?.version,
+          clientName: meta.metadata?.clientName,
+          milestone: meta.metadata?.milestone
         });
       } catch {}
     }
@@ -586,6 +602,30 @@ app.post('/api/auth/google', AuthRoutes.handleGoogleAuth);
 
 app.get('/api/me', AuthRoutes.handleMe);
 
+// Project management routes
+app.post('/api/projects', ProjectRoutes.handleCreateProject);
+app.get('/api/projects', ProjectRoutes.handleGetProjects);
+app.put('/api/projects/:projectId', ProjectRoutes.handleUpdateProject);
+app.delete('/api/projects/:projectId', ProjectRoutes.handleDeleteProject);
+app.post('/api/projects/:projectId/archive', ProjectRoutes.handleArchiveProject);
+app.post('/api/projects/reorder', ProjectRoutes.handleReorderProjects);
+
+// Review workflow routes
+app.post('/api/snapshots/:snapshotId/reviews', ReviewRoutes.handleCreateReview);
+app.get('/api/reviews/:reviewId', ReviewRoutes.handleGetReview);
+app.post('/api/reviews/:reviewId/submit', ReviewRoutes.handleSubmitReview);
+app.get('/api/snapshots/:snapshotId/reviews', ReviewRoutes.handleGetSnapshotReviews);
+app.delete('/api/reviews/:reviewId', ReviewRoutes.handleCancelReview);
+
+// Enhanced comment routes
+app.post('/api/snapshots/:snapshotId/comments/enhanced', EnhancedCommentRoutes.handleCreateComment);
+app.get('/api/snapshots/:snapshotId/comments/enhanced', EnhancedCommentRoutes.handleGetComments);
+app.put('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRoutes.handleUpdateComment);
+app.delete('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRoutes.handleDeleteComment);
+app.post('/api/snapshots/:snapshotId/comments/:commentId/resolve', EnhancedCommentRoutes.handleResolveComment);
+app.post('/api/snapshots/:snapshotId/comments/:commentId/attachments', EnhancedCommentRoutes.handleUploadAttachment);
+app.post('/api/snapshots/:snapshotId/comments/bulk-resolve', EnhancedCommentRoutes.handleBulkResolveComments);
+
 // Admin endpoints
 app.get('/admin/users', handleGetUsers);
 
@@ -628,7 +668,19 @@ app.post('/api/snapshots/create', async (c: any) => {
     return c.json({ error: 'unauthorized' }, 401);
   }
   
-  const { expiryDays = 7, public: isPublic = false } = await c.req.json();
+  const { 
+    expiryDays = 7, 
+    public: isPublic = false,
+    name,
+    projectId,
+    description,
+    tags,
+    version,
+    clientName,
+    milestone,
+    reviewSummary
+  } = await c.req.json();
+  
   const id = generateIdBase62(16);
   const realPassword = generatePassword(8);
   const saltHex = randomHex(8);
@@ -636,20 +688,46 @@ app.post('/api/snapshots/create', async (c: any) => {
   const now = Date.now();
   const expiresAt = now + (expiryDays * 24 * 60 * 60 * 1000);
   
-  const snapshot = {
+  const snapshot: SnapshotRecord = {
     id,
+    name,
     ownerUid: uid,
+    projectId,
     createdAt: now,
+    updatedAt: now,
     expiresAt,
+    lastModifiedAt: now,
     passwordHash,
     password: realPassword, // Store plain text password for display
     totalBytes: 0,
     files: [],
+    public: Boolean(isPublic),
+    status: 'creating',
+    analytics: {
+      viewCount: 0,
+      uniqueViewers: 0,
+      downloadCount: 0,
+      commentCount: 0,
+      averageTimeOnPage: 0,
+      lastViewedAt: 0,
+      viewerCountries: [],
+      viewerIPs: [],
+      viewSessions: []
+    },
+    metadata: {
+      fileCount: 0,
+      hasComments: false,
+      tags: tags || [],
+      description,
+      version,
+      clientName,
+      milestone,
+      reviewSummary
+    },
+    // Legacy fields for backward compatibility
     views: { m: new Date().toISOString().slice(0, 7).replace('-', ''), n: 0 },
     commentsCount: 0,
-    public: Boolean(isPublic),
     caps: DEFAULT_CAPS,
-    status: 'uploading' as const,
     gateVersion: 1,
   };
   
@@ -661,12 +739,25 @@ app.post('/api/snapshots/create', async (c: any) => {
   ids.push(id);
   await c.env.KV_USERS.put(`user:${uid}:snapshots`, JSON.stringify(ids));
   
+  // Update project snapshot count if projectId is provided
+  if (projectId) {
+    const projectData = await c.env.KV_PROJECTS?.get(`${uid}:${projectId}`);
+    if (projectData) {
+      const project = JSON.parse(projectData);
+      project.snapshotCount = (project.snapshotCount || 0) + 1;
+      project.updatedAt = now;
+      await c.env.KV_PROJECTS.put(`${uid}:${projectId}`, JSON.stringify(project));
+    }
+  }
+  
   // Track analytics event
   const analytics = getAnalyticsManager(c);
   await analytics.trackEvent(uid, 'snapshot_created', { 
     snapshotId: id, 
     expiryDays: expiryDays || 7,
-    isPublic: isPublic || false
+    isPublic: isPublic || false,
+    hasProject: !!projectId,
+    hasName: !!name
   });
   
   return c.json({ id, password: realPassword });

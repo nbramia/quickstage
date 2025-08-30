@@ -8,6 +8,9 @@ export const config = {
   // Web app base URL
   WEB_BASE_URL: 'https://quickstage.tech',
   
+  // Public base URL for links
+  PUBLIC_BASE_URL: 'https://quickstage.tech',
+  
   // API endpoints
   API_BASE_URL: '/api',
   

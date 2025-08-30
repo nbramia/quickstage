@@ -2,7 +2,10 @@ export type Bindings = {
   KV_USERS: KVNamespace;
   KV_SNAPS: KVNamespace;
   KV_ANALYTICS: KVNamespace; // New analytics namespace
+  KV_PROJECTS: KVNamespace; // Projects/folders namespace
+  KV_REVIEWS: KVNamespace; // Reviews namespace
   R2_SNAPSHOTS: R2Bucket;
+  R2_ATTACHMENTS: R2Bucket; // Comment attachments bucket
   COMMENTS_DO: DurableObjectNamespace;
   SESSION_HMAC_SECRET: string;
   TURNSTILE_SECRET_KEY: string;
@@ -81,6 +84,9 @@ export interface SnapshotRecord {
   passwordHash: string;
   password?: string; // Plain text for display
   
+  // Project organization
+  projectId?: string; // Optional project folder
+  
   // Core metadata
   totalBytes: number;
   files: SnapshotFile[];
@@ -92,6 +98,7 @@ export interface SnapshotRecord {
   updatedAt: number;
   expiresAt: number;
   lastAccessedAt?: number;
+  lastModifiedAt?: number; // For sorting by modification
   
   // Enhanced analytics
   analytics: {
@@ -104,6 +111,7 @@ export interface SnapshotRecord {
     viewerCountries: string[];
     viewerIPs: string[]; // For unique viewer tracking
     viewSessions: ViewSession[];
+    recentViewers?: string[]; // Recent unique viewer IDs
   };
   
   // Enhanced metadata
@@ -114,6 +122,20 @@ export interface SnapshotRecord {
     tags?: string[];
     description?: string;
     thumbnail?: string;
+    version?: string; // Version number
+    clientName?: string; // Client/customer name
+    milestone?: string; // Project milestone
+    reviewSummary?: string; // Optional text for reviewers
+  };
+  
+  // Review status
+  review?: {
+    isRequested: boolean;
+    reviewId?: string;
+    checkedOffCount: number;
+    totalReviewers: number;
+    deadline?: number;
+    status?: 'pending' | 'in_progress' | 'completed' | 'overdue';
   };
   
   // Legacy fields for backward compatibility
@@ -184,6 +206,9 @@ export type AnalyticsEventType =
   | 'comment_posted'
   | 'comment_viewed'
   | 'comment_deleted'
+  | 'comment_updated'
+  | 'comment_resolved'
+  | 'comments_bulk_resolved'
   | 'user_login'
   | 'user_logout'
   | 'user_registered'
@@ -211,7 +236,16 @@ export type AnalyticsEventType =
   | 'snapshot_migration_completed'
   | 'system_backup'
   | 'system_maintenance'
-  | 'rate_limit_exceeded';
+  | 'rate_limit_exceeded'
+  | 'project_created'
+  | 'project_updated'
+  | 'project_deleted'
+  | 'project_archived'
+  | 'project_unarchived'
+  | 'review_requested'
+  | 'review_submitted'
+  | 'review_cancelled'
+  | 'review_reminder_sent';
 
 // Analytics Aggregation Types
 export interface UserAnalytics {
@@ -279,18 +313,88 @@ export type DetectedFramework =
   | 'static'
   | 'unknown';
 
-// Comment system types
+// Project/Folder types
+export interface Project {
+  id: string;
+  ownerUid: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  snapshotCount: number;
+  color?: string; // For UI display
+  icon?: string; // Optional icon
+  isArchived?: boolean;
+  sortOrder?: number; // For custom ordering
+}
+
+// Enhanced Comment system types
 export interface Comment {
   id: string;
   snapshotId: string;
-  text: string;
+  text: string; // Supports markdown
   author: string;
+  authorName?: string;
   createdAt: number;
   updatedAt?: number;
-  file?: string;
-  line?: number;
+  
+  // Element pinning
+  elementSelector?: string; // CSS selector for pinned element
+  elementCoordinates?: { x: number; y: number; }; // Relative position
+  pageUrl?: string; // For multi-page prototypes
+  
+  // Threading
   parentId?: string; // For threaded comments
   replies?: Comment[];
+  
+  // State management
+  state: 'draft' | 'published' | 'resolved' | 'archived';
+  resolvedBy?: string;
+  resolvedAt?: number;
+  
+  // Attachments
+  attachments?: CommentAttachment[];
+}
+
+export interface CommentAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  uploadedAt: number;
+}
+
+// Review workflow types
+export interface Review {
+  id: string;
+  snapshotId: string;
+  requestedBy: string;
+  requestedAt: number;
+  
+  // Review participants
+  reviewers: ReviewParticipant[];
+  
+  // Deadline management
+  deadline?: number;
+  reminderSent?: boolean;
+  
+  // Overall status
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  completedAt?: number;
+  
+  // Optional review notes
+  notes?: string;
+}
+
+export interface ReviewParticipant {
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  assignedAt: number;
+  status: 'pending' | 'reviewing' | 'approved' | 'changes_requested';
+  reviewedAt?: number;
+  feedback?: string;
 }
 
 // Session management
