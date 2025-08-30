@@ -25,6 +25,7 @@ export default function Landing() {
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [showRotatingText, setShowRotatingText] = useState(true);
   const [textOpacity, setTextOpacity] = useState(1);
+  const [isMobile, setIsMobile] = useState(false);
   const rotatingTexts = [
     "No <strong>DevOps</strong>",
     "No <strong>GitHub</strong>", 
@@ -61,6 +62,21 @@ export default function Landing() {
     trackPageView();
   }, []);
 
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const isMobileDevice = /mobile|android|iphone|ipad|phone|tablet/i.test(userAgent) || 
+                            window.innerWidth <= 768;
+      setIsMobile(isMobileDevice);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
     // Create permanent background stars
   useEffect(() => {
     const createBackgroundStars = () => {
@@ -89,7 +105,7 @@ export default function Landing() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Rotate text every 1.5 seconds with fade-out effect
+  // Rotate text every 2 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTextIndex((prevIndex) => {
@@ -102,22 +118,49 @@ export default function Landing() {
         }
         return nextIndex;
       });
-    }, 1500); // 1.5 seconds total display time
-
-    // Start fade out 1.2 seconds before text change
-    const fadeOutTimer = setTimeout(() => {
-      setTextOpacity(0);
-    }, 300); // Start fading after 0.3 seconds (so it fades over 1.2 seconds)
+    }, 2000); // 2 seconds total display time
 
     return () => {
       clearInterval(interval);
-      clearTimeout(fadeOutTimer);
     };
   }, [rotatingTexts.length]);
 
-  // Reset opacity when text index changes
+  // Handle opacity and fade-out for each text change
   useEffect(() => {
-    setTextOpacity(1);
+    if (isMobile) {
+      // On mobile: no opacity changes, just let text change naturally
+      // This prevents any fade-in/fade-out effects
+      return;
+    }
+    
+    // Desktop: manipulate transitions for instant appearance
+    const textElement = document.querySelector('[data-rotating-text]') as HTMLElement;
+    if (textElement) {
+      // Force disable transition for instant appearance
+      textElement.style.transition = 'none';
+      textElement.style.webkitTransition = 'none'; // Safari/iOS support
+      // Force a reflow to ensure the transition is disabled
+      textElement.offsetHeight;
+      setTextOpacity(1);
+      // Re-enable transition after a brief moment
+      setTimeout(() => {
+        if (textElement) {
+          textElement.style.transition = 'opacity 1.5s ease-out';
+          textElement.style.webkitTransition = 'opacity 1.5s ease-out'; // Safari/iOS support
+        }
+      }, 10);
+    } else {
+      setTextOpacity(1);
+    }
+    
+    // Start fade out 1.5 seconds before text change (at 0.5 seconds)
+    const fadeOutTimer = setTimeout(() => {
+      setTextOpacity(0);
+    }, 500); // Start fading after 0.5 seconds
+    
+    return () => {
+      clearTimeout(fadeOutTimer);
+    };
   }, [currentTextIndex]);
 
   // Handle mouse movement and create star particles
@@ -266,9 +309,14 @@ export default function Landing() {
             </h1>
             {showRotatingText && (
               <p className="text-xl md:text-2xl text-gray-300 mb-2 leading-relaxed" 
-                 style={{ 
+                 data-rotating-text
+                 style={isMobile ? {} : { 
                    opacity: textOpacity,
-                   transition: 'opacity 1.2s ease-out'
+                   transition: 'opacity 1.5s ease-out',
+                   WebkitTransition: 'opacity 1.5s ease-out', // Safari/iOS support
+                   willChange: 'opacity', // Optimize for desktop
+                   backfaceVisibility: 'hidden', // Prevent flickering
+                   transform: 'translateZ(0)' // Force hardware acceleration
                  }}
                  dangerouslySetInnerHTML={{ __html: rotatingTexts[currentTextIndex] || "" }}>
               </p>
@@ -341,7 +389,7 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section className="py-32 bg-gradient-to-b from-gray-900/80 to-black/80">
+      <section id="features" className="py-32 bg-gradient-to-b from-gray-900/80 to-black/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-20">
             <h2 className="text-5xl md:text-6xl font-bold text-white mb-6 font-inconsolata">
@@ -480,26 +528,9 @@ export default function Landing() {
               <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Product</h4>
               <ul className="space-y-2 text-sm">
                 <li><a href="#how-it-works" className="text-gray-300 hover:text-white">How It Works</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Features</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Pricing</a></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Support</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="text-gray-300 hover:text-white">Documentation</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Help Center</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Contact</a></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Company</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="text-gray-300 hover:text-white">About</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Blog</a></li>
-                <li><a href="#" className="text-gray-300 hover:text-white">Privacy</a></li>
+                <li><a href="#features" className="text-gray-300 hover:text-white">Features</a></li>
+                <li><a href="/pricing" className="text-gray-300 hover:text-white">Pricing</a></li>
+                <li><a href="mailto:support@quickstage.tech" className="text-gray-300 hover:text-white">Contact</a></li>
               </ul>
             </div>
           </div>

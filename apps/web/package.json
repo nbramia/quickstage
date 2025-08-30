@@ -17,6 +17,7 @@
     "run-tests": "tsx src/test/run-tests.ts"
   },
   "dependencies": {
+    "@stripe/stripe-js": "^7.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.1",

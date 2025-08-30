@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { ApplePayButton } from '../components/ApplePayButton';
 
 interface PricingPageProps {
   mode?: 'trial' | 'upgrade';
@@ -106,6 +107,19 @@ export function PricingPage() {
             >
               {loading ? 'Creating...' : `Choose Monthly`}
             </button>
+            
+            <ApplePayButton
+              plan="monthly"
+              disabled={loading}
+              onSuccess={() => {
+                // Redirect to dashboard or success page
+                navigate('/dashboard');
+              }}
+              onError={(error) => {
+                console.error('Apple Pay error:', error);
+                alert(`Apple Pay failed: ${error}`);
+              }}
+            />
           </div>
 
           {/* Annual Plan */}
@@ -156,6 +170,19 @@ export function PricingPage() {
             >
               {loading ? 'Creating...' : `Choose Annual`}
             </button>
+            
+            <ApplePayButton
+              plan="annual"
+              disabled={loading}
+              onSuccess={() => {
+                // Redirect to dashboard or success page
+                navigate('/dashboard');
+              }}
+              onError={(error) => {
+                console.error('Apple Pay error:', error);
+                alert(`Apple Pay failed: ${error}`);
+              }}
+            />
           </div>
         </div>
 
@@ -175,7 +202,7 @@ export function PricingPage() {
             onClick={() => navigate('/dashboard')}
             className="text-gray-600 hover:text-gray-900 font-medium"
           >
-            ← Back to Dashboard
+            ← Back
           </button>
         </div>
 

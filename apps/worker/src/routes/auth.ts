@@ -311,12 +311,52 @@ export async function handleMe(c: any) {
     if (subscriptionStatus === 'trial') {
       // Check both new and legacy trial fields
       const trialEnd = user.subscription?.trialEnd || user.trialEndsAt;
+      subscriptionDisplay = 'Pro (Trial)';
+      canAccessPro = true;
+      
       if (trialEnd) {
-        subscriptionDisplay = 'Pro (Trial)';
         trialEndsAt = trialEnd;
-        canAccessPro = true;
         // For trial users, next billing date is when the trial ends
         nextBillingDate = trialEnd;
+      } else {
+        // If no trial end date is set, try to get it from Stripe or set a default
+        const stripeSubscriptionId = user.subscription?.stripeSubscriptionId || user.stripeSubscriptionId;
+        if (stripeSubscriptionId) {
+          try {
+            const stripe = new Stripe(c.env.STRIPE_SECRET_KEY);
+            const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+            if (subscription.trial_end) {
+              trialEndsAt = subscription.trial_end * 1000; // Convert to milliseconds
+              nextBillingDate = trialEndsAt;
+            }
+            
+            // Get the next billing amount for when trial ends
+            if (subscription.items && subscription.items.data.length > 0) {
+              const item = subscription.items.data[0];
+              if (item && item.price && item.price.unit_amount) {
+                nextBillingAmount = item.price.unit_amount; // Amount in cents
+                
+                // If there's a discount/coupon applied, calculate the discounted amount
+                if (subscription.discount && subscription.discount.coupon) {
+                  const coupon = subscription.discount.coupon;
+                  if (coupon.percent_off && nextBillingAmount !== null) {
+                    nextBillingAmount = nextBillingAmount * (100 - coupon.percent_off) / 100;
+                  } else if (coupon.amount_off && nextBillingAmount !== null) {
+                    nextBillingAmount = Math.max(0, nextBillingAmount - coupon.amount_off);
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch Stripe trial end for ${uid}:`, error);
+            // Fallback: assume 7 days from subscription start
+            const subscriptionStartedAt = user.subscription?.currentPeriodStart || user.subscriptionStartedAt;
+            if (subscriptionStartedAt) {
+              trialEndsAt = subscriptionStartedAt + (7 * 24 * 60 * 60 * 1000);
+              nextBillingDate = trialEndsAt;
+            }
+          }
+        }
       }
     } else if (subscriptionStatus === 'active') {
       subscriptionDisplay = 'Pro';

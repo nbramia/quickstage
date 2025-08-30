@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import config from '../config';
@@ -17,7 +17,8 @@ type Snapshot = {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, logout, refreshUser } = useAuth();
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -49,6 +50,32 @@ export default function Dashboard() {
   const [showErrorMessage, setShowErrorMessage] = useState('');
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
 
+  // Handle post-checkout URL parameters and refresh user data
+  useEffect(() => {
+    const trialParam = searchParams.get('trial');
+    const billingParam = searchParams.get('billing');
+    const successParam = searchParams.get('success');
+    
+    // If user just completed checkout, refresh their user data immediately
+    if (trialParam === 'started' || billingParam === 'success' || successParam === 'true') {
+      console.log('Post-checkout detected, refreshing user data...');
+      refreshUser?.();
+      
+      // Clear URL parameters after handling them
+      setSearchParams({});
+      
+      // Show success message
+      if (trialParam === 'started') {
+        setShowSuccessMessage('Welcome to your Pro trial! You now have access to all Pro features.');
+      } else if (billingParam === 'success' || successParam === 'true') {
+        setShowSuccessMessage('Subscription activated! You now have full access to Pro features.');
+      }
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setShowSuccessMessage(''), 5000);
+    }
+  }, [searchParams, refreshUser, setSearchParams]);
+  
   useEffect(() => {
     loadSnapshots();
     

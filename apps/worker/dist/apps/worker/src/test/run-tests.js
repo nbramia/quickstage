@@ -14,6 +14,11 @@ const commands = {
         console.log('🔑 Running core route tests...');
         execSync('npx vitest run src/test/routes/auth.test.ts src/test/routes/tokens.test.ts src/test/routes/snapshots.test.ts', { stdio: 'inherit' });
     },
+    // Subscription scenario tests
+    subscriptions: () => {
+        console.log('💳 Running comprehensive subscription scenario tests...');
+        execSync('npx vitest run src/test/subscription-scenarios.test.ts', { stdio: 'inherit' });
+    },
     // All tests
     all: () => {
         console.log('🧪 Running all tests...');
@@ -52,15 +57,16 @@ const commands = {
 Usage: npm run test-runner <command>
 
 Commands:
-  quick      - Run utility tests only (~5 seconds)
-  core       - Run core route tests (auth, tokens, snapshots)
-  all        - Run all tests
-  watch      - Run tests in watch mode for development
-  coverage   - Run tests with coverage report
-  ui         - Open interactive test UI
-  precommit  - Run pre-commit validation tests
-  ci         - Run tests for CI/CD pipeline
-  help       - Show this help message
+  quick        - Run utility tests only (~5 seconds)
+  core         - Run core route tests (auth, tokens, snapshots)
+  subscriptions- Run comprehensive subscription scenario tests
+  all          - Run all tests
+  watch        - Run tests in watch mode for development
+  coverage     - Run tests with coverage report
+  ui           - Open interactive test UI
+  precommit    - Run pre-commit validation tests
+  ci           - Run tests for CI/CD pipeline
+  help         - Show this help message
 
 Examples:
   npm run test-runner quick

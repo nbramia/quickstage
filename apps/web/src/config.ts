@@ -18,7 +18,10 @@ export const config = {
   EXTENSION_DOWNLOAD_URL: '/quickstage.vsix',
   
   // Version info endpoint
-  VERSION_INFO_URL: '/api/extensions/version'
+  VERSION_INFO_URL: '/api/extensions/version',
+  
+  // Stripe configuration
+  STRIPE_PUBLIC_KEY: import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_YOUR_ACTUAL_KEY_HERE'
 };
 
 export default config;

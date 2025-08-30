@@ -1273,12 +1273,6 @@ app.post('/analytics/test', async (c: any) => {
 
 
 
-const worker = {
-  fetch: app.fetch,
-  scheduled: async (_event: any, env: Bindings) => {
-    await purgeExpired(env);
-  },
-};
 
 // Get analytics events (superadmin only)
 app.get('/debug/analytics/events', async (c: any) => {
@@ -1462,7 +1456,91 @@ app.post('/debug/migration/snapshots', async (c: any) => {
   }
 });
 
-export default worker;
+// Migration endpoint for switching to production Stripe
+app.post('/admin/migrate-stripe-production', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+
+  try {
+    const { migrateToProductionStripe } = await import('./migrate-to-production-stripe');
+    const result = await migrateToProductionStripe(c.env);
+    
+    return c.json({
+      success: true,
+      result,
+      message: `Production Stripe migration completed: ${result.updated} users updated`
+    });
+  } catch (error: any) {
+    console.error('Production Stripe migration error:', error);
+    return c.json({ error: 'Failed to run production Stripe migration' }, 500);
+  }
+});
+
+// Test endpoint to preview migration (no authentication required for testing)
+app.get('/admin/test-migration-preview', async (c: any) => {
+  try {
+    console.log('🔧 PREVIEW: Testing migration logic...');
+    
+    const usersToUpdate = [];
+    let hasMore = true;
+    let cursor: string | undefined = undefined;
+    
+    // Get all user keys
+    while (hasMore) {
+      const listResult: any = await c.env.KV_USERS.list({ 
+        prefix: 'user:',
+        cursor: cursor
+      });
+      
+      for (const key of listResult.keys) {
+        if (key.name.startsWith('user:') && !key.name.includes(':by')) {
+          const userData = await c.env.KV_USERS.get(key.name);
+          if (userData) {
+            const user = JSON.parse(userData);
+            
+            // Check if user has test Stripe data that needs cleanup
+            const hasTestStripeData = (
+              user.stripeCustomerId?.startsWith('cus_') || 
+              user.stripeSubscriptionId?.startsWith('sub_') ||
+              user.subscription?.stripeCustomerId?.startsWith('cus_') ||
+              user.subscription?.stripeSubscriptionId?.startsWith('sub_')
+            );
+            
+            if (hasTestStripeData || user.subscriptionStatus !== 'none') {
+              const isSuperadmin = user.email === 'nbramia@gmail.com';
+              usersToUpdate.push({ 
+                email: user.email, 
+                currentStatus: user.subscriptionStatus || 'none',
+                currentPlan: user.plan || 'free',
+                willBecomeSuperadmin: isSuperadmin,
+                hasTestStripeData
+              });
+            }
+          }
+        }
+      }
+      
+      hasMore = !listResult.list_complete;
+      cursor = listResult.cursor;
+    }
+    
+    return c.json({
+      message: 'Migration preview (no changes made)',
+      usersToUpdate,
+      totalUsers: usersToUpdate.length,
+      superadminEmails: ['nbramia@gmail.com']
+    });
+    
+  } catch (error: any) {
+    console.error('🔧 PREVIEW: Migration preview failed:', error);
+    return c.json({ 
+      error: 'Migration preview failed', 
+      message: error.message 
+    }, 500);
+  }
+});
+
 export { CommentsRoom } from './comments';
 
 // Stripe billing endpoints
@@ -1473,7 +1551,96 @@ app.post('/billing/change-payment', BillingRoutes.handleChangePayment);
 
 app.post('/billing/portal', BillingRoutes.handleBillingPortal);
 
-// Stripe webhook endpoint
+// Stripe webhook endpoint (both plural and singular for compatibility)
+app.post('/webhook/stripe', async (c: any) => {
+  try {
+    // Check if Stripe secret key is available
+    if (!c.env.STRIPE_SECRET_KEY) {
+      console.error('STRIPE_SECRET_KEY not found in environment');
+      return c.json({ error: 'stripe_configuration_error' }, 500);
+    }
+    
+    // Check if Stripe webhook secret is available
+    if (!c.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('STRIPE_WEBHOOK_SECRET not found in environment');
+      return c.json({ error: 'stripe_configuration_error' }, 500);
+    }
+    
+    const stripe = new Stripe(c.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2023-10-16',
+    });
+    
+    const sig = c.req.header('stripe-signature');
+    const rawBody = await c.req.arrayBuffer();
+    const bodyString = new TextDecoder().decode(rawBody);
+
+    if (!sig) {
+      console.error('Missing stripe-signature header');
+      return c.json({ error: 'missing_signature' }, 400);
+    }
+
+    // Verify webhook signature (async version for Cloudflare Workers)
+    let event;
+    try {
+      event = await stripe.webhooks.constructEventAsync(bodyString, sig, c.env.STRIPE_WEBHOOK_SECRET);
+      console.log(`✅ Verified webhook event: ${event.type}`);
+    } catch (err: any) {
+      console.error(`❌ Webhook signature verification failed: ${err.message}`);
+      return c.json({ error: 'invalid_signature' }, 400);
+    }
+
+    // Import Stripe handlers
+    const { 
+      handleCustomerCreated, 
+      handleCheckoutSessionCompleted,
+      handleSubscriptionCreated, 
+      handleSubscriptionUpdated, 
+      handleSubscriptionDeleted,
+      handleCustomerDeleted,
+      handlePaymentSucceeded,
+      handlePaymentFailed
+    } = await import('./stripe');
+    
+    const { getAnalyticsManager } = await import('./worker-utils');
+    const analytics = getAnalyticsManager(c);
+
+    // Handle different event types
+    switch (event.type) {
+      case 'customer.created':
+        await handleCustomerCreated(c, event.data.object, analytics);
+        break;
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(c, event.data.object, analytics);
+        break;
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(c, event.data.object, analytics);
+        break;
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(c, event.data.object, analytics);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(c, event.data.object, analytics);
+        break;
+      case 'customer.deleted':
+        await handleCustomerDeleted(c, event.data.object, analytics);
+        break;
+      case 'invoice.payment_succeeded':
+        await handlePaymentSucceeded(c, event.data.object, analytics);
+        break;
+      case 'invoice.payment_failed':
+        await handlePaymentFailed(c, event.data.object, analytics);
+        break;
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    return c.json({ received: true });
+  } catch (error: any) {
+    console.error('Webhook error:', error);
+    return c.json({ error: 'webhook_error', details: error.message }, 500);
+  }
+});
+
 app.post('/webhooks/stripe', async (c: any) => {
   try {
     // Check if Stripe secret key is available
@@ -1493,7 +1660,8 @@ app.post('/webhooks/stripe', async (c: any) => {
     });
     
     const sig = c.req.header('stripe-signature');
-    const rawBody = await c.req.text();
+    const rawBody = await c.req.arrayBuffer();
+    const bodyString = new TextDecoder().decode(rawBody);
     
     if (!sig) {
       console.error('No Stripe signature found');
@@ -1503,7 +1671,7 @@ app.post('/webhooks/stripe', async (c: any) => {
     let event: any;
     try {
       event = await stripe.webhooks.constructEventAsync(
-        rawBody,
+        bodyString,
         sig,
         c.env.STRIPE_WEBHOOK_SECRET,
       );
@@ -2251,4 +2419,14 @@ app.get('/debug/analytics/events/all', async (c: any) => {
     }, 500);
   }
 });
+
+// Worker object that includes both the Hono app and scheduled handler
+const worker = {
+  fetch: app.fetch,
+  scheduled: async (_event: any, env: Bindings) => {
+    await purgeExpired(env);
+  },
+};
+
+export default worker;
 

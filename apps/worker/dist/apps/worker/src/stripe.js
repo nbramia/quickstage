@@ -50,26 +50,38 @@ export async function handleCheckoutSessionCompleted(c, session, analytics) {
         user.subscription.stripeSubscriptionId = session.subscription;
         user.stripeSubscriptionId = session.subscription;
     }
-    // Check if this was a $0 checkout (100% discount applied)
+    // Determine if this is a trial period or 100% discount
     const wasFreeCheckout = session.amount_total === 0;
-    if (wasFreeCheckout) {
-        // If checkout was $0 due to coupon, give them full pro access
+    const hasSubscription = !!session.subscription;
+    // Check if there are any discounts applied (indicating coupon use)
+    const hasDiscounts = session.total_details?.breakdown?.discounts && session.total_details.breakdown.discounts.length > 0;
+    if (wasFreeCheckout && hasDiscounts && !hasSubscription) {
+        // This was a $0 checkout due to 100% discount coupon (no subscription created)
         user.subscription.status = 'active';
         user.subscriptionStatus = 'active';
         user.plan = 'pro';
-        // No trial end date for full pro access
+        // No trial end date for full pro access from coupon
         user.subscription.trialEnd = null;
         user.trialEndsAt = null;
-        console.log(`User ${uid} received full pro access due to $0 checkout (100% discount)`);
+        console.log(`User ${uid} received full pro access due to $0 checkout (100% discount coupon)`);
     }
-    else {
-        // Normal trial flow
+    else if (wasFreeCheckout && hasSubscription) {
+        // This is a free trial (subscription created but $0 initial charge)
         user.subscription.status = 'trial';
         user.subscriptionStatus = 'trial';
         user.plan = 'pro';
         user.subscription.trialEnd = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
         user.trialEndsAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-        console.log(`User ${uid} started 7-day trial`);
+        console.log(`User ${uid} started 7-day free trial`);
+    }
+    else {
+        // Normal paid checkout (no trial)
+        user.subscription.status = 'active';
+        user.subscriptionStatus = 'active';
+        user.plan = 'pro';
+        user.subscription.trialEnd = null;
+        user.trialEndsAt = null;
+        console.log(`User ${uid} completed paid checkout`);
     }
     if (!user.subscriptionStartedAt) {
         user.subscriptionStartedAt = Date.now();
@@ -108,14 +120,40 @@ export async function handleSubscriptionCreated(c, subscription, analytics) {
     user.subscription.stripeSubscriptionId = subscription.id;
     // Update legacy fields for backward compatibility
     user.stripeSubscriptionId = subscription.id;
+    // Check if this subscription has a 100% discount (permanent free access)
+    const has100PercentDiscount = subscription.discount &&
+        subscription.discount.coupon &&
+        subscription.discount.coupon.percent_off === 100;
     if (subscription.status === 'trialing') {
-        user.subscription.status = 'trial';
-        user.subscriptionStatus = 'trial';
-        user.plan = 'pro';
+        if (has100PercentDiscount) {
+            // 100% discount coupon - treat as active Pro, not trial
+            user.subscription.status = 'active';
+            user.subscriptionStatus = 'active';
+            user.plan = 'pro';
+            // No trial end date for 100% discount users - they get permanent Pro access
+            user.subscription.trialEnd = null;
+            user.trialEndsAt = null;
+            console.log(`User ${uid} marked as active (100% discount coupon) - permanent Pro access`);
+        }
+        else {
+            // Regular trial (including with partial discounts like 10%, 50%, etc.)
+            // All non-100% discounts should still go through the normal trial period
+            user.subscription.status = 'trial';
+            user.subscriptionStatus = 'trial';
+            user.plan = 'pro';
+            // Set trial end date from Stripe subscription
+            if (subscription.trial_end) {
+                user.subscription.trialEnd = subscription.trial_end * 1000; // Convert to milliseconds
+                user.trialEndsAt = subscription.trial_end * 1000; // Legacy field for backward compatibility
+            }
+            const discountInfo = subscription.discount ?
+                `${subscription.discount.coupon.percent_off || subscription.discount.coupon.amount_off}${subscription.discount.coupon.percent_off ? '%' : ' cents'} discount` :
+                'no discount';
+            console.log(`User ${uid} marked as trial (${discountInfo}) with end date: ${subscription.trial_end ? new Date(subscription.trial_end * 1000) : 'unknown'}`);
+        }
         if (!user.subscriptionStartedAt) {
             user.subscriptionStartedAt = Date.now();
         }
-        console.log(`User ${uid} marked as trial`);
     }
     else if (subscription.status === 'active') {
         user.subscription.status = 'active';
@@ -152,10 +190,32 @@ export async function handleSubscriptionUpdated(c, subscription, analytics) {
     if (!user.subscription) {
         user.subscription = { status: 'none' };
     }
+    // Check if this subscription has a 100% discount (permanent free access)
+    const has100PercentDiscount = subscription.discount &&
+        subscription.discount.coupon &&
+        subscription.discount.coupon.percent_off === 100;
     if (subscription.status === 'trialing') {
-        user.subscription.status = 'trial';
-        user.subscriptionStatus = 'trial';
-        user.plan = 'pro';
+        if (has100PercentDiscount) {
+            // 100% discount coupon - treat as active Pro, not trial
+            user.subscription.status = 'active';
+            user.subscriptionStatus = 'active';
+            user.plan = 'pro';
+            // No trial end date for 100% discount users - they get permanent Pro access
+            user.subscription.trialEnd = null;
+            user.trialEndsAt = null;
+        }
+        else {
+            // Regular trial (including with partial discounts like 10%, 50%, etc.)
+            // All non-100% discounts should still go through the normal trial period
+            user.subscription.status = 'trial';
+            user.subscriptionStatus = 'trial';
+            user.plan = 'pro';
+            // Set trial end date from Stripe subscription
+            if (subscription.trial_end) {
+                user.subscription.trialEnd = subscription.trial_end * 1000; // Convert to milliseconds
+                user.trialEndsAt = subscription.trial_end * 1000; // Legacy field for backward compatibility
+            }
+        }
     }
     else if (subscription.status === 'active') {
         user.subscription.status = 'active';

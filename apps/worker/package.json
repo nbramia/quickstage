@@ -13,6 +13,7 @@
     "test:ui": "vitest --ui",
     "test:quick": "npx tsx src/test/run-tests.ts quick",
     "test:core": "npx tsx src/test/run-tests.ts core",
+    "test:subscriptions": "npx tsx src/test/run-tests.ts subscriptions",
     "test:watch": "npx tsx src/test/run-tests.ts watch",
     "test:precommit": "npx tsx src/test/run-tests.ts precommit",
     "test:ci": "npx tsx src/test/run-tests.ts ci",

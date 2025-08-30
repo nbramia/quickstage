@@ -137,6 +137,8 @@ export async function handleSubscribe(c: any) {
     body = { plan: 'monthly' };
   }
   const plan = body.plan || 'monthly'; // 'monthly' or 'annual'
+  const paymentMethodId = body.payment_method_id;
+  const paymentType = body.payment_type; // 'apple_pay', 'card', or undefined for checkout
   
   const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
   if (!userRaw) return c.json({ error: 'user_not_found' }, 404);
@@ -170,7 +172,57 @@ export async function handleSubscribe(c: any) {
     ? (c.env.STRIPE_ANNUAL_PRICE_ID && c.env.STRIPE_ANNUAL_PRICE_ID !== 'your_annual_price_id_here' ? c.env.STRIPE_ANNUAL_PRICE_ID : c.env.STRIPE_PRICE_ID) // Fallback to monthly if annual not configured
     : c.env.STRIPE_PRICE_ID;
   
-  // Build checkout session configuration
+  // Handle Apple Pay direct payment
+  if (paymentMethodId && paymentType === 'apple_pay') {
+    try {
+      // Attach payment method to customer
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+      
+      // Create subscription with immediate payment
+      const subscription = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{ price: priceId }],
+        default_payment_method: paymentMethodId,
+        expand: ['latest_invoice.payment_intent'],
+        metadata: { uid, action: 'subscribe', plan, payment_type: 'apple_pay' },
+      });
+      
+      // Update user record with subscription details
+      const now = Date.now();
+      if (!user.subscription) {
+        user.subscription = { status: 'none' };
+      }
+      
+      user.subscription.status = 'active';
+      user.subscription.stripeSubscriptionId = subscription.id;
+      user.subscription.stripeCustomerId = customerId;
+      user.subscription.currentPeriodStart = now;
+      user.subscription.currentPeriodEnd = subscription.current_period_end * 1000;
+      user.subscription.lastPaymentAt = now;
+      user.plan = 'pro';
+      
+      // Save updated user record
+      await c.env.KV_USERS.put(`user:${uid}`, JSON.stringify(user));
+      
+      // Track analytics event for subscription start
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(uid, 'subscription_started', { 
+        method: 'apple_pay',
+        plan
+      });
+      
+      return c.json({ 
+        success: true, 
+        subscription_id: subscription.id,
+        status: 'active' 
+      });
+    } catch (error: any) {
+      console.error('Apple Pay subscription creation failed:', error);
+      return c.json({ error: 'payment_failed', details: error.message }, 400);
+    }
+  }
+  
+  // Fall back to regular checkout session for non-Apple Pay
   const sessionConfig: any = {
     mode: 'subscription',
     customer: customerId,
@@ -188,7 +240,7 @@ export async function handleSubscribe(c: any) {
   // Track analytics event for subscription start
   const analytics = getAnalyticsManager(c);
   await analytics.trackEvent(uid, 'subscription_started', { 
-    method: 'direct_subscription'
+    method: 'checkout_session'
   });
   
   return c.json({ url: session.url });
