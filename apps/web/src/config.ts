@@ -2,8 +2,8 @@
 // This file centralizes all configuration values to avoid hardcoding
 
 export const config = {
-  // Worker API base URL - change this when you get clean URLs working
-  WORKER_BASE_URL: 'https://quickstage-worker.nbramia.workers.dev',
+  // Worker API base URL - now using clean URLs!
+  WORKER_BASE_URL: 'https://quickstage.tech',
   
   // Web app base URL
   WEB_BASE_URL: 'https://quickstage.tech',

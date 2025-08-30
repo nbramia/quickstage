@@ -1,4 +1,6 @@
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://quickstage-worker.nbramia.workers.dev').replace(/\/$/, '');
+import { config } from './config';
+
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || config.WORKER_BASE_URL).replace(/\/$/, '');
 
 // Global session token storage for cross-origin requests
 let globalSessionToken: string | null = localStorage.getItem('quickstage_session_token');

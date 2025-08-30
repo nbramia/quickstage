@@ -8,12 +8,7 @@ output_dir = "dist"
 [build.upload]
 format = "directory"
 
-# Explicit routing configuration
-[[redirects]]
-from = "/s/*"
-to = "https://quickstage-worker.nbramia.workers.dev/s/*"
-status = 200
-force = true
+# Explicit routing configuration removed - Worker handles /s/* directly via route
 
 # SPA fallback
 [[redirects]]

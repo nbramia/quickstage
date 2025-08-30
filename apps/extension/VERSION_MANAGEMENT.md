@@ -2,6 +2,14 @@
 
 This document outlines the complete process for building, packaging, and deploying new versions of the QuickStage VS Code/Cursor extension.
 
+## 🎯 **Latest Version: v0.0.33 - Clean URL Implementation**
+
+### **What's New in v0.0.33**
+- ✅ **Added**: Clean URL support - snapshots now use `quickstage.tech/s/{id}`
+- ✅ **Removed**: Worker subdomain URLs (`quickstage-worker.nbramia.workers.dev`)
+- ✅ **Updated**: All generated URLs now use the main domain
+- ✅ **Important**: Always increment version numbers when making changes
+
 ## 🎯 **Enhanced Workflow (v0.0.14+)**
 
 The extension deployment process has been significantly improved with automatic version synchronization, versioned filenames, and enhanced project detection.
@@ -578,9 +586,27 @@ interface Comment {
 - **Durable Objects**: Real-time comments per snapshot
 
 ### **Deployment Process**
-1. **Extension changes**: Build → Package → Copy to web app → Deploy web app
-2. **Worker changes**: Deploy worker directly
-3. **Web app changes**: Build → Deploy to Cloudflare Pages
+
+⚠️ **CRITICAL**: Always use the `deploy-with-tests.sh` script for deployments!
+
+```bash
+# From the apps/worker directory:
+./deploy-with-tests.sh
+```
+
+This script automatically:
+- Runs all tests (quick, core, and subscription scenarios)
+- Builds both worker and web app
+- Deploys to Cloudflare Workers and Pages
+- Verifies deployments are successful
+
+**Manual deployment steps (if needed):**
+1. **Extension changes**: 
+   - Increment version in package.json
+   - Build → Package → Copy to web app public directory
+   - Deploy web app using deploy-with-tests.sh
+2. **Worker changes**: Deploy using deploy-with-tests.sh
+3. **Web app changes**: Deploy using deploy-with-tests.sh
 
 ## 🎨 **UI/UX & Mobile Responsiveness Overhaul (v0.0.31)**
 

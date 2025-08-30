@@ -5,6 +5,7 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 ## Features
 
 - **One-Click Sharing**: Share your web prototypes instantly with a single click
+- **Clean URLs**: Beautiful, professional URLs at `quickstage.tech/s/{id}` 
 - **Real-Time Preview**: View prototypes in real-time with live updates
 - **Collaborative Comments**: Add feedback and collaborate with team members
 - **Secure Access Control**: Role-based permissions and secure sharing
@@ -91,6 +92,13 @@ npm run test:core
 
 **Failure to test will result in broken deployments.**
 ```
+
+### Clean URL Configuration
+
+QuickStage now uses clean URLs for all snapshots and API endpoints:
+- Snapshots: `quickstage.tech/s/{id}` (instead of worker subdomain)
+- All API calls route directly through the main domain
+- Centralized configuration in `apps/web/src/config.ts`
 
 ### Deployment
 

@@ -17,6 +17,71 @@ PUBLIC_BASE_URL = "https://quickstage.tech"  # Base URL for Stripe success/cance
 # Custom domain for clean snapshot URLs
 [triggers.custom_domains]
 domain = "snap.quickstage.tech"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+# Routes for clean URLs on main domain - all Worker endpoints
+[[routes]]
+pattern = "quickstage.tech/api/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/s/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/analytics/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/auth/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/billing/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/debug/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/me"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/snapshots/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/tokens/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/admin/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/webhooks/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/extensions/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/comments/*"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/upload-url"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/upload"
+zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6"
+
+[[routes]]
+pattern = "quickstage.tech/snap/*"
 zone_id = "b8c62b949012c4a1f5497fe2cd85d6b6" 
 
 [[kv_namespaces]]

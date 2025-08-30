@@ -499,7 +499,7 @@ async function uploadAndFinalize(created: any, scan: { ok: true; files: string[]
 
   // Generate working URLs that point directly to the Worker
   // This ensures the system works while we fix the routing
-  const url = `https://quickstage-worker.nbramia.workers.dev/s/${created.id}`;
+  const url = `https://quickstage.tech/s/${created.id}`;
   vscode.env.clipboard.writeText(created.password);
   output.appendLine(`🎉 Staged successfully! ${url}`);
   output.appendLine(`📋 Password copied to clipboard: ${created.password}`);
