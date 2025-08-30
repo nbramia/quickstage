@@ -41,6 +41,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           {/* Public routes */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/pricing" element={<PricingPage />} />
           
           {/* Protected routes */}
           <Route path="/dashboard" element={
@@ -56,11 +57,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/admin" element={
             <ProtectedRoute>
               <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/pricing" element={
-            <ProtectedRoute>
-              <PricingPage />
             </ProtectedRoute>
           } />
           

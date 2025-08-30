@@ -47,7 +47,17 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
-              navigate('/dashboard');
+      // Check if user came from pricing page with a plan selection
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirect = urlParams.get('redirect');
+      const plan = urlParams.get('plan');
+      
+      if (redirect === 'pricing' && plan) {
+        // Redirect back to pricing page to complete subscription
+        navigate(`/pricing?plan=${plan}`);
+      } else {
+        navigate('/dashboard');
+      }
     }
   }, [user, navigate]);
   

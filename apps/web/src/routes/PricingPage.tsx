@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,14 +14,26 @@ export function PricingPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   
-  // Get mode from URL params
+  // Get mode and plan from URL params
   const urlParams = new URLSearchParams(location.search);
   const mode = urlParams.get('mode') || 'upgrade'; // 'trial' or 'upgrade'
+  const preSelectedPlan = urlParams.get('plan'); // 'monthly' or 'annual'
   const isTrialMode = mode === 'trial';
+
+  // Auto-trigger subscription if user just signed up with a pre-selected plan
+  useEffect(() => {
+    if (user && preSelectedPlan && (preSelectedPlan === 'monthly' || preSelectedPlan === 'annual')) {
+      // Small delay to ensure component is fully loaded
+      setTimeout(() => {
+        handlePlanSelect(preSelectedPlan);
+      }, 500);
+    }
+  }, [user, preSelectedPlan]);
 
   const handlePlanSelect = async (plan: 'monthly' | 'annual') => {
     if (!user) {
-      navigate('/');
+      // Redirect to signup with plan pre-selected
+      navigate(`/login?mode=signup&plan=${plan}&redirect=pricing`);
       return;
     }
 
@@ -61,9 +73,18 @@ export function PricingPage() {
           <p className="mt-4 text-lg text-gray-600">
             {isTrialMode 
               ? "Start your 7-day free trial with either plan - cancel anytime"
-              : "Upgrade to QuickStage Pro for unlimited snapshots and features"
+              : user 
+                ? "Upgrade to QuickStage Pro for unlimited snapshots and features"
+                : "Create an account and upgrade to QuickStage Pro for unlimited snapshots and features"
             }
           </p>
+          {!user && (
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-2xl mx-auto">
+              <p className="text-sm text-blue-700">
+                💡 <strong>New to QuickStage?</strong> Select your plan below and we'll create your account in the next step.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Pricing Cards */}
@@ -119,6 +140,8 @@ export function PricingPage() {
                 console.error('Apple Pay error:', error);
                 alert(`Apple Pay failed: ${error}`);
               }}
+              requiresAuth={!user}
+              onAuthRequired={() => navigate(`/login?mode=signup&plan=monthly&redirect=pricing`)}
             />
           </div>
 
@@ -182,6 +205,8 @@ export function PricingPage() {
                 console.error('Apple Pay error:', error);
                 alert(`Apple Pay failed: ${error}`);
               }}
+              requiresAuth={!user}
+              onAuthRequired={() => navigate(`/login?mode=signup&plan=annual&redirect=pricing`)}
             />
           </div>
         </div>
@@ -199,10 +224,10 @@ export function PricingPage() {
         {/* Back Button */}
         <div className="text-center">
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(user ? '/dashboard' : '/')}
             className="text-gray-600 hover:text-gray-900 font-medium"
           >
-            ← Back
+            ← Back {user ? 'to Dashboard' : 'to Home'}
           </button>
         </div>
 

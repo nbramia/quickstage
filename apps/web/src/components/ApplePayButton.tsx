@@ -7,9 +7,11 @@ interface ApplePayButtonProps {
   onSuccess?: () => void;
   onError?: (error: string) => void;
   disabled?: boolean;
+  requiresAuth?: boolean;
+  onAuthRequired?: () => void;
 }
 
-export function ApplePayButton({ plan, onSuccess, onError, disabled }: ApplePayButtonProps) {
+export function ApplePayButton({ plan, onSuccess, onError, disabled, requiresAuth, onAuthRequired }: ApplePayButtonProps) {
   const [isApplePayAvailable, setIsApplePayAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,6 +54,12 @@ export function ApplePayButton({ plan, onSuccess, onError, disabled }: ApplePayB
 
   const handleApplePayClick = async () => {
     if (disabled || isLoading) return;
+
+    // Check if authentication is required
+    if (requiresAuth) {
+      onAuthRequired?.();
+      return;
+    }
 
     setIsLoading(true);
     try {

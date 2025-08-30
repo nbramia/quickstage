@@ -128,35 +128,35 @@ export default function Landing() {
   // Handle opacity and fade-out for each text change
   useEffect(() => {
     if (isMobile) {
-      // On mobile: no opacity changes, just let text change naturally
+      // On mobile: no opacity changes at all - let text change naturally
       // This prevents any fade-in/fade-out effects
       return;
-    }
-    
-    // Desktop: manipulate transitions for instant appearance
-    const textElement = document.querySelector('[data-rotating-text]') as HTMLElement;
-    if (textElement) {
-      // Force disable transition for instant appearance
-      textElement.style.transition = 'none';
-      textElement.style.webkitTransition = 'none'; // Safari/iOS support
-      // Force a reflow to ensure the transition is disabled
-      textElement.offsetHeight;
-      setTextOpacity(1);
-      // Re-enable transition after a brief moment
-      setTimeout(() => {
-        if (textElement) {
-          textElement.style.transition = 'opacity 1.5s ease-out';
-          textElement.style.webkitTransition = 'opacity 1.5s ease-out'; // Safari/iOS support
-        }
-      }, 10);
     } else {
-      setTextOpacity(1);
+      // Desktop: manipulate transitions for instant appearance
+      const textElement = document.querySelector('[data-rotating-text]') as HTMLElement;
+      if (textElement) {
+        // Force disable transition for instant appearance
+        textElement.style.transition = 'none';
+        textElement.style.webkitTransition = 'none'; // Safari/iOS support
+        // Force a reflow to ensure the transition is disabled
+        textElement.offsetHeight;
+        setTextOpacity(1);
+        // Re-enable transition after a brief moment
+        setTimeout(() => {
+          if (textElement) {
+            textElement.style.transition = 'opacity 1.75s ease-out';
+            textElement.style.webkitTransition = 'opacity 1.75s ease-out'; // Safari/iOS support
+          }
+        }, 10);
+      } else {
+        setTextOpacity(1);
+      }
     }
     
-    // Start fade out 1.5 seconds before text change (at 0.5 seconds)
+    // Start fade out 1.75 seconds before text change (at 0.25 seconds)
     const fadeOutTimer = setTimeout(() => {
       setTextOpacity(0);
-    }, 500); // Start fading after 0.5 seconds
+    }, 250); // Start fading after 0.25 seconds
     
     return () => {
       clearTimeout(fadeOutTimer);
@@ -312,8 +312,8 @@ export default function Landing() {
                  data-rotating-text
                  style={isMobile ? {} : { 
                    opacity: textOpacity,
-                   transition: 'opacity 1.5s ease-out',
-                   WebkitTransition: 'opacity 1.5s ease-out', // Safari/iOS support
+                   transition: 'opacity 1.75s ease-out',
+                   WebkitTransition: 'opacity 1.75s ease-out', // Safari/iOS support
                    willChange: 'opacity', // Optimize for desktop
                    backfaceVisibility: 'hidden', // Prevent flickering
                    transform: 'translateZ(0)' // Force hardware acceleration
