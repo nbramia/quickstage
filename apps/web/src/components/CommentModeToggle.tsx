@@ -99,7 +99,7 @@ export default function CommentModeToggle({
               : 'bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 shadow-blue-200'
             }
           `}
-          title={isCommentMode ? 'Exit comment mode' : 'Add comments to this page'}
+          title={isCommentMode ? 'Exit comment mode and return to normal navigation' : 'Enter comment mode to add comments to this page'}
           aria-label={isCommentMode ? 'Exit comment mode' : 'Enter comment mode'}
         >
           <svg 
@@ -120,17 +120,17 @@ export default function CommentModeToggle({
             />
           </svg>
           <span>
-            {isCommentMode ? 'Exit' : 'Comment'}
+            {isCommentMode ? 'Exit Comment Mode' : 'Add Comments'}
           </span>
         </button>
       </div>
 
       {/* Comment Mode Instructions */}
       {isCommentMode && (
-        <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 shadow-lg animate-in slide-in-from-top duration-200">
+        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 shadow-lg animate-in slide-in-from-top duration-200">
           <div className="flex items-start space-x-2">
             <svg 
-              className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" 
+              className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -140,36 +140,21 @@ export default function CommentModeToggle({
                 strokeLinecap="round" 
                 strokeLinejoin="round" 
                 strokeWidth={2} 
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" 
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" 
               />
             </svg>
             <div>
-              <p className="text-sm font-medium text-blue-900">
+              <p className="text-sm font-medium text-amber-900">
                 Comment Mode Active
               </p>
-              <p className="text-xs text-blue-700 mt-1">
-                Click anywhere on the page to add a comment at that location
+              <p className="text-xs text-amber-800 mt-1">
+                Normal clicking is disabled. Click anywhere to add a comment, then click "Exit Comment Mode" to return to normal navigation.
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Comment Mode Overlay Cursor Instructions */}
-      {isCommentMode && (
-        <style dangerouslySetInnerHTML={{
-          __html: `
-            * {
-              cursor: crosshair !important;
-            }
-            .comment-pin,
-            .comment-controls,
-            .comment-modal {
-              cursor: default !important;
-            }
-          `
-        }} />
-      )}
     </div>
   );
 }

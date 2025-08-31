@@ -293,15 +293,25 @@ export default function CommentOverlay({
         />
       )}
 
-      {/* Comment Overlay */}
-      <div 
-        ref={overlayRef}
-        className={`absolute inset-0 pointer-events-none z-30 ${className} ${
-          isCommentMode ? 'cursor-crosshair' : ''
-        }`}
-        onClick={handleOverlayClick}
-        style={{ pointerEvents: isCommentMode ? 'auto' : 'none' }}
-      >
+      {/* Comment Overlay - Only active in comment mode */}
+      {isCommentMode && (
+        <div 
+          ref={overlayRef}
+          className={`absolute inset-0 pointer-events-auto z-30 cursor-crosshair ${className}`}
+          onClick={handleOverlayClick}
+        >
+          {/* Overlay instructions */}
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+            <div className="bg-blue-50/90 border border-blue-200 rounded-lg p-3 text-center backdrop-blur-sm">
+              <div className="text-sm text-blue-700 font-medium">Comment Mode Active</div>
+              <div className="text-xs text-blue-600 mt-1">Click anywhere to add a comment</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comment Pins Container - Always present but only shows pins when showPins is true */}
+      <div className={`absolute inset-0 pointer-events-none z-30 ${className}`}>
         {/* Comment Pins */}
         {visiblePins.map((pin) => (
           <CommentPin
@@ -317,10 +327,6 @@ export default function CommentOverlay({
         ))}
 
 
-        {/* Comment Mode Overlay Effect */}
-        {isCommentMode && (
-          <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
-        )}
       </div>
       
       {/* Comment Modal */}
