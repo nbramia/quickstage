@@ -150,6 +150,10 @@ export async function handleGoogleAuth(c) {
                         totalCommentsPosted: 0,
                         totalCommentsReceived: 0,
                     },
+                    onboarding: {
+                        hasSeenWelcome: false,
+                        completedTutorials: [],
+                    },
                     email: email,
                     name: name || `${given_name || ''} ${family_name || ''}`.trim() || 'Google User',
                     googleId: idToken

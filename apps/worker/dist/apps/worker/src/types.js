@@ -29,3 +29,7 @@ export const DEFAULT_SNAPSHOT_METADATA = {
 export const DEFAULT_SUBSCRIPTION = {
     status: 'none',
 };
+export const DEFAULT_ONBOARDING = {
+    hasSeenWelcome: false,
+    completedTutorials: [],
+};

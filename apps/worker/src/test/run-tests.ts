@@ -16,13 +16,19 @@ const commands = {
   // Core tests - auth, tokens, snapshots
   core: () => {
     console.log('🔑 Running core route tests...');
-    execSync('npx vitest run src/test/routes/auth.test.ts src/test/routes/tokens.test.ts src/test/routes/snapshots.test.ts src/test/routes/ai-suggestions.test.ts', { stdio: 'inherit' });
+    execSync('npx vitest run src/test/routes/auth.test.ts src/test/routes/tokens.test.ts src/test/routes/snapshots.test.ts', { stdio: 'inherit' });
   },
 
   // Subscription scenario tests
   subscriptions: () => {
     console.log('💳 Running comprehensive subscription scenario tests...');
     execSync('npx vitest run src/test/subscription-scenarios.test.ts', { stdio: 'inherit' });
+  },
+
+  // AI-specific tests
+  ai: () => {
+    console.log('🤖 Running AI functionality tests...');
+    execSync('npx vitest run src/test/routes/ai-suggestions.test.ts', { stdio: 'inherit' });
   },
 
   // All tests

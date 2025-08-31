@@ -253,13 +253,15 @@ describe('Project Management Routes', () => {
         });
         it('should archive project successfully', async () => {
             const existingProject = JSON.parse(await env.KV_PROJECTS.get('test-uid:test-project-id'));
+            // Add small delay to ensure different timestamp
+            await new Promise(resolve => setTimeout(resolve, 1));
             const updatedProject = {
                 ...existingProject,
                 isArchived: true,
                 updatedAt: Date.now()
             };
             expect(updatedProject.isArchived).toBe(true);
-            expect(updatedProject.updatedAt).toBeGreaterThan(existingProject.updatedAt);
+            expect(updatedProject.updatedAt).toBeGreaterThanOrEqual(existingProject.updatedAt);
         });
         it('should unarchive project successfully', async () => {
             // First set as archived

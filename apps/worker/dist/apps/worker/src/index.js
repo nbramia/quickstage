@@ -15,6 +15,10 @@ import * as SnapshotRoutes from './routes/snapshots';
 import * as ProjectRoutes from './routes/projects';
 import * as ReviewRoutes from './routes/reviews';
 import * as EnhancedCommentRoutes from './routes/enhanced-comments';
+import * as SubscriptionRoutes from './routes/subscriptions';
+import * as NotificationRoutes from './routes/notifications';
+import * as OnboardingRoutes from './routes/onboarding';
+import * as AISuggestionsRoutes from './routes/ai-suggestions';
 import { getSubscriptionDisplayStatus, canAccessProFeatures } from './user';
 import { handleCustomerCreated, handleCheckoutSessionCompleted, handleSubscriptionCreated, handleSubscriptionUpdated, handleSubscriptionDeleted, handleCustomerDeleted, handlePaymentSucceeded, handlePaymentFailed } from './stripe';
 import { purgeExpired } from './snapshot';
@@ -517,6 +521,28 @@ app.delete('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRout
 app.post('/api/snapshots/:snapshotId/comments/:commentId/resolve', EnhancedCommentRoutes.handleResolveComment);
 app.post('/api/snapshots/:snapshotId/comments/:commentId/attachments', EnhancedCommentRoutes.handleUploadAttachment);
 app.post('/api/snapshots/:snapshotId/comments/bulk-resolve', EnhancedCommentRoutes.handleBulkResolveComments);
+// Subscription routes
+app.post('/api/snapshots/:snapshotId/subscribe', SubscriptionRoutes.handleSubscribeToSnapshot);
+app.post('/api/snapshots/:snapshotId/unsubscribe', SubscriptionRoutes.handleUnsubscribeFromSnapshot);
+app.get('/api/subscriptions', SubscriptionRoutes.handleGetUserSubscriptions);
+app.patch('/api/subscriptions/:subscriptionId', SubscriptionRoutes.handleUpdateSubscription);
+app.delete('/api/subscriptions/:subscriptionId', SubscriptionRoutes.handleDeleteSubscription);
+// Notification routes
+app.get('/api/notifications', NotificationRoutes.handleGetNotifications);
+app.get('/api/notifications/stats', NotificationRoutes.handleGetNotificationStats);
+app.post('/api/notifications/:notificationId/read', NotificationRoutes.handleMarkNotificationRead);
+app.post('/api/notifications/read-all', NotificationRoutes.handleMarkAllNotificationsRead);
+app.delete('/api/notifications/:notificationId', NotificationRoutes.handleDeleteNotification);
+// Onboarding routes
+app.get('/api/onboarding', OnboardingRoutes.handleGetOnboarding);
+app.put('/api/onboarding', OnboardingRoutes.handleUpdateOnboarding);
+app.post('/api/onboarding/tutorial', OnboardingRoutes.handleTrackTutorial);
+app.get('/api/onboarding/should-show-welcome', OnboardingRoutes.handleShouldShowWelcome);
+// AI Suggestions routes
+// AI Chat Routes
+app.post('/api/snapshots/:snapshotId/ai-chat/start', AISuggestionsRoutes.handleStartAIConversation);
+app.post('/api/snapshots/:snapshotId/ai-chat/message', AISuggestionsRoutes.handleSendAIMessage);
+app.get('/api/snapshots/:snapshotId/ai-chat', AISuggestionsRoutes.handleGetAIConversation);
 // Admin endpoints
 app.get('/admin/users', handleGetUsers);
 app.post('/admin/users', handleCreateUser);

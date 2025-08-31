@@ -4,7 +4,8 @@ import {
   DEFAULT_USER_ANALYTICS, 
   DEFAULT_SNAPSHOT_ANALYTICS, 
   DEFAULT_SNAPSHOT_METADATA, 
-  DEFAULT_SUBSCRIPTION 
+  DEFAULT_SUBSCRIPTION,
+  DEFAULT_ONBOARDING 
 } from './types';
 
 // Migration script to update existing users and snapshots to new schema
@@ -143,6 +144,11 @@ export function migrateUserToNewSchema(user: any): UserRecord {
   if (!user.lastActivityAt) user.lastActivityAt = user.lastLoginAt || user.createdAt;
   if (!user.status) user.status = 'active';
   
+  // Add onboarding field for new users
+  if (!user.onboarding) {
+    user.onboarding = { ...DEFAULT_ONBOARDING };
+  }
+  
   return user as UserRecord;
 }
 
@@ -228,6 +234,10 @@ export function createNewUserWithSchema(
       averageSessionDuration: 0,
       totalCommentsPosted: 0,
       totalCommentsReceived: 0,
+    },
+    onboarding: {
+      hasSeenWelcome: false,
+      completedTutorials: [],
     }
   };
 }

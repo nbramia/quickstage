@@ -1,6 +1,7 @@
 import { Comment, CommentAttachment } from '../types';
 import { getUidFromSession } from '../auth';
 import { getAnalyticsManager } from '../worker-utils';
+import { createNotificationForSubscribers } from './subscriptions';
 
 // Generate unique comment ID
 function generateCommentId(): string {
@@ -21,7 +22,32 @@ export async function handleCreateComment(c: any) {
     }
 
     const snapshotId = c.req.param('snapshotId');
-    const body = await c.req.json();
+    
+    // Handle both JSON and FormData requests
+    let body: any;
+    let attachments: File[] = [];
+    
+    const contentType = c.req.header('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await c.req.formData();
+      
+      // Extract text fields
+      body = {
+        text: formData.get('text'),
+        elementSelector: formData.get('elementSelector'),
+        elementCoordinates: formData.get('elementCoordinates') ? JSON.parse(formData.get('elementCoordinates') as string) : undefined,
+        pageUrl: formData.get('pageUrl'),
+        parentId: formData.get('parentId'),
+        state: formData.get('state') || 'published',
+        subscribe: formData.get('subscribe') === 'true'
+      };
+      
+      // Extract file attachments
+      const files = formData.getAll('attachments');
+      attachments = files.filter((file: any): file is File => file instanceof File);
+    } else {
+      body = await c.req.json();
+    }
     
     const {
       text,
@@ -29,7 +55,8 @@ export async function handleCreateComment(c: any) {
       elementCoordinates,
       pageUrl,
       parentId,
-      state = 'published'
+      state = 'published',
+      subscribe = false
     } = body;
 
     if (!text || text.trim().length === 0) {
@@ -44,6 +71,39 @@ export async function handleCreateComment(c: any) {
     const commentId = generateCommentId();
     const now = Date.now();
 
+    // Upload attachments to R2 if any
+    const commentAttachments: CommentAttachment[] = [];
+    
+    for (const file of attachments) {
+      try {
+        const attachmentId = generateAttachmentId();
+        const filename = file.name;
+        const mimeType = file.type;
+        const size = file.size;
+        
+        // Store in R2 under attachments/{snapshotId}/{commentId}/{attachmentId}
+        const objectKey = `attachments/${snapshotId}/${commentId}/${attachmentId}`;
+        
+        await c.env.R2_SNAPSHOTS.put(objectKey, file.stream(), {
+          httpMetadata: { contentType: mimeType }
+        });
+        
+        const attachment: CommentAttachment = {
+          id: attachmentId,
+          filename,
+          mimeType,
+          size,
+          url: `${c.env.PUBLIC_BASE_URL}/attachments/${snapshotId}/${commentId}/${attachmentId}`,
+          uploadedAt: now
+        };
+        
+        commentAttachments.push(attachment);
+      } catch (error) {
+        console.error('Error uploading attachment:', error);
+        // Continue with other attachments, don't fail the whole comment
+      }
+    }
+
     const comment: Comment = {
       id: commentId,
       snapshotId,
@@ -56,7 +116,7 @@ export async function handleCreateComment(c: any) {
       pageUrl,
       parentId,
       state,
-      attachments: []
+      attachments: commentAttachments
     };
 
     // Store comment using Durable Objects
@@ -102,6 +162,22 @@ export async function handleCreateComment(c: any) {
       isReply: !!parentId,
       textLength: text.length
     });
+
+    // Create notifications for subscribers
+    const notificationType = parentId ? 'comment_reply' : 'comment_new';
+    const notificationTitle = parentId ? 'New reply to conversation' : 'New comment on snapshot';
+    const notificationMessage = `${authorName}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
+    const actionUrl = `${c.env.PUBLIC_BASE_URL}/view/${snapshotId}`;
+    
+    await createNotificationForSubscribers(
+      c.env,
+      snapshotId,
+      parentId || commentId,
+      notificationType,
+      notificationTitle,
+      notificationMessage,
+      actionUrl
+    );
 
     return c.json({ success: true, comment });
   } catch (error: any) {
@@ -217,6 +293,26 @@ export async function handleDeleteComment(c: any) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
+    // Delete comment attachments from R2
+    if (existingComment.attachments && existingComment.attachments.length > 0) {
+      try {
+        let r2cursor: string | undefined = undefined;
+        do {
+          const objs: any = await c.env.R2_SNAPSHOTS.list({ 
+            prefix: `attachments/${snapshotId}/${commentId}/`, 
+            cursor: r2cursor 
+          });
+          r2cursor = objs.cursor as string | undefined;
+          if (objs.objects.length) {
+            await c.env.R2_SNAPSHOTS.delete((objs.objects as any[]).map((o: any) => o.key as string));
+          }
+        } while (r2cursor);
+      } catch (error) {
+        console.error('Error deleting comment attachments:', error);
+        // Continue with comment deletion even if attachment cleanup fails
+      }
+    }
+
     // Delete comment
     const deleteResponse = await stub.fetch(`http://do/comments/${commentId}`, {
       method: 'DELETE'
@@ -295,6 +391,17 @@ export async function handleResolveComment(c: any) {
       commentId
     });
 
+    // Create notification for subscribers
+    await createNotificationForSubscribers(
+      c.env,
+      snapshotId,
+      commentId,
+      'comment_resolved',
+      'Comment resolved',
+      'A comment thread has been resolved',
+      `${c.env.PUBLIC_BASE_URL}/view/${snapshotId}`
+    );
+
     return c.json({ success: true, comment: updatedComment });
   } catch (error: any) {
     console.error('Error resolving comment:', error);
@@ -313,15 +420,50 @@ export async function handleUploadAttachment(c: any) {
     const snapshotId = c.req.param('snapshotId');
     const commentId = c.req.param('commentId');
     
-    // TODO: Implement file upload to R2_ATTACHMENTS bucket
-    // For now, return placeholder
+    // Get file from request
+    const formData = await c.req.formData();
+    const file = formData.get('attachment') as File;
+    
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+    
+    // Validate file type and size (same as in handleCreateComment)
+    const allowedTypes = [
+      'image/png', 'image/jpeg', 'image/jpg',
+      'text/plain', 'text/markdown', 
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      return c.json({ error: 'File size too large. Maximum size is 10MB.' }, 400);
+    }
+    
+    if (!allowedTypes.includes(file.type)) {
+      return c.json({ error: 'File type not supported' }, 400);
+    }
+    
     const attachmentId = generateAttachmentId();
+    const filename = file.name;
+    const mimeType = file.type;
+    const size = file.size;
+    
+    // Store in R2 under attachments/{snapshotId}/{commentId}/{attachmentId}
+    const objectKey = `attachments/${snapshotId}/${commentId}/${attachmentId}`;
+    
+    await c.env.R2_SNAPSHOTS.put(objectKey, file.stream(), {
+      httpMetadata: { contentType: mimeType }
+    });
+    
     const attachment: CommentAttachment = {
       id: attachmentId,
-      filename: 'placeholder.png',
-      mimeType: 'image/png',
-      size: 1024,
-      url: `${c.env.PUBLIC_BASE_URL}/attachments/${attachmentId}`,
+      filename,
+      mimeType,
+      size,
+      url: `${c.env.PUBLIC_BASE_URL}/attachments/${snapshotId}/${commentId}/${attachmentId}`,
       uploadedAt: Date.now()
     };
 

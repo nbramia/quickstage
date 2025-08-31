@@ -57,11 +57,20 @@ export async function purgeExpired(env) {
             try {
                 const meta = JSON.parse(metaRaw);
                 if (meta.expiresAt && meta.expiresAt < Date.now()) {
-                    // delete R2 objects under snap/id/
                     const id = meta.id;
+                    // Delete R2 objects under snap/id/ (snapshot files)
                     let r2cursor = undefined;
                     do {
                         const objs = await env.R2_SNAPSHOTS.list({ prefix: `snap/${id}/`, cursor: r2cursor });
+                        r2cursor = objs.cursor;
+                        if (objs.objects.length) {
+                            await env.R2_SNAPSHOTS.delete(objs.objects.map((o) => o.key));
+                        }
+                    } while (r2cursor);
+                    // Delete comment attachments under attachments/snapshotId/
+                    r2cursor = undefined;
+                    do {
+                        const objs = await env.R2_SNAPSHOTS.list({ prefix: `attachments/${id}/`, cursor: r2cursor });
                         r2cursor = objs.cursor;
                         if (objs.objects.length) {
                             await env.R2_SNAPSHOTS.delete(objs.objects.map((o) => o.key));
