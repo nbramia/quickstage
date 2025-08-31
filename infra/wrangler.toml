@@ -101,6 +101,14 @@ id = "a44c5d74f9dd42b3aa378f45e19fb5ba"
 binding = "KV_PROJECTS"
 id = "f29d8835783746e187e78fc20bc668fe"
 
+[[kv_namespaces]]
+binding = "KV_NOTIFICATIONS"
+id = "c4d22c0124d842168ec5647c999d81e2"
+
+[[kv_namespaces]]
+binding = "KV_SUBSCRIPTIONS"
+id = "0e418bc8c6104af7b27c709dcca65d64"
+
 [[r2_buckets]]
 binding = "R2_SNAPSHOTS"
 bucket_name = "snapshots"
