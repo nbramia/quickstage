@@ -10,6 +10,8 @@ import AdminDashboard from './routes/AdminDashboard'
 import { PricingPage } from './routes/PricingPage'
 import Documentation from './routes/Documentation'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { TutorialProvider } from './contexts/TutorialContext'
+import WelcomeModal from './components/WelcomeModal'
 import './index.css'
 
 // Protected route wrapper using auth context
@@ -37,41 +39,46 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/docs" element={<Documentation />} />
+      <TutorialProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/docs" element={<Documentation />} />
+            
+            {/* Protected routes */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            
+            {/* Snapshot viewer (public but password protected) */}
+            <Route path="/s/:id/*" element={<Viewer />} />
+            
+            {/* Redirect old routes */}
+            <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />
+            
+            {/* Catch all - redirect to landing */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
           
-          {/* Protected routes */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin" element={
-            <ProtectedRoute>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          
-          {/* Snapshot viewer (public but password protected) */}
-          <Route path="/s/:id/*" element={<Viewer />} />
-          
-          {/* Redirect old routes */}
-          <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />
-          
-          {/* Catch all - redirect to landing */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+          {/* Global components */}
+          <WelcomeModal />
+        </BrowserRouter>
+      </TutorialProvider>
     </AuthProvider>
   </React.StrictMode>,
 )

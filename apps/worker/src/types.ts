@@ -64,6 +64,15 @@ export interface UserRecord {
     totalCommentsReceived: number;
   };
   
+  // Onboarding & Tutorial Progress
+  onboarding: {
+    hasSeenWelcome: boolean;
+    completedTutorials: string[]; // List of completed tutorial IDs
+    welcomeShownAt?: number;
+    lastTutorialCompletedAt?: number;
+    skippedWelcome?: boolean;
+  };
+  
   // Legacy fields for backward compatibility
   subscriptionStatus?: string;
   stripeCustomerId?: string;
@@ -209,6 +218,9 @@ export type AnalyticsEventType =
   | 'comment_updated'
   | 'comment_resolved'
   | 'comments_bulk_resolved'
+  | 'comment_subscription_created'
+  | 'comment_subscription_cancelled'
+  | 'notifications_marked_all_read'
   | 'user_login'
   | 'user_logout'
   | 'user_registered'
@@ -245,7 +257,17 @@ export type AnalyticsEventType =
   | 'review_requested'
   | 'review_submitted'
   | 'review_cancelled'
-  | 'review_reminder_sent';
+  | 'review_reminder_sent'
+  | 'welcome_shown'
+  | 'welcome_dismissed'
+  | 'welcome_skipped'
+  | 'tutorial_started'
+  | 'tutorial_completed'
+  | 'tutorial_skipped'
+  | 'ai_suggestions_viewed'
+  | 'ai_suggestion_applied'
+  | 'ai_suggestion_dismissed'
+  | 'ai_suggestions_generated';
 
 // Analytics Aggregation Types
 export interface UserAnalytics {
@@ -365,6 +387,32 @@ export interface CommentAttachment {
   uploadedAt: number;
 }
 
+// Subscription types
+export interface CommentSubscription {
+  id: string;
+  userId: string;
+  snapshotId: string;
+  commentId?: string; // Optional: subscribe to specific comment thread
+  createdAt: number;
+  lastNotified?: number;
+  isActive: boolean;
+  unsubscribedAt?: number;
+}
+
+// Notification types
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'comment_reply' | 'comment_new' | 'comment_resolved' | 'snapshot_comment';
+  title: string;
+  message: string;
+  snapshotId: string;
+  commentId?: string;
+  createdAt: number;
+  readAt?: number;
+  actionUrl?: string;
+}
+
 // Review workflow types
 export interface Review {
   id: string;
@@ -476,5 +524,72 @@ export const DEFAULT_SNAPSHOT_METADATA = {
 export const DEFAULT_SUBSCRIPTION = {
   status: 'none' as const,
 };
+
+export const DEFAULT_ONBOARDING = {
+  hasSeenWelcome: false,
+  completedTutorials: [],
+};
+
+// AI Suggestions Types
+export interface AISuggestion {
+  id: string;
+  snapshotId: string;
+  type: AISuggestionType;
+  title: string;
+  description: string;
+  severity: 'info' | 'low' | 'medium' | 'high';
+  category: 'accessibility' | 'usability' | 'design' | 'performance' | 'mobile';
+  elementSelector?: string; // CSS selector for pinning to specific element
+  elementCoordinates?: { x: number; y: number; }; // For visual placement
+  pageUrl?: string; // For multi-page prototypes
+  actionable: boolean; // Whether suggestion has actionable steps
+  actionSteps?: string[]; // Specific steps to implement suggestion
+  exampleCode?: string; // Example code or markup
+  resources?: AISuggestionResource[]; // Related resources/links
+  confidence: number; // AI confidence score (0-1)
+  generatedAt: number;
+  status: 'active' | 'applied' | 'dismissed';
+  appliedAt?: number;
+  dismissedAt?: number;
+  userFeedback?: 'helpful' | 'not_helpful' | 'neutral';
+}
+
+export type AISuggestionType = 
+  | 'accessibility_missing_alt'
+  | 'accessibility_color_contrast'
+  | 'accessibility_keyboard_navigation'
+  | 'accessibility_focus_indicators'
+  | 'accessibility_semantic_html'
+  | 'usability_button_size'
+  | 'usability_click_targets'
+  | 'usability_form_labels'
+  | 'usability_error_messages'
+  | 'usability_loading_states'
+  | 'design_spacing_consistency'
+  | 'design_typography_hierarchy'
+  | 'design_color_palette'
+  | 'design_visual_hierarchy'
+  | 'design_alignment'
+  | 'performance_image_optimization'
+  | 'performance_loading_speed'
+  | 'mobile_responsive_design'
+  | 'mobile_touch_targets'
+  | 'mobile_viewport_scaling';
+
+export interface AISuggestionResource {
+  title: string;
+  url: string;
+  type: 'article' | 'guide' | 'documentation' | 'example' | 'tool';
+}
+
+export interface AISuggestionsAnalysis {
+  snapshotId: string;
+  totalSuggestions: number;
+  suggestionsByCategory: Record<string, number>;
+  suggestionsBySeverity: Record<string, number>;
+  overallScore: number; // Overall UX score (0-100)
+  lastAnalyzedAt: number;
+  analysisVersion: string; // For tracking AI model updates
+}
 
 

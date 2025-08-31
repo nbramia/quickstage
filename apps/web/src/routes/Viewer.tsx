@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import AISuggestionsPanel from '../components/AISuggestionsPanel';
 import '../fonts.css';
 
 type Comment = {
@@ -39,6 +40,7 @@ export function Viewer() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [showAISuggestions, setShowAISuggestions] = useState(false);
 
   const { id: snapshotId } = useParams();
 
@@ -294,7 +296,17 @@ export function Viewer() {
                 Size: {formatFileSize(snapshot.totalBytes)}
               </div>
             </div>
-            <nav>
+            <nav className="flex items-center space-x-3">
+              <button 
+                onClick={() => setShowAISuggestions(!showAISuggestions)}
+                className={`px-3 py-2 text-sm font-medium border rounded-lg transition-colors ${
+                  showAISuggestions 
+                    ? 'bg-blue-600 text-white border-blue-600' 
+                    : 'text-gray-600 hover:text-gray-700 border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                🤖 AI Suggestions
+              </button>
               <button 
                 onClick={() => navigate('/')}
                 className="text-gray-600 hover:text-gray-700 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:border-gray-400 transition-colors"
@@ -417,6 +429,15 @@ export function Viewer() {
           </div>
         </div>
       </main>
+
+      {/* AI Suggestions Panel */}
+      {snapshotId && (
+        <AISuggestionsPanel
+          snapshotId={snapshotId}
+          isVisible={showAISuggestions}
+          onClose={() => setShowAISuggestions(false)}
+        />
+      )}
 
     </div>
   );

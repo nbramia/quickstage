@@ -123,6 +123,10 @@ export interface Comment {
   
   // Attachments
   attachments?: CommentAttachment[];
+  
+  // Subscriptions
+  subscribers?: string[]; // User IDs following this comment thread
+  isSubscribed?: boolean; // Current user's subscription status
 }
 
 export interface CommentAttachment {
@@ -132,4 +136,27 @@ export interface CommentAttachment {
   size: number;
   url: string;
   uploadedAt: number;
+}
+
+export interface CommentSubscription {
+  id: string;
+  userId: string;
+  snapshotId: string;
+  commentId?: string; // Optional: subscribe to specific comment thread
+  createdAt: number;
+  lastNotified?: number;
+  isActive: boolean;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'comment_reply' | 'comment_new' | 'comment_resolved' | 'snapshot_comment';
+  title: string;
+  message: string;
+  snapshotId: string;
+  commentId?: string;
+  createdAt: number;
+  readAt?: number;
+  actionUrl?: string;
 }

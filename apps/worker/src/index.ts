@@ -33,6 +33,10 @@ import * as WebhookRoutes from './routes/webhooks';
 import * as ProjectRoutes from './routes/projects';
 import * as ReviewRoutes from './routes/reviews';
 import * as EnhancedCommentRoutes from './routes/enhanced-comments';
+import * as SubscriptionRoutes from './routes/subscriptions';
+import * as NotificationRoutes from './routes/notifications';
+import * as OnboardingRoutes from './routes/onboarding';
+import * as AISuggestionsRoutes from './routes/ai-suggestions';
 import { 
   getUserByName, 
   ensureUserByName, 
@@ -625,6 +629,31 @@ app.delete('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRout
 app.post('/api/snapshots/:snapshotId/comments/:commentId/resolve', EnhancedCommentRoutes.handleResolveComment);
 app.post('/api/snapshots/:snapshotId/comments/:commentId/attachments', EnhancedCommentRoutes.handleUploadAttachment);
 app.post('/api/snapshots/:snapshotId/comments/bulk-resolve', EnhancedCommentRoutes.handleBulkResolveComments);
+
+// Subscription routes
+app.post('/api/snapshots/:snapshotId/subscribe', SubscriptionRoutes.handleSubscribeToSnapshot);
+app.post('/api/snapshots/:snapshotId/unsubscribe', SubscriptionRoutes.handleUnsubscribeFromSnapshot);
+app.get('/api/subscriptions', SubscriptionRoutes.handleGetUserSubscriptions);
+app.patch('/api/subscriptions/:subscriptionId', SubscriptionRoutes.handleUpdateSubscription);
+app.delete('/api/subscriptions/:subscriptionId', SubscriptionRoutes.handleDeleteSubscription);
+
+// Notification routes
+app.get('/api/notifications', NotificationRoutes.handleGetNotifications);
+app.get('/api/notifications/stats', NotificationRoutes.handleGetNotificationStats);
+app.post('/api/notifications/:notificationId/read', NotificationRoutes.handleMarkNotificationRead);
+app.post('/api/notifications/read-all', NotificationRoutes.handleMarkAllNotificationsRead);
+app.delete('/api/notifications/:notificationId', NotificationRoutes.handleDeleteNotification);
+
+// Onboarding routes
+app.get('/api/onboarding', OnboardingRoutes.handleGetOnboarding);
+app.put('/api/onboarding', OnboardingRoutes.handleUpdateOnboarding);
+app.post('/api/onboarding/tutorial', OnboardingRoutes.handleTrackTutorial);
+app.get('/api/onboarding/should-show-welcome', OnboardingRoutes.handleShouldShowWelcome);
+
+// AI Suggestions routes
+app.post('/api/snapshots/:snapshotId/ai-suggestions/generate', AISuggestionsRoutes.handleGenerateAISuggestions);
+app.get('/api/snapshots/:snapshotId/ai-suggestions', AISuggestionsRoutes.handleGetAISuggestions);
+app.put('/api/snapshots/:snapshotId/ai-suggestions/:suggestionId', AISuggestionsRoutes.handleUpdateSuggestionStatus);
 
 // Admin endpoints
 app.get('/admin/users', handleGetUsers);

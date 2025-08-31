@@ -43,6 +43,10 @@ export async function ensureUserByName(c: any, name: string): Promise<UserRecord
       averageSessionDuration: 0,
       totalCommentsPosted: 0,
       totalCommentsReceived: 0
+    },
+    onboarding: {
+      hasSeenWelcome: false,
+      completedTutorials: [],
     }
   };
   
