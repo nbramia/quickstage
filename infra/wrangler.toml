@@ -10,9 +10,10 @@ STRIPE_PRICE_ID = "price_1S1Z9bAokLtL9KQyOghFAgda"  # Your production $6/mo pric
 STRIPE_ANNUAL_PRICE_ID = "price_1S1Z9bAokLtL9KQydC9VIcE2"  # Your production $60/year price ID
 PUBLIC_BASE_URL = "https://quickstage.tech"  # Base URL for Stripe success/cancel redirects
 
-# Stripe secrets (set these by running the below commands and doing the input when prompted)
+# Secrets (set these by running the below commands and doing the input when prompted)
 # wrangler secret put STRIPE_SECRET_KEY --config ../../infra/wrangler.toml
 # wrangler secret put STRIPE_WEBHOOK_SECRET --config ../../infra/wrangler.toml
+# wrangler secret put OPENAI_API_KEY --config ../../infra/wrangler.toml
 
 # Custom domain for clean snapshot URLs
 [triggers.custom_domains]

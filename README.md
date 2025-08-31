@@ -8,6 +8,7 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **Clean URLs**: Beautiful, professional URLs at `quickstage.tech/s/{id}` 
 - **Real-Time Preview**: View prototypes in real-time with live updates
 - **Collaborative Comments**: Add feedback and collaborate with team members
+- **AI UX Assistant**: Get expert UI/UX feedback powered by OpenAI GPT-4
 - **Secure Access Control**: Role-based permissions and secure sharing
 - **Mobile Responsive**: Optimized for all devices and screen sizes
 - **Pro Features**: Advanced features for power users and teams
@@ -47,6 +48,11 @@ pnpm install
 # Set up environment variables
 cp .env.example .env
 # Edit .env with your configuration
+
+# Set up OpenAI API key for AI features
+cd infra
+wrangler secret put OPENAI_API_KEY --config ../../infra/wrangler.toml
+# Enter your OpenAI API key when prompted
 
 # Start development
 pnpm dev
@@ -112,6 +118,66 @@ pnpm --filter @quickstage/web deploy
 ```
 
 **Note:** The `deploy-with-tests.sh` script handles both worker and web app deployment automatically, ensuring all tests pass before deployment.
+
+## 🤖 AI UX Assistant
+
+QuickStage includes a powerful AI assistant that analyzes your prototypes and provides expert UI/UX feedback. Powered by OpenAI GPT-4, it offers conversational, contextual suggestions to improve your designs.
+
+### Features
+
+- **Real-time Analysis**: AI analyzes your HTML, CSS, and JavaScript files to understand your design
+- **Conversational Interface**: Chat with the AI to ask specific questions about your prototype
+- **Expert Feedback**: Get suggestions based on modern UI/UX principles, accessibility guidelines, and design best practices
+- **Multiple Categories**: Feedback covers accessibility, usability, design, performance, and mobile responsiveness
+- **Rate Limited**: Smart rate limiting (10 requests/hour, 100K tokens/hour) to prevent abuse
+- **Anonymous Access**: Works for both signed-in users and anonymous viewers of public snapshots
+
+### Key Areas of Analysis
+
+- **Accessibility**: WCAG compliance, screen reader compatibility, keyboard navigation
+- **Visual Design**: Typography hierarchy, color contrast, spacing consistency
+- **Mobile UX**: Responsive design, touch targets, mobile-first considerations
+- **Usability**: Navigation flow, error handling, loading states, user feedback
+- **Performance**: Image optimization, code efficiency, loading patterns
+- **Modern Standards**: Latest design trends and best practices
+
+### How It Works
+
+1. **Click "AI UX Assistant"** in any snapshot viewer
+2. **Start Analysis**: AI reads your prototype files and provides initial feedback
+3. **Ask Questions**: Continue the conversation with specific questions like:
+   - "How can I improve accessibility for screen readers?"
+   - "What's the best way to organize this navigation?"
+   - "Is this color scheme accessible?"
+   - "How can I make this more mobile-friendly?"
+
+### Rate Limiting & Error Handling
+
+- **User Limits**: 10 AI requests per hour per user/IP
+- **Token Limits**: 100,000 tokens per hour to manage OpenAI costs
+- **Conversation Limits**: 20 messages per conversation (24-hour expiry)
+- **Graceful Degradation**: Clear error messages when service is unavailable
+- **Privacy**: User-friendly error messages (doesn't expose API funding issues)
+
+### Configuration
+
+The AI assistant requires an OpenAI API key to be configured:
+
+```bash
+# Add your OpenAI API key to Cloudflare Workers secrets
+cd infra
+wrangler secret put OPENAI_API_KEY --config ../../infra/wrangler.toml
+```
+
+**API Documentation**: [OpenAI API Reference](https://platform.openai.com/docs/api-reference/authentication)
+
+### Technical Implementation
+
+- **Backend**: `/api/snapshots/:id/ai-chat/` endpoints in Cloudflare Workers
+- **AI Model**: GPT-4-mini for fast, cost-effective responses
+- **Storage**: Conversations stored in Cloudflare KV with automatic expiry
+- **Frontend**: Real-time chat interface with markdown-like formatting
+- **Error Handling**: Comprehensive error handling for API failures and rate limits
 
 ## Project Structure
 

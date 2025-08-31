@@ -305,7 +305,7 @@ export function Viewer() {
                     : 'text-gray-600 hover:text-gray-700 border-gray-300 hover:border-gray-400'
                 }`}
               >
-                🤖 AI Suggestions
+                🤖 AI UX Assistant
               </button>
               <button 
                 onClick={() => navigate('/')}

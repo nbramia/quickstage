@@ -651,9 +651,10 @@ app.post('/api/onboarding/tutorial', OnboardingRoutes.handleTrackTutorial);
 app.get('/api/onboarding/should-show-welcome', OnboardingRoutes.handleShouldShowWelcome);
 
 // AI Suggestions routes
-app.post('/api/snapshots/:snapshotId/ai-suggestions/generate', AISuggestionsRoutes.handleGenerateAISuggestions);
-app.get('/api/snapshots/:snapshotId/ai-suggestions', AISuggestionsRoutes.handleGetAISuggestions);
-app.put('/api/snapshots/:snapshotId/ai-suggestions/:suggestionId', AISuggestionsRoutes.handleUpdateSuggestionStatus);
+// AI Chat Routes
+app.post('/api/snapshots/:snapshotId/ai-chat/start', AISuggestionsRoutes.handleStartAIConversation);
+app.post('/api/snapshots/:snapshotId/ai-chat/message', AISuggestionsRoutes.handleSendAIMessage);
+app.get('/api/snapshots/:snapshotId/ai-chat', AISuggestionsRoutes.handleGetAIConversation);
 
 // Admin endpoints
 app.get('/admin/users', handleGetUsers);

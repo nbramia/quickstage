@@ -267,6 +267,8 @@ export type AnalyticsEventType =
   | 'ai_suggestions_viewed'
   | 'ai_suggestion_applied'
   | 'ai_suggestion_dismissed'
+  | 'ai_conversation_started'
+  | 'ai_message_sent'
   | 'ai_suggestions_generated';
 
 // Analytics Aggregation Types
