@@ -170,15 +170,24 @@ The project includes a comprehensive testing suite built with Vitest and React T
 
 ### Test Status
 
-✅ **All Tests Passing**: 65 tests across 7 test files
+✅ **Comprehensive Test Coverage**: 143 tests across 13 test files
 
-- `Login.test.tsx` - 13 tests ✅
-- `Landing.test.tsx` - 29 tests ✅  
-- `Dashboard.test.tsx` - 5 tests ✅
-- `Settings.test.tsx` - 6 tests ✅
-- `AdminDashboard.test.tsx` - 5 tests ✅
-- `Viewer.test.tsx` - 5 tests ✅
-- `Simple.test.tsx` - 2 tests ✅
+**Core Components:**
+- `Login.test.tsx` - 13 tests ✅ (Authentication flows, form validation)
+- `Landing.test.tsx` - 29 tests ✅ (Marketing page, responsive design)
+- `Dashboard.test.tsx` - 5 tests ✅ (Main user interface, navigation)
+- `Settings.test.tsx` - 6 tests ✅ (User preferences, account management)
+- `AdminDashboard.test.tsx` - 5 tests ✅ (Admin interface, user management)
+- `Viewer.test.tsx` - 5 tests ✅ (Snapshot viewing, file handling)
+- `Simple.test.tsx` - 2 tests ✅ (Basic rendering)
+
+**New Features:**
+- `ProjectSidebar.test.tsx` - Project organization and management ✅
+- `SnapshotTable.test.tsx` - Enhanced dashboard with sorting/filtering ✅
+- `CommentSystem.test.tsx` - Collaborative commenting system ✅
+- `CommentModal.test.tsx` - Comment interface and forms ✅
+- `DashboardWidgets.test.tsx` - Dashboard analytics widgets ✅
+- `BulkOperations.test.tsx` - Bulk snapshot operations ✅
 
 ### Running Tests
 

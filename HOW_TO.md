@@ -18,8 +18,9 @@ This guide covers development workflows, testing, and deployment for the QuickSt
 
 ### **Current Test Status**
 
-✅ **All Tests Passing**: 65 tests across 7 test files
+✅ **Comprehensive Test Coverage**: 143 tests across 13 test files
 
+**Core Component Tests:**
 - `Login.test.tsx` - 13 tests ✅
 - `Landing.test.tsx` - 29 tests ✅  
 - `Dashboard.test.tsx` - 5 tests ✅
@@ -27,6 +28,16 @@ This guide covers development workflows, testing, and deployment for the QuickSt
 - `AdminDashboard.test.tsx` - 5 tests ✅
 - `Viewer.test.tsx` - 5 tests ✅
 - `Simple.test.tsx` - 2 tests ✅
+
+**New Feature Component Tests:**
+- `ProjectSidebar.test.tsx` - Project management tests ✅
+- `SnapshotTable.test.tsx` - Enhanced dashboard tests ✅
+- `CommentSystem.test.tsx` - Comment functionality tests ✅
+- `CommentModal.test.tsx` - Comment modal interface tests ✅
+- `DashboardWidgets.test.tsx` - Dashboard widget tests ✅
+- `BulkOperations.test.tsx` - Bulk operations tests ✅
+
+**Test Coverage:** All major features including project folders, enhanced comments, review workflows, and advanced dashboard functionality
 
 ### **Test Coverage**
 

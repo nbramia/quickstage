@@ -562,6 +562,34 @@ export default function AdminDashboard() {
         return 'bg-teal-100 text-teal-800 border-teal-200';
       case 'comment_deleted':
         return 'bg-red-100 text-red-800 border-red-200';
+      case 'comment_updated':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'comment_resolved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'comments_bulk_resolved':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      
+      // Project management
+      case 'project_created':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'project_updated':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'project_deleted':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'project_archived':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'project_unarchived':
+        return 'bg-lime-100 text-lime-800 border-lime-200';
+      
+      // Review workflows
+      case 'review_requested':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case 'review_submitted':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'review_cancelled':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'review_reminder_sent':
+        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       
       // Subscription & payments
       case 'subscription_started':
@@ -635,6 +663,30 @@ export default function AdminDashboard() {
         return 'Snapshot downloaded';
       case 'comment_posted':
         return 'Comment posted';
+      case 'comment_updated':
+        return 'Comment updated';
+      case 'comment_resolved':
+        return 'Comment resolved';
+      case 'comments_bulk_resolved':
+        return 'Multiple comments resolved';
+      case 'project_created':
+        return `Project created: ${event.eventData?.projectName || 'Unknown project'}`;
+      case 'project_updated':
+        return `Project updated: ${event.eventData?.projectName || 'Unknown project'}`;
+      case 'project_deleted':
+        return `Project deleted: ${event.eventData?.projectName || 'Unknown project'}`;
+      case 'project_archived':
+        return `Project archived: ${event.eventData?.projectName || 'Unknown project'}`;
+      case 'project_unarchived':
+        return `Project unarchived: ${event.eventData?.projectName || 'Unknown project'}`;
+      case 'review_requested':
+        return `Review requested for snapshot: ${event.eventData?.snapshotName || event.eventData?.snapshotId || 'Unknown snapshot'}`;
+      case 'review_submitted':
+        return `Review submitted for snapshot: ${event.eventData?.snapshotName || event.eventData?.snapshotId || 'Unknown snapshot'}`;
+      case 'review_cancelled':
+        return `Review cancelled for snapshot: ${event.eventData?.snapshotName || event.eventData?.snapshotId || 'Unknown snapshot'}`;
+      case 'review_reminder_sent':
+        return `Review reminder sent for snapshot: ${event.eventData?.snapshotName || event.eventData?.snapshotId || 'Unknown snapshot'}`;
       case 'subscription_started':
         return 'Subscription started';
       case 'subscription_cancelled':
@@ -667,7 +719,11 @@ export default function AdminDashboard() {
     // Page views
     'page_view',
     // Comments
-    'comment_posted', 'comment_deleted',
+    'comment_posted', 'comment_deleted', 'comment_updated', 'comment_resolved', 'comments_bulk_resolved',
+    // Project management
+    'project_created', 'project_updated', 'project_deleted', 'project_archived', 'project_unarchived',
+    // Review workflows
+    'review_requested', 'review_submitted', 'review_cancelled', 'review_reminder_sent',
     // Subscription & payments
     'subscription_started', 'subscription_cancelled', 'subscription_expired', 'payment_succeeded', 'payment_failed',
     // System events
