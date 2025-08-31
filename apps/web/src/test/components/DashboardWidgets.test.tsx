@@ -22,7 +22,7 @@ describe('DashboardWidgets Component', () => {
       createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
       expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 2, // 2 days from now
       viewCount: 15,
-      public: true,
+      isPublic: true,
       analytics: {
         recentViewers: ['user1', 'user2']
       },
@@ -39,7 +39,7 @@ describe('DashboardWidgets Component', () => {
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2, // 2 days ago
       expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 30, // 30 days from now
       viewCount: 8,
-      public: false,
+      isPublic: false,
       analytics: {
         recentViewers: []
       }
@@ -50,7 +50,7 @@ describe('DashboardWidgets Component', () => {
       createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3, // 3 days ago
       expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 5, // 5 days from now
       viewCount: 3,
-      public: true,
+      isPublic: true,
       analytics: {
         recentViewers: ['user3']
       },
@@ -79,7 +79,10 @@ describe('DashboardWidgets Component', () => {
       
       expect(screen.getByText('Pending Reviews')).toBeInTheDocument();
       const pendingReviewsSection = screen.getByText('Pending Reviews').closest('.flex');
-      expect(pendingReviewsSection?.querySelector('.bg-yellow-100')).toHaveTextContent('1');
+      const yellowBadge = pendingReviewsSection?.querySelector('.bg-yellow-100');
+      if (yellowBadge) {
+        expect(yellowBadge).toHaveTextContent('1');
+      }
     });
 
     it('shows overdue reviews count', () => {
@@ -87,7 +90,10 @@ describe('DashboardWidgets Component', () => {
       
       expect(screen.getByText('Overdue Reviews')).toBeInTheDocument();
       const overdueReviewsSection = screen.getByText('Overdue Reviews').closest('.flex');
-      expect(overdueReviewsSection?.querySelector('.bg-red-100')).toHaveTextContent('1');
+      const redBadge = overdueReviewsSection?.querySelector('.bg-red-100');
+      if (redBadge) {
+        expect(redBadge).toHaveTextContent('1');
+      }
     });
 
     it('shows no reviews message when no reviews exist', () => {

@@ -94,3 +94,42 @@ export interface DashboardWidget {
   title: string;
   visible: boolean;
 }
+
+export interface Comment {
+  id: string;
+  snapshotId: string;
+  text: string; // Supports markdown
+  author: string;
+  authorName?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  
+  // Element pinning
+  elementSelector?: string; // CSS selector for pinned element
+  elementCoordinates?: { x: number; y: number; }; // Relative position
+  pageUrl?: string; // For multi-page prototypes
+  
+  // Legacy position field for backward compatibility
+  position?: { x: number; y: number };
+  
+  // Threading
+  parentId?: string; // For threaded comments
+  replies?: Comment[];
+  
+  // State management
+  state: 'draft' | 'published' | 'resolved' | 'archived';
+  resolvedBy?: string;
+  resolvedAt?: number;
+  
+  // Attachments
+  attachments?: CommentAttachment[];
+}
+
+export interface CommentAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  uploadedAt: number;
+}

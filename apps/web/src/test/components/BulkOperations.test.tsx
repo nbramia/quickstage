@@ -23,7 +23,6 @@ describe('BulkOperations Component', () => {
     {
       id: 'project1',
       name: 'Project Alpha',
-      ownerUid: 'user1',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       snapshotCount: 5
@@ -31,7 +30,6 @@ describe('BulkOperations Component', () => {
     {
       id: 'project2',
       name: 'Project Beta',
-      ownerUid: 'user1',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       snapshotCount: 3
@@ -444,7 +442,8 @@ describe('BulkOperations Component', () => {
       const moveButton = screen.getByText('Move To...');
       fireEvent.click(moveButton);
       
-      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      // Check for dialog content instead of role
+      expect(screen.getByText('Move Snapshots')).toBeInTheDocument();
     });
   });
 });

@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
 import { api } from '../api';
+import { Comment } from '../types/dashboard';
 
 interface CommentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSubmit?: (data: { text: string; attachments?: File[] }) => Promise<void>;
   snapshotId: string;
-  position?: { x: number; y: number };
-  elementInfo?: {
-    selector?: string;
-    text?: string;
-    tagName?: string;
-  };
-  onSuccess?: () => void;
+  position?: { x: number; y: number; elementSelector?: string };
+  existingComments?: Comment[];
+  className?: string;
 }
 
 export default function CommentModal({
   isOpen,
   onClose,
+  onSubmit,
   snapshotId,
   position,
-  elementInfo,
-  onSuccess
+  existingComments = [],
+  className = ''
 }: CommentModalProps) {
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -35,33 +34,39 @@ export default function CommentModal({
 
     setSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('content', content.trim());
-      formData.append('status', 'published');
-      
-      if (position) {
-        formData.append('position', JSON.stringify(position));
-      }
-      
-      if (elementInfo?.selector) {
-        formData.append('elementSelector', elementInfo.selector);
-      }
-      
-      if (elementInfo?.text) {
-        formData.append('elementText', elementInfo.text);
-      }
-      
-      // Add attachments
-      attachments.forEach((file, index) => {
-        formData.append(`attachment_${index}`, file);
-      });
+      if (onSubmit) {
+        // Use custom submit handler (for contextual comments)
+        await onSubmit({
+          text: content.trim(),
+          attachments: attachments.length > 0 ? attachments : undefined
+        });
+      } else {
+        // Default API submission (for regular comments)
+        const formData = new FormData();
+        formData.append('text', content.trim());
+        formData.append('state', 'published');
+        
+        if (position) {
+          if (position.elementSelector) {
+            formData.append('elementSelector', position.elementSelector);
+          }
+          formData.append('elementCoordinates', JSON.stringify({
+            x: position.x,
+            y: position.y
+          }));
+        }
+        
+        // Add attachments
+        attachments.forEach(file => {
+          formData.append('attachments', file);
+        });
 
-      await api.post(`/snapshots/${snapshotId}/comments`, formData);
+        await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
+      }
       
       // Reset form
       setContent('');
       setAttachments([]);
-      onSuccess?.();
       onClose();
     } catch (error) {
       console.error('Failed to create comment:', error);
@@ -131,11 +136,14 @@ export default function CommentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto 
+                    mx-2 sm:mx-0 relative">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Add Comment</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {existingComments && existingComments.length > 0 ? 'Comments' : 'Add Comment'}
+          </h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -146,6 +154,50 @@ export default function CommentModal({
           </button>
         </div>
 
+        {/* Existing Comments */}
+        {existingComments && existingComments.length > 0 && (
+          <div className="border-b border-gray-200 max-h-60 overflow-y-auto">
+            <div className="p-4 space-y-3">
+              {existingComments.map((comment) => (
+                <div key={comment.id} className="border border-gray-100 rounded-lg p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium text-gray-900 text-sm">
+                          {comment.authorName || comment.author || 'Anonymous'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : 'Unknown date'}
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        {comment.text}
+                      </div>
+                      {comment.attachments && comment.attachments.length > 0 && (
+                        <div className="flex items-center space-x-1 mt-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                          <span className="text-xs text-gray-500">
+                            {comment.attachments.length} attachment{comment.attachments.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                      comment.state === 'resolved' 
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {comment.state === 'resolved' ? 'Resolved' : 'Open'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Position Info */}
           {position && (
@@ -153,9 +205,9 @@ export default function CommentModal({
               <div className="text-sm text-blue-700">
                 <div className="font-medium">Comment Position</div>
                 <div className="mt-1">x: {position.x}, y: {position.y}</div>
-                {elementInfo?.text && (
+                {position.elementSelector && (
                   <div className="mt-1 text-xs">
-                    Element: "{elementInfo.text.substring(0, 50)}{elementInfo.text.length > 50 ? '...' : ''}"
+                    Element: {position.elementSelector}
                   </div>
                 )}
               </div>

@@ -1,24 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../api';
+import CommentPin from './CommentPin';
+import CommentModeToggle from './CommentModeToggle';
+import CommentModal from './CommentModal';
+import { Comment } from '../types/dashboard';
 
-interface CommentPin {
+interface CommentPinData {
   id: string;
   x: number;
   y: number;
-  commentCount: number;
-  hasUnresolved: boolean;
+  elementSelector?: string;
+  comments: Comment[];
+  isVisible: boolean;
+  isResolved: boolean;
   lastActivity: number;
 }
 
-interface Comment {
-  id: string;
-  content: string;
-  userName?: string;
-  status: 'published' | 'resolved';
-  createdAt: number;
-  position?: { x: number; y: number };
-  parentId?: string;
-  replies?: Comment[];
+interface PendingComment {
+  x: number;
+  y: number;
+  elementSelector?: string;
+  element?: HTMLElement;
 }
 
 interface CommentOverlayProps {
@@ -34,42 +36,109 @@ export default function CommentOverlay({
   onCommentModeChange,
   className = '' 
 }: CommentOverlayProps) {
-  const [commentPins, setCommentPins] = useState<CommentPin[]>([]);
+  const [commentPins, setCommentPins] = useState<CommentPinData[]>([]);
   const [isCommentMode, setIsCommentMode] = useState(false);
+  const [showPins, setShowPins] = useState(true);
   const [activePin, setActivePin] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showTooltip, setShowTooltip] = useState<string | null>(null);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [pendingComment, setPendingComment] = useState<PendingComment | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Generate CSS selector for an element
+  const generateSelector = useCallback((element: HTMLElement): string => {
+    const path: string[] = [];
+    let current = element;
+    
+    while (current && current !== document.body) {
+      let selector = current.tagName.toLowerCase();
+      
+      // Add ID if present
+      if (current.id) {
+        selector += `#${current.id}`;
+        path.unshift(selector);
+        break;
+      }
+      
+      // Add classes if present
+      if (current.className && typeof current.className === 'string') {
+        const classes = current.className.trim().split(/\s+/).slice(0, 2);
+        if (classes.length > 0) {
+          selector += `.${classes.join('.')}`;
+        }
+      }
+      
+      // Add nth-child if needed for uniqueness
+      const siblings = Array.from(current.parentNode?.children || []).filter(el => 
+        el.tagName === current.tagName
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(current) + 1;
+        selector += `:nth-child(${index})`;
+      }
+      
+      path.unshift(selector);
+      current = current.parentElement!;
+    }
+    
+    return path.join(' > ');
+  }, []);
+
+  // Check if an element is visible in viewport
+  const isElementVisible = useCallback((selector: string): boolean => {
+    try {
+      const element = document.querySelector(selector);
+      if (!element) return false;
+      
+      const rect = element.getBoundingClientRect();
+      const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+      const windowWidth = window.innerWidth || document.documentElement.clientWidth;
+      
+      return (
+        rect.top >= 0 &&
+        rect.left >= 0 &&
+        rect.bottom <= windowHeight &&
+        rect.right <= windowWidth
+      );
+    } catch (error) {
+      return false;
+    }
+  }, []);
 
   // Load comments and create pins
   const loadComments = useCallback(async () => {
     try {
-      const response = await api.get(`/snapshots/${snapshotId}/comments`);
+      const response = await api.get(`/api/snapshots/${snapshotId}/comments`);
       const commentsData = response.comments || [];
       setComments(commentsData);
       
       // Group comments by position to create pins
-      const pinMap = new Map<string, CommentPin>();
+      const pinMap = new Map<string, CommentPinData>();
       
       commentsData.forEach((comment: Comment) => {
-        if (comment.position) {
-          const key = `${Math.round(comment.position.x / 10) * 10}-${Math.round(comment.position.y / 10) * 10}`;
+        if (comment.elementCoordinates || comment.position) {
+          const x = comment.elementCoordinates?.x || comment.position?.x || 0;
+          const y = comment.elementCoordinates?.y || comment.position?.y || 0;
+          const key = `${Math.round(x / 15) * 15}-${Math.round(y / 15) * 15}`; // Group within 15px
+          
           const existing = pinMap.get(key);
+          const isVisible = comment.elementSelector ? isElementVisible(comment.elementSelector) : true;
           
           if (existing) {
-            existing.commentCount++;
-            if (comment.status !== 'resolved') {
-              existing.hasUnresolved = true;
-            }
-            existing.lastActivity = Math.max(existing.lastActivity, comment.createdAt);
+            existing.comments.push(comment);
+            existing.lastActivity = Math.max(existing.lastActivity, comment.createdAt || 0);
+            existing.isResolved = existing.isResolved && comment.state === 'resolved';
           } else {
             pinMap.set(key, {
-              id: comment.id,
-              x: comment.position.x,
-              y: comment.position.y,
-              commentCount: 1,
-              hasUnresolved: comment.status !== 'resolved',
-              lastActivity: comment.createdAt
+              id: `pin-${key}`,
+              x,
+              y,
+              elementSelector: comment.elementSelector,
+              comments: [comment],
+              isVisible,
+              isResolved: comment.state === 'resolved',
+              lastActivity: comment.createdAt || Date.now()
             });
           }
         }
@@ -81,33 +150,130 @@ export default function CommentOverlay({
     } finally {
       setLoading(false);
     }
-  }, [snapshotId]);
+  }, [snapshotId, isElementVisible]);
 
   useEffect(() => {
     loadComments();
   }, [loadComments]);
 
-  const toggleCommentMode = () => {
-    const newMode = !isCommentMode;
-    setIsCommentMode(newMode);
-    onCommentModeChange?.(newMode);
+  // Update pin visibility based on their elements
+  const updatePinVisibility = useCallback(() => {
+    setCommentPins(pins => pins.map(pin => ({
+      ...pin,
+      isVisible: pin.elementSelector ? isElementVisible(pin.elementSelector) : true
+    })));
+  }, [isElementVisible]);
+
+  // Update pin visibility on scroll/resize
+  useEffect(() => {
+    const handleScroll = () => updatePinVisibility();
+    const handleResize = () => updatePinVisibility();
+    
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleResize, { passive: true });
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [updatePinVisibility]);
+
+  const handleCommentModeChange = (enabled: boolean) => {
+    setIsCommentMode(enabled);
+    onCommentModeChange?.(enabled);
+    if (!enabled) {
+      setPendingComment(null);
+    }
   };
 
   const handlePinClick = (pinId: string) => {
-    setActivePin(activePin === pinId ? null : pinId);
+    const pin = commentPins.find(p => p.id === pinId);
+    if (pin && pin.comments.length > 0) {
+      // Open comment modal with existing comments
+      setActivePin(pinId);
+      setShowCommentModal(true);
+    }
   };
 
   const handleOverlayClick = (event: React.MouseEvent) => {
-    if (isCommentMode && event.target === event.currentTarget) {
-      // Create new comment at click position
-      const rect = event.currentTarget.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+    if (!isCommentMode) return;
+    
+    // Avoid triggering on pins or UI elements
+    if ((event.target as HTMLElement).closest('.comment-pin, .comment-controls, .comment-modal')) {
+      return;
+    }
+
+    const rect = overlayRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    // Get the actual clicked element (beneath the overlay)
+    const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
+    if (!elementBelow || elementBelow === overlayRef.current) return;
+    
+    // Generate selector for the clicked element
+    const elementSelector = generateSelector(elementBelow as HTMLElement);
+    const elementRect = elementBelow.getBoundingClientRect();
+    const relativeX = event.clientX - elementRect.left;
+    const relativeY = event.clientY - elementRect.top;
+    
+    // Set up new comment
+    setPendingComment({
+      x,
+      y,
+      elementSelector,
+      element: elementBelow as HTMLElement
+    });
+    
+    setShowCommentModal(true);
+    setIsCommentMode(false); // Exit comment mode after placing
+  };
+
+  const handleCommentSubmit = async (commentData: { text: string; attachments?: File[] }) => {
+    if (!pendingComment) return;
+    
+    try {
+      const formData = new FormData();
+      formData.append('text', commentData.text);
+      formData.append('elementSelector', pendingComment.elementSelector || '');
+      formData.append('elementCoordinates', JSON.stringify({
+        x: pendingComment.x,
+        y: pendingComment.y
+      }));
       
-      // Show comment creation UI
-      console.log('Create comment at', { x, y });
+      if (commentData.attachments) {
+        commentData.attachments.forEach(file => {
+          formData.append('attachments', file);
+        });
+      }
+      
+      await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
+      
+      // Reload comments to show new pin
+      await loadComments();
+      
+      // Close modal and clear pending
+      setShowCommentModal(false);
+      setPendingComment(null);
+    } catch (error) {
+      console.error('Failed to create comment:', error);
+      alert('Failed to create comment. Please try again.');
     }
   };
+
+  const handleCloseModal = () => {
+    setShowCommentModal(false);
+    setPendingComment(null);
+    setActivePin(null);
+  };
+
+  // Get total comment count for all visible pins
+  const totalCommentCount = commentPins.reduce((total, pin) => total + pin.comments.length, 0);
+  
+  // Get visible pins (only show pins if their elements are visible)
+  const visiblePins = showPins ? commentPins.filter(pin => pin.isVisible) : [];
 
   if (loading) {
     return null;
@@ -117,146 +283,65 @@ export default function CommentOverlay({
     <>
       {/* Comment Mode Toggle */}
       {isInteractive && (
-        <div className="fixed top-4 right-4 z-50">
-          <button
-            onClick={toggleCommentMode}
-            className={`px-4 py-2 rounded-lg font-medium shadow-lg transition-all ${
-              isCommentMode 
-                ? 'bg-blue-500 text-white hover:bg-blue-600' 
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-              </svg>
-              {isCommentMode ? 'Exit Comments' : 'Add Comments'}
-            </span>
-          </button>
-        </div>
+        <CommentModeToggle
+          isCommentMode={isCommentMode}
+          onCommentModeChange={handleCommentModeChange}
+          showPins={showPins}
+          onShowPinsChange={setShowPins}
+          commentCount={totalCommentCount}
+          className="comment-controls"
+        />
       )}
 
       {/* Comment Overlay */}
       <div 
-        className={`absolute inset-0 pointer-events-none z-30 ${className}`}
+        ref={overlayRef}
+        className={`absolute inset-0 pointer-events-none z-30 ${className} ${
+          isCommentMode ? 'cursor-crosshair' : ''
+        }`}
         onClick={handleOverlayClick}
         style={{ pointerEvents: isCommentMode ? 'auto' : 'none' }}
       >
         {/* Comment Pins */}
-        {commentPins.map((pin) => (
-          <div key={pin.id} className="absolute pointer-events-auto">
-            <div
-              className={`relative w-8 h-8 rounded-full cursor-pointer transition-all transform hover:scale-110 ${
-                pin.hasUnresolved 
-                  ? 'bg-red-500 border-2 border-red-600 shadow-red-200' 
-                  : 'bg-green-500 border-2 border-green-600 shadow-green-200'
-              } shadow-lg`}
-              style={{
-                left: `${pin.x - 16}px`,
-                top: `${pin.y - 16}px`,
-              }}
-              onClick={() => handlePinClick(pin.id)}
-              onMouseEnter={() => setShowTooltip(pin.id)}
-              onMouseLeave={() => setShowTooltip(null)}
-            >
-              {/* Comment Count */}
-              <div className="flex items-center justify-center w-full h-full">
-                <span className="text-xs font-bold text-white">
-                  {pin.commentCount}
-                </span>
-              </div>
-
-              {/* Pulse Animation for Unresolved */}
-              {pin.hasUnresolved && (
-                <div className="absolute inset-0 rounded-full bg-red-400 animate-ping opacity-75" />
-              )}
-
-              {/* Tooltip */}
-              {showTooltip === pin.id && (
-                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                  {pin.commentCount} comment{pin.commentCount !== 1 ? 's' : ''}
-                  {pin.hasUnresolved ? ' • Unresolved' : ' • Resolved'}
-                </div>
-              )}
-            </div>
-
-            {/* Comment Thread Preview */}
-            {activePin === pin.id && (
-              <div 
-                className="absolute bg-white rounded-lg shadow-xl border p-4 w-80 z-40"
-                style={{
-                  left: `${pin.x + 20}px`,
-                  top: `${pin.y - 100}px`,
-                  maxHeight: '300px',
-                  overflow: 'auto'
-                }}
-              >
-                <div className="space-y-3">
-                  {comments
-                    .filter(c => c.position && 
-                      Math.abs(c.position.x - pin.x) < 20 && 
-                      Math.abs(c.position.y - pin.y) < 20
-                    )
-                    .slice(0, 3) // Show first 3 comments
-                    .map((comment) => (
-                      <div key={comment.id} className="text-sm">
-                        <div className="font-medium text-gray-900">
-                          {comment.userName || 'Anonymous'}
-                        </div>
-                        <div className="text-gray-600 mt-1 line-clamp-2">
-                          {comment.content}
-                        </div>
-                        <div className="flex items-center justify-between mt-2">
-                          <div className="text-xs text-gray-500">
-                            {new Date(comment.createdAt).toLocaleDateString()}
-                          </div>
-                          {comment.status === 'resolved' && (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                              ✓ Resolved
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  
-                  {pin.commentCount > 3 && (
-                    <div className="text-xs text-gray-500 text-center border-t pt-2">
-                      +{pin.commentCount - 3} more comments
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-end space-x-2 mt-4 pt-3 border-t">
-                    <button
-                      onClick={() => setActivePin(null)}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
-                      Close
-                    </button>
-                    <button className="text-xs bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
-                      View All
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+        {visiblePins.map((pin) => (
+          <CommentPin
+            key={pin.id}
+            id={pin.id}
+            x={pin.x}
+            y={pin.y}
+            comments={pin.comments}
+            isResolved={pin.isResolved}
+            onClick={handlePinClick}
+            className="comment-pin"
+          />
         ))}
 
-        {/* Comment Mode Instructions */}
-        {isCommentMode && commentPins.length === 0 && (
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-blue-50 border-2 border-blue-200 rounded-lg p-6 text-center pointer-events-none">
-            <div className="text-blue-600 mb-2">
-              <svg className="w-8 h-8 mx-auto" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="text-sm text-blue-700">
-              <div className="font-medium">Comment Mode Active</div>
-              <div className="mt-1">Click anywhere to add a comment</div>
-            </div>
-          </div>
+
+        {/* Comment Mode Overlay Effect */}
+        {isCommentMode && (
+          <div className="absolute inset-0 bg-blue-500/5 pointer-events-none" />
         )}
       </div>
+      
+      {/* Comment Modal */}
+      {showCommentModal && (
+        <CommentModal
+          isOpen={showCommentModal}
+          onClose={handleCloseModal}
+          onSubmit={handleCommentSubmit}
+          snapshotId={snapshotId}
+          existingComments={activePin ? 
+            commentPins.find(p => p.id === activePin)?.comments || [] : 
+            []
+          }
+          position={pendingComment ? {
+            x: pendingComment.x,
+            y: pendingComment.y,
+            elementSelector: pendingComment.elementSelector
+          } : undefined}
+          className="comment-modal"
+        />
+      )}
     </>
   );
 }
