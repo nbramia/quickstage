@@ -153,7 +153,7 @@ QuickStage includes a powerful AI assistant that analyzes your prototypes and pr
 
 ### Rate Limiting & Error Handling
 
-- **User Limits**: 10 AI requests per hour per user/IP
+- **User Limits**: 40 AI requests per hour per user/IP
 - **Token Limits**: 100,000 tokens per hour to manage OpenAI costs
 - **Conversation Limits**: 20 messages per conversation (24-hour expiry)
 - **Graceful Degradation**: Clear error messages when service is unavailable

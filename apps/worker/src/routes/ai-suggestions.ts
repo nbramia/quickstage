@@ -26,7 +26,7 @@ interface AIConversation {
 }
 
 // Rate limiting constants
-const RATE_LIMIT_REQUESTS_PER_HOUR = 10;
+const RATE_LIMIT_REQUESTS_PER_HOUR = 40;
 const RATE_LIMIT_TOKENS_PER_HOUR = 100000;
 const MAX_CONVERSATION_MESSAGES = 20;
 const CONVERSATION_TIMEOUT_HOURS = 24;
