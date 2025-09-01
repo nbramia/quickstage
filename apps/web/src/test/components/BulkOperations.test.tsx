@@ -163,9 +163,9 @@ describe('BulkOperations Component', () => {
 
     it('shows error message when extend fails', async () => {
       // Mock console.error to avoid noise in tests
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       // Mock window.alert
-      const alertSpy = vi.spyOn(window, 'alert').mockImplementation();
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
       
       mockApi.post.mockRejectedValueOnce(new Error('Network error'));
       

@@ -44,6 +44,7 @@ export default function CommentOverlay({
   const [loading, setLoading] = useState(true);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [pendingComment, setPendingComment] = useState<PendingComment | null>(null);
+  const [subscriptions, setSubscriptions] = useState<Set<string>>(new Set());
   const overlayRef = useRef<HTMLDivElement>(null);
 
   // Generate CSS selector for an element
@@ -231,7 +232,7 @@ export default function CommentOverlay({
     setIsCommentMode(false); // Exit comment mode after placing
   };
 
-  const handleCommentSubmit = async (commentData: { text: string; attachments?: File[] }) => {
+  const handleCommentSubmit = async (commentData: { text: string; attachments?: File[]; subscribe?: boolean }) => {
     if (!pendingComment) return;
     
     try {
@@ -247,6 +248,10 @@ export default function CommentOverlay({
         commentData.attachments.forEach(file => {
           formData.append('attachments', file);
         });
+      }
+      
+      if (commentData.subscribe) {
+        formData.append('subscribe', 'true');
       }
       
       await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
@@ -267,6 +272,36 @@ export default function CommentOverlay({
     setShowCommentModal(false);
     setPendingComment(null);
     setActivePin(null);
+  };
+
+  const handleSubscriptionChange = async (subscribed: boolean) => {
+    try {
+      const pin = activePin ? commentPins.find(p => p.id === activePin) : null;
+      const commentId = pin?.comments[0]?.id;
+      
+      if (subscribed) {
+        await api.post(`/api/snapshots/${snapshotId}/subscribe`, {
+          commentId: commentId
+        });
+        if (commentId) {
+          setSubscriptions(prev => new Set(prev).add(commentId));
+        }
+      } else {
+        await api.post(`/api/snapshots/${snapshotId}/unsubscribe`, {
+          commentId: commentId
+        });
+        if (commentId) {
+          setSubscriptions(prev => {
+            const next = new Set(prev);
+            next.delete(commentId);
+            return next;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      alert('Failed to update subscription. Please try again.');
+    }
   };
 
   // Get total comment count for all visible pins
@@ -345,6 +380,11 @@ export default function CommentOverlay({
             y: pendingComment.y,
             elementSelector: pendingComment.elementSelector
           } : undefined}
+          isSubscribed={activePin ? 
+            subscriptions.has(commentPins.find(p => p.id === activePin)?.comments[0]?.id || '') : 
+            false
+          }
+          onSubscriptionChange={handleSubscriptionChange}
           className="comment-modal"
         />
       )}

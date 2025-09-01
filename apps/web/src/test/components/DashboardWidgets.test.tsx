@@ -128,7 +128,9 @@ describe('DashboardWidgets Component', () => {
       render(<DashboardWidgets snapshots={mockSnapshots} onExtend={mockOnExtend} />);
       
       const extendButton = screen.getAllByText('Extend')[0];
-      fireEvent.click(extendButton);
+      if (extendButton) {
+        fireEvent.click(extendButton);
+      }
       
       expect(mockOnExtend).toHaveBeenCalledWith('snap1');
     });

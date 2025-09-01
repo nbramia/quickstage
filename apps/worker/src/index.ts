@@ -66,9 +66,6 @@ import {
   handleViewerGate
 } from './routes/viewer';
 import {
-  handleGetSnapshotComments,
-  handleGetComments,
-  handlePostSnapshotComment,
   handleGetCommentsLegacy,
   handlePostCommentLegacy,
   handleGetSnapshotCommentsAlt,
@@ -537,12 +534,7 @@ app.get('/snap/:id', handleSnapById);
 // Gate
 app.post('/s/:id/gate', handleViewerGate);
 
-// Snapshot comments endpoints
-app.get('/api/snapshots/:id/comments', handleGetSnapshotComments);
-
-// Get comments for a snapshot (public endpoint) - Removed to avoid conflict with the more robust implementation below
-
-app.post('/api/snapshots/:id/comments', handlePostSnapshotComment);
+// OLD Basic comment endpoints - DEPRECATED - Removed in favor of enhanced system below
 
 // Legacy comments endpoints for backward compatibility
 app.get('/comments', handleGetCommentsLegacy);
@@ -621,9 +613,9 @@ app.post('/api/reviews/:reviewId/submit', ReviewRoutes.handleSubmitReview);
 app.get('/api/snapshots/:snapshotId/reviews', ReviewRoutes.handleGetSnapshotReviews);
 app.delete('/api/reviews/:reviewId', ReviewRoutes.handleCancelReview);
 
-// Enhanced comment routes
-app.post('/api/snapshots/:snapshotId/comments/enhanced', EnhancedCommentRoutes.handleCreateComment);
-app.get('/api/snapshots/:snapshotId/comments/enhanced', EnhancedCommentRoutes.handleGetComments);
+// Main comment routes (formerly enhanced) - Full threading, states, attachments support
+app.post('/api/snapshots/:snapshotId/comments', EnhancedCommentRoutes.handleCreateComment);
+app.get('/api/snapshots/:snapshotId/comments', EnhancedCommentRoutes.handleGetComments);
 app.put('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRoutes.handleUpdateComment);
 app.delete('/api/snapshots/:snapshotId/comments/:commentId', EnhancedCommentRoutes.handleDeleteComment);
 app.post('/api/snapshots/:snapshotId/comments/:commentId/resolve', EnhancedCommentRoutes.handleResolveComment);

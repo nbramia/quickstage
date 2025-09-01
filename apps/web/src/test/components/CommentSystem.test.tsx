@@ -193,37 +193,53 @@ describe('CommentOverlay Component', () => {
   });
 
   describe('Accessibility', () => {
-    it('has proper button semantics', () => {
-      render(<CommentOverlay snapshotId="test-snapshot" />);
+    it('has proper button semantics', async () => {
+      const { api } = await import('../../api');
+      vi.mocked(api.get).mockResolvedValue({ comments: [] });
       
-      const toggleButton = screen.getByRole('button', { name: /Add Comments|Exit Comments/ });
-      expect(toggleButton).toBeInTheDocument();
+      render(<CommentOverlay snapshotId="test-snapshot" isInteractive={true} />);
+      
+      await waitFor(() => {
+        const toggleButton = screen.getByRole('button', { name: /Enter comment mode/ });
+        expect(toggleButton).toBeInTheDocument();
+      });
     });
 
-    it('has keyboard navigation support', () => {
-      render(<CommentOverlay snapshotId="test-snapshot" />);
+    it('has keyboard navigation support', async () => {
+      const { api } = await import('../../api');
+      vi.mocked(api.get).mockResolvedValue({ comments: [] });
       
-      const toggleButton = screen.getByRole('button');
-      toggleButton.focus();
-      expect(document.activeElement).toBe(toggleButton);
+      render(<CommentOverlay snapshotId="test-snapshot" isInteractive={true} />);
+      
+      await waitFor(() => {
+        const toggleButton = screen.getByRole('button');
+        toggleButton.focus();
+        expect(document.activeElement).toBe(toggleButton);
+      });
     });
   });
 
   describe('Callback Functions', () => {
-    it('calls onCommentModeChange when comment mode toggles', () => {
+    it('calls onCommentModeChange when comment mode toggles', async () => {
+      const { api } = await import('../../api');
+      vi.mocked(api.get).mockResolvedValue({ comments: [] });
+      
       const onCommentModeChange = vi.fn();
       
       render(
         <CommentOverlay 
           snapshotId="test-snapshot" 
           onCommentModeChange={onCommentModeChange}
+          isInteractive={true}
         />
       );
       
-      const toggleButton = screen.getByText('Add Comments');
-      fireEvent.click(toggleButton);
-      
-      expect(onCommentModeChange).toHaveBeenCalledWith(true);
+      await waitFor(() => {
+        const toggleButton = screen.getByText('Add Comments');
+        fireEvent.click(toggleButton);
+        
+        expect(onCommentModeChange).toHaveBeenCalledWith(true);
+      });
     });
 
     it('can be disabled for non-interactive mode', () => {
@@ -243,7 +259,7 @@ describe('CommentOverlay Component', () => {
       const { api } = await import('../../api');
       vi.mocked(api.get).mockRejectedValue(new Error('API Error'));
 
-      render(<CommentOverlay snapshotId="test-snapshot" />);
+      render(<CommentOverlay snapshotId="test-snapshot" isInteractive={true} />);
       
       // Should not crash and should still show the toggle button
       await waitFor(() => {
@@ -255,7 +271,7 @@ describe('CommentOverlay Component', () => {
       const { api } = await import('../../api');
       vi.mocked(api.get).mockResolvedValue({});
 
-      render(<CommentOverlay snapshotId="test-snapshot" />);
+      render(<CommentOverlay snapshotId="test-snapshot" isInteractive={true} />);
       
       await waitFor(() => {
         expect(screen.getByText('Add Comments')).toBeInTheDocument();

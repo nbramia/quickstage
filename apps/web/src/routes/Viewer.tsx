@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import AISuggestionsPanel from '../components/AISuggestionsPanel';
+import { ReviewPanel } from '../components/ReviewPanel';
 import '../fonts.css';
 
 type Comment = {
@@ -98,7 +99,7 @@ export function Viewer() {
 
   const fetchComments = async () => {
     try {
-      const response = await api.get(`/comments?id=${snapshotId}`);
+      const response = await api.get(`/api/snapshots/${snapshotId}/comments`);
       setComments(response.comments || []);
     } catch (error) {
       console.error('Failed to fetch comments:', error);
@@ -156,8 +157,7 @@ export function Viewer() {
       setSubmittingComment(true);
       setError(null);
       
-      await api.post('/comments', { 
-        snapshotId: snapshotId,
+      await api.post(`/api/snapshots/${snapshotId}/comments`, { 
         text: newComment,
         turnstileToken 
       });
@@ -425,6 +425,14 @@ export function Viewer() {
                   ))
                 )}
               </div>
+            </div>
+            
+            {/* Reviews Panel */}
+            <div className="mt-6">
+              <ReviewPanel 
+                snapshotId={snapshotId || ''}
+                isOwner={true} // TODO: Determine actual ownership
+              />
             </div>
           </div>
         </div>
