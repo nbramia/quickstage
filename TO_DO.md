@@ -134,7 +134,7 @@ Following a comprehensive codebase audit, all critical gaps between backend impl
 
 #### **1. Enhanced Comments System - Endpoint Routing Issue** ✅ RESOLVED
 **Status**: **FULLY FIXED AND FUNCTIONAL**
-- ✅ **Solution**: Updated all frontend enhanced comment components to use `/enhanced` endpoints
+- ✅ **Solution**: Promoted enhanced comment functionality to main `/api/snapshots/*/comments` endpoints
 - ✅ **Fixed Components**: CommentThread.tsx, CommentModal.tsx, CommentOverlay.tsx
 - ✅ **Result**: Advanced threading, states, attachments, and pinning now fully functional
 - ✅ **Impact**: Users can now access complete professional-grade comment features
