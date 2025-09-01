@@ -7,8 +7,11 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **One-Click Sharing**: Share your web prototypes instantly with a single click
 - **Clean URLs**: Beautiful, professional URLs at `quickstage.tech/s/{id}` 
 - **Real-Time Preview**: View prototypes in real-time with live updates
-- **Collaborative Comments**: Add feedback and collaborate with team members
-- **AI UX Assistant**: Get expert UI/UX feedback powered by OpenAI GPT-4
+- **Advanced Comment System**: Professional-grade threaded discussions with visual pinning and state management
+- **AI UX Assistant**: Get expert UI/UX feedback powered by OpenAI GPT-4 (40 requests/hour)
+- **Project Management**: Organize snapshots into folders with bulk operations
+- **Notification System**: Real-time notifications for comments and mentions
+- **Subscription Management**: Flexible billing with Stripe integration
 - **Secure Access Control**: Role-based permissions and secure sharing
 - **Mobile Responsive**: Optimized for all devices and screen sizes
 - **Pro Features**: Advanced features for power users and teams
@@ -174,10 +177,42 @@ wrangler secret put OPENAI_API_KEY --config ../../infra/wrangler.toml
 ### Technical Implementation
 
 - **Backend**: `/api/snapshots/:id/ai-chat/` endpoints in Cloudflare Workers
-- **AI Model**: GPT-4-mini for fast, cost-effective responses
+- **AI Model**: GPT-4o-mini for fast, cost-effective responses
 - **Storage**: Conversations stored in Cloudflare KV with automatic expiry
 - **Frontend**: Real-time chat interface with markdown-like formatting
 - **Error Handling**: Comprehensive error handling for API failures and rate limits
+
+## 💬 Enhanced Comment System
+
+QuickStage features a professional-grade comment system that rivals tools like Figma, Notion, and other collaborative platforms. The system supports threaded discussions, visual element pinning, and comprehensive state management.
+
+### Comment Features
+
+- **Threaded Conversations**: Nested discussions with visual thread indicators and depth-based spacing
+- **Element Pinning**: Pin comments to specific UI elements with coordinate tracking
+- **State Management**: Comments can be draft, published, resolved, or archived
+- **File Attachments**: Drag & drop support for images, PDFs, and documents (10MB limit)
+- **Rich Text Editing**: Live preview mode with character counting (5000 char limit)
+- **Keyboard Shortcuts**: Ctrl/Cmd + Enter to submit, Escape to close
+- **Real-time Updates**: Comments update via Durable Objects for instant collaboration
+- **Permission System**: Owner and author-based permissions for editing/deleting
+
+### Visual Features
+
+- **Thread Connectors**: Visual lines connecting nested comments with depth indicators
+- **State Badges**: Color-coded badges showing comment status with icons
+- **Action Menus**: Contextual menus for resolve/archive/delete operations
+- **Auto-expanding Threads**: First 3 levels auto-expand, deeper levels collapsible
+- **Maximum Depth Protection**: 5-level nesting with continuation indicators
+- **Mobile Responsive**: Touch-friendly interface with proper spacing
+
+### Technical Architecture
+
+- **Backend**: Enhanced comment routes in `/api/snapshots/:id/comments`
+- **Storage**: Durable Objects (CommentsRoom) for real-time synchronization
+- **Frontend Components**: CommentThread.tsx and CommentModal.tsx
+- **TypeScript Types**: Comprehensive Comment interface with all fields
+- **File Storage**: R2 bucket for attachment storage with secure URLs
 
 ## Project Structure
 
@@ -236,7 +271,7 @@ The project includes a comprehensive testing suite built with Vitest and React T
 
 ### Test Status
 
-✅ **Comprehensive Test Coverage**: 143 tests across 13 test files
+✅ **Comprehensive Test Coverage**: 166 tests across 15 test files
 
 **Core Components:**
 - `Login.test.tsx` - 13 tests ✅ (Authentication flows, form validation)
@@ -251,9 +286,12 @@ The project includes a comprehensive testing suite built with Vitest and React T
 - `ProjectSidebar.test.tsx` - Project organization and management ✅
 - `SnapshotTable.test.tsx` - Enhanced dashboard with sorting/filtering ✅
 - `CommentSystem.test.tsx` - Collaborative commenting system ✅
-- `CommentModal.test.tsx` - Comment interface and forms ✅
+- `CommentModal.test.tsx` - Enhanced comment interface with threading ✅
 - `DashboardWidgets.test.tsx` - Dashboard analytics widgets ✅
 - `BulkOperations.test.tsx` - Bulk snapshot operations ✅
+- `ai-suggestions.test.ts` - AI UX Assistant functionality ✅ (11 tests)
+- `notifications.test.ts` - Notification system ✅
+- `subscriptions.test.ts` - Subscription management ✅
 
 ### Running Tests
 

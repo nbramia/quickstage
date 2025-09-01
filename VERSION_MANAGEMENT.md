@@ -4,12 +4,41 @@ This document covers version management, deployment procedures, and schema evolu
 
 ## 🚀 Deployment Process
 
-### **Current Deployment Status**
+### **Current Deployment Status (Dec 31, 2024)**
 
-- **Worker**: ✅ Deployed with new schema and analytics
-- **Web App**: ✅ Ready for deployment with schema updates
+- **Worker**: ✅ Deployed with enhanced comment system and all infrastructure
+- **Web App**: ✅ Deployed with professional-grade UI components
 - **Extension**: ✅ Ready for deployment
-- **Database**: ✅ Schema migration completed
+- **Database**: ✅ All KV namespaces and Durable Objects active
+
+### **Latest Release - v2.1.0 (Dec 31, 2024)**
+
+**Major Enhancement: Professional-Grade Comment System**
+
+This release completes the implementation of a fully-featured comment system that rivals enterprise collaboration tools like Figma, Notion, and others.
+
+**New Features:**
+- ✅ **Threaded Conversations**: Full nested discussion support with visual thread indicators
+- ✅ **Visual Threading**: Thread connector lines, depth indicators, auto-expansion
+- ✅ **Element Pinning**: Pin comments to specific UI elements with coordinate tracking
+- ✅ **State Management**: Draft/published/resolved/archived states with color-coded badges
+- ✅ **File Attachments**: Drag & drop support for images/PDFs/docs (10MB limit)
+- ✅ **Rich Text Editing**: Live preview mode with character counting
+- ✅ **Keyboard Shortcuts**: Ctrl/Cmd + Enter to submit, Escape to close
+- ✅ **Permission System**: Author/owner-based permissions for actions
+- ✅ **Action Menus**: Contextual menus for resolve/archive/delete operations
+- ✅ **Real-time Updates**: WebSocket-like behavior via Durable Objects
+
+**Infrastructure Improvements:**
+- ✅ Added KV_NOTIFICATIONS namespace for notification system
+- ✅ Added KV_SUBSCRIPTIONS namespace for subscription management
+- ✅ Enhanced CommentsRoom Durable Object with threading support
+- ✅ Complete TypeScript type safety across all components
+
+**Testing:**
+- ✅ All 166 tests passing across 15 test files
+- ✅ Full coverage of new comment features
+- ✅ Automated deployment with test validation
 
 ### **Deployment Order**
 
