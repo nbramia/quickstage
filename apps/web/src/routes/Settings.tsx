@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
+import NotificationBell from '../components/NotificationBell';
+import SubscriptionManager from '../components/SubscriptionManager';
 import '../fonts.css';
 
 export function Settings() {
@@ -190,6 +192,9 @@ export function Settings() {
                 </Link>
               )}
               
+              {/* Notifications */}
+              <NotificationBell className="relative" />
+              
               {/* User Menu */}
               <div className="flex items-center space-x-4">
                 <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
@@ -258,6 +263,11 @@ export function Settings() {
                     🛡️ Admin Panel
                   </Link>
                 )}
+
+                {/* Notifications - Mobile */}
+                <div className="px-3 py-2">
+                  <NotificationBell className="block" />
+                </div>
 
                 {/* Sign Out Button */}
                 <button
@@ -543,7 +553,10 @@ export function Settings() {
           </div>
         </div>
 
-
+        {/* Comment Subscriptions */}
+        <div className="mb-6 sm:mb-8">
+          <SubscriptionManager className="w-full" />
+        </div>
 
         {/* Account Actions */}
         <div className="mb-6 sm:mb-8">

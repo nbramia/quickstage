@@ -128,6 +128,27 @@ export default function CommentModal({
         }
 
         await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
+        
+        // Track analytics for comment creation
+        try {
+          await api.post('/analytics/track', {
+            eventType: replyToComment ? 'comment_replied' : 'comment_created',
+            eventData: {
+              snapshotId,
+              hasAttachments: attachments.length > 0,
+              attachmentCount: attachments.length,
+              attachmentTypes: attachments.map(f => f.type),
+              commentState,
+              isReply: !!replyToComment,
+              parentCommentId: replyToComment?.id,
+              subscribed: subscribeToUpdates,
+              hasElementSelector: !!position?.elementSelector,
+              contentLength: content.trim().length
+            }
+          });
+        } catch (error) {
+          console.error('Failed to track comment analytics:', error);
+        }
       }
       
       // Reset form

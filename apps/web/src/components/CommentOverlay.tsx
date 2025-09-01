@@ -286,6 +286,20 @@ export default function CommentOverlay({
         if (commentId) {
           setSubscriptions(prev => new Set(prev).add(commentId));
         }
+        
+        // Track analytics for subscription
+        try {
+          await api.post('/analytics/track', {
+            eventType: 'comment_subscription_added',
+            eventData: {
+              snapshotId,
+              commentId,
+              method: 'overlay'
+            }
+          });
+        } catch (error) {
+          console.error('Failed to track subscription analytics:', error);
+        }
       } else {
         await api.post(`/api/snapshots/${snapshotId}/unsubscribe`, {
           commentId: commentId
@@ -296,6 +310,20 @@ export default function CommentOverlay({
             next.delete(commentId);
             return next;
           });
+        }
+        
+        // Track analytics for unsubscription
+        try {
+          await api.post('/analytics/track', {
+            eventType: 'comment_subscription_removed',
+            eventData: {
+              snapshotId,
+              commentId,
+              method: 'overlay'
+            }
+          });
+        } catch (error) {
+          console.error('Failed to track unsubscription analytics:', error);
         }
       }
     } catch (error) {

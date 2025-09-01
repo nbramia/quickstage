@@ -663,6 +663,19 @@ export default function CommentThread({
         state: 'resolved'
       });
       await loadComments();
+      
+      // Track analytics for comment resolution
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'comment_resolved',
+          eventData: {
+            snapshotId,
+            commentId
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track comment resolution analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to resolve comment:', error);
       throw error;
@@ -675,6 +688,19 @@ export default function CommentThread({
         state: 'archived'
       });
       await loadComments();
+      
+      // Track analytics for comment archival
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'comment_archived',
+          eventData: {
+            snapshotId,
+            commentId
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track comment archival analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to archive comment:', error);
       throw error;
@@ -685,6 +711,19 @@ export default function CommentThread({
     try {
       await api.delete(`/api/snapshots/${snapshotId}/comments/${commentId}`);
       await loadComments();
+      
+      // Track analytics for comment deletion
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'comment_deleted',
+          eventData: {
+            snapshotId,
+            commentId
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track comment deletion analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to delete comment:', error);
       throw error;
@@ -697,6 +736,20 @@ export default function CommentThread({
         text
       });
       await loadComments();
+      
+      // Track analytics for comment update
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'comment_edited',
+          eventData: {
+            snapshotId,
+            commentId,
+            newContentLength: text.length
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track comment edit analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to update comment:', error);
       throw error;

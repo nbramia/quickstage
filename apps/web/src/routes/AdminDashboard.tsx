@@ -558,16 +558,30 @@ export default function AdminDashboard() {
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       
       // Comments
+      case 'comment_created':
       case 'comment_posted':
+        return 'bg-teal-100 text-teal-800 border-teal-200';
+      case 'comment_replied':
+        return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+      case 'comment_edited':
+      case 'comment_updated':
         return 'bg-teal-100 text-teal-800 border-teal-200';
       case 'comment_deleted':
         return 'bg-red-100 text-red-800 border-red-200';
-      case 'comment_updated':
-        return 'bg-teal-100 text-teal-800 border-teal-200';
       case 'comment_resolved':
         return 'bg-green-100 text-green-800 border-green-200';
+      case 'comment_archived':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'comments_bulk_resolved':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'comment_subscription_added':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'comment_subscription_removed':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'comment_subscription_activated':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'comment_subscription_paused':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
       
       // Project management
       case 'project_created':
@@ -584,6 +598,10 @@ export default function AdminDashboard() {
       // Review workflows
       case 'review_requested':
         return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case 'review_approved':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'review_rejected':
+        return 'bg-red-100 text-red-800 border-red-200';
       case 'review_submitted':
         return 'bg-green-100 text-green-800 border-green-200';
       case 'review_cancelled':

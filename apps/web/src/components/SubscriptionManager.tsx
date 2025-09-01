@@ -41,6 +41,19 @@ export default function SubscriptionManager({ className = '' }: SubscriptionMana
     try {
       await api.delete(`/api/subscriptions/${subscriptionId}`);
       setSubscriptions(prev => prev.filter(sub => sub.id !== subscriptionId));
+      
+      // Track analytics for unsubscription
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'comment_subscription_removed',
+          eventData: {
+            subscriptionId,
+            method: 'settings_page'
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track unsubscription analytics:', error);
+      }
     } catch (err) {
       console.error('Failed to unsubscribe:', err);
       alert('Failed to unsubscribe. Please try again.');
@@ -56,6 +69,20 @@ export default function SubscriptionManager({ className = '' }: SubscriptionMana
       setSubscriptions(prev => prev.map(sub => 
         sub.id === subscriptionId ? { ...sub, isActive: !isActive } : sub
       ));
+      
+      // Track analytics for subscription toggle
+      try {
+        await api.post('/analytics/track', {
+          eventType: !isActive ? 'comment_subscription_activated' : 'comment_subscription_paused',
+          eventData: {
+            subscriptionId,
+            method: 'settings_page',
+            newState: !isActive ? 'active' : 'paused'
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track subscription toggle analytics:', error);
+      }
     } catch (err) {
       console.error('Failed to toggle subscription:', err);
       alert('Failed to update subscription. Please try again.');

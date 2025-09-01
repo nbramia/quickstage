@@ -7,11 +7,13 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **One-Click Sharing**: Share your web prototypes instantly with a single click
 - **Clean URLs**: Beautiful, professional URLs at `quickstage.tech/s/{id}` 
 - **Real-Time Preview**: View prototypes in real-time with live updates
-- **Advanced Comment System**: Professional-grade threaded discussions with visual pinning and state management
-- **AI UX Assistant**: Get expert UI/UX feedback powered by OpenAI GPT-4 (40 requests/hour)
-- **Project Management**: Organize snapshots into folders with bulk operations
-- **Notification System**: Real-time notifications for comments and mentions
-- **Subscription Management**: Flexible billing with Stripe integration
+- **Advanced Comment System**: Professional-grade threaded discussions with visual pinning, state management, and file attachments
+- **AI UX Assistant**: Get expert UI/UX feedback powered by OpenAI GPT-4o-mini (40 requests/hour)
+- **Project Management**: Organize snapshots into folders with bulk operations and modern sidebar interface
+- **Notification System**: Real-time notifications with unread badges accessible from all main pages
+- **Subscription Management**: Comment thread subscriptions with pause/resume controls in account settings
+- **Review Workflows**: Structured review requests with participant management and approval workflows
+- **Unified Dashboard**: Modern interface combining project management, extension downloads, and analytics
 - **Secure Access Control**: Role-based permissions and secure sharing
 - **Mobile Responsive**: Optimized for all devices and screen sizes
 - **Pro Features**: Advanced features for power users and teams
@@ -124,7 +126,7 @@ pnpm --filter @quickstage/web deploy
 
 ## 🤖 AI UX Assistant
 
-QuickStage includes a powerful AI assistant that analyzes your prototypes and provides expert UI/UX feedback. Powered by OpenAI GPT-4, it offers conversational, contextual suggestions to improve your designs.
+QuickStage includes a powerful AI assistant that analyzes your prototypes and provides expert UI/UX feedback. Powered by OpenAI GPT-4o-mini, it offers conversational, contextual suggestions to improve your designs.
 
 ### Features
 
@@ -132,7 +134,7 @@ QuickStage includes a powerful AI assistant that analyzes your prototypes and pr
 - **Conversational Interface**: Chat with the AI to ask specific questions about your prototype
 - **Expert Feedback**: Get suggestions based on modern UI/UX principles, accessibility guidelines, and design best practices
 - **Multiple Categories**: Feedback covers accessibility, usability, design, performance, and mobile responsiveness
-- **Rate Limited**: Smart rate limiting (10 requests/hour, 100K tokens/hour) to prevent abuse
+- **Rate Limited**: Smart rate limiting (40 requests/hour, 100K tokens/hour) to prevent abuse
 - **Anonymous Access**: Works for both signed-in users and anonymous viewers of public snapshots
 
 ### Key Areas of Analysis
@@ -251,8 +253,11 @@ The project uses a modern, extensible data schema designed for future growth and
 ### Analytics Capabilities
 - **User Events**: Login, registration, page views, downloads
 - **Snapshot Events**: Creation, viewing, expiration, extension
+- **Comment Analytics**: Creation, replies, edits, resolutions, archival, deletion
+- **Subscription Events**: Comment thread subscriptions, activations, pauses, removals
+- **Review Workflows**: Review requests, approvals, rejections, cancellations
 - **System Events**: Error tracking, performance monitoring
-- **Real-time Metrics**: Live user activity and system health
+- **Real-time Metrics**: Live user activity and system health with comprehensive metadata tracking
 
 ### Schema Migration
 - **Zero Downtime**: Seamless migration from legacy to new schema

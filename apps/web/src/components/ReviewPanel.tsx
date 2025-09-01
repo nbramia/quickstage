@@ -48,6 +48,22 @@ export function ReviewPanel({ snapshotId, isOwner, onReviewUpdate }: ReviewPanel
         notes: reviewData.notes
       });
       
+      // Track analytics for review creation
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'review_requested',
+          eventData: {
+            snapshotId,
+            reviewerCount: reviewData.reviewers.length,
+            hasDeadline: !!reviewData.deadline,
+            hasNotes: !!reviewData.notes,
+            deadlineInDays: reviewData.deadline ? Math.ceil((reviewData.deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track review creation analytics:', error);
+      }
+      
       setShowRequestModal(false);
       await loadReviews();
     } catch (error) {
@@ -65,6 +81,19 @@ export function ReviewPanel({ snapshotId, isOwner, onReviewUpdate }: ReviewPanel
     try {
       await api.delete(`/api/reviews/${reviewId}`);
       await loadReviews();
+      
+      // Track analytics for review cancellation
+      try {
+        await api.post('/analytics/track', {
+          eventType: 'review_cancelled',
+          eventData: {
+            snapshotId,
+            reviewId
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track review cancellation analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to cancel review:', error);
       setError('Failed to cancel review');
@@ -79,6 +108,21 @@ export function ReviewPanel({ snapshotId, isOwner, onReviewUpdate }: ReviewPanel
         status
       });
       await loadReviews();
+      
+      // Track analytics for review submission
+      try {
+        await api.post('/analytics/track', {
+          eventType: status === 'approved' ? 'review_approved' : 'review_rejected',
+          eventData: {
+            snapshotId,
+            reviewId,
+            feedbackLength: feedback.length,
+            hasFeedback: feedback.length > 0
+          }
+        });
+      } catch (error) {
+        console.error('Failed to track review submission analytics:', error);
+      }
     } catch (error) {
       console.error('Failed to submit review:', error);
       setError('Failed to submit review');
