@@ -24,7 +24,7 @@ export async function handleCreateReview(c: any) {
     }
 
     // Get snapshot to verify ownership
-    const snapshotData = await c.env.KV_SNAPS.get(snapshotId);
+    const snapshotData = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
     if (!snapshotData) {
       return c.json({ error: 'Snapshot not found' }, 404);
     }
@@ -77,7 +77,7 @@ export async function handleCreateReview(c: any) {
       status: 'pending'
     };
 
-    await c.env.KV_SNAPS.put(snapshotId, JSON.stringify(snapshot));
+    await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
 
     // Track analytics
     const analytics = getAnalyticsManager(c);
@@ -186,7 +186,7 @@ export async function handleSubmitReview(c: any) {
     await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
 
     // Update snapshot review info
-    const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+    const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
     if (snapshotData) {
       const snapshot = JSON.parse(snapshotData) as SnapshotRecord;
       const checkedOffCount = review.reviewers.filter(r => 
@@ -199,7 +199,7 @@ export async function handleSubmitReview(c: any) {
         status: review.status
       };
 
-      await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+      await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
     }
 
     // Track analytics
@@ -227,7 +227,7 @@ export async function handleGetSnapshotReviews(c: any) {
     const snapshotId = c.req.param('snapshotId');
     
     // Get snapshot
-    const snapshotData = await c.env.KV_SNAPS.get(snapshotId);
+    const snapshotData = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
     if (!snapshotData) {
       return c.json({ error: 'Snapshot not found' }, 404);
     }
@@ -277,11 +277,11 @@ export async function handleCancelReview(c: any) {
     }
 
     // Update snapshot to remove review info
-    const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+    const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
     if (snapshotData) {
       const snapshot = JSON.parse(snapshotData) as SnapshotRecord;
       snapshot.review = undefined;
-      await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+      await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
     }
 
     // Delete review
@@ -357,12 +357,12 @@ export async function handleSendReviewReminders(c: any) {
         await c.env.KV_REVIEWS.put(key.name, JSON.stringify(review));
 
         // Update snapshot
-        const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+        const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
         if (snapshotData) {
           const snapshot = JSON.parse(snapshotData) as SnapshotRecord;
           if (snapshot.review) {
             snapshot.review.status = 'overdue';
-            await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+            await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
           }
         }
       }
