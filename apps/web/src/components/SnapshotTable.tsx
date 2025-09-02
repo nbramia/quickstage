@@ -23,6 +23,14 @@ export default function SnapshotTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [showExpired, setShowExpired] = useState(false);
+  
+  // State for action feedback
+  const [copiedSnapshots, setCopiedSnapshots] = useState<Set<string>>(new Set());
+  const [extendedSnapshots, setExtendedSnapshots] = useState<Set<string>>(new Set());
+  const [copiedPasswords, setCopiedPasswords] = useState<Set<string>>(new Set());
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [cursorTooltip, setCursorTooltip] = useState<{x: number, y: number, text: string} | null>(null);
 
   // Handle sorting
   const handleSort = (field: SortField) => {
@@ -103,25 +111,119 @@ export default function SnapshotTable({
   }, [snapshots, sortField, sortDirection, searchQuery, showExpired]);
 
   // Copy link to clipboard
-  const handleCopyLink = async (snapshotId: string, password?: string) => {
+  const handleCopyLink = async (snapshotId: string, event: React.MouseEvent, password?: string) => {
     const url = `${config.PUBLIC_BASE_URL}/s/${snapshotId}`;
-    const textToCopy = password ? `${url}\nPassword: ${password}` : url;
     
     try {
-      await navigator.clipboard.writeText(textToCopy);
-      // TODO: Show success toast
+      await navigator.clipboard.writeText(url);
+      
+      // Show success feedback
+      setCopiedSnapshots(prev => new Set(prev).add(snapshotId));
+      setCursorTooltip({ x: event.clientX, y: event.clientY, text: 'URL Copied' });
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setCopiedSnapshots(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(snapshotId);
+          return newSet;
+        });
+        setCursorTooltip(null);
+      }, 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
   };
 
   // Extend snapshot expiry
-  const handleExtend = async (snapshotId: string) => {
+  const handleExtend = async (snapshotId: string, event: React.MouseEvent) => {
     try {
-      await api.post(`/api/snapshots/${snapshotId}/extend`);
+      await api.post(`/api/snapshots/${snapshotId}/extend`, { days: 7 });
+      
+      // Show success feedback
+      setExtendedSnapshots(prev => new Set(prev).add(snapshotId));
+      setCursorTooltip({ x: event.clientX, y: event.clientY, text: 'Expiration Extended' });
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setExtendedSnapshots(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(snapshotId);
+          return newSet;
+        });
+        setCursorTooltip(null);
+      }, 2000);
+      
       onRefresh();
     } catch (error) {
       console.error('Failed to extend snapshot:', error);
+    }
+  };
+
+  // Handle view action - copy password then open URL
+  const handleView = async (snapshotId: string, password?: string) => {
+    const url = `${config.PUBLIC_BASE_URL}/s/${snapshotId}`;
+    
+    // If there's a password, copy it to clipboard first
+    if (password) {
+      try {
+        await navigator.clipboard.writeText(password);
+        console.log('Password copied to clipboard');
+      } catch (err) {
+        console.error('Failed to copy password:', err);
+      }
+    }
+    
+    // Open URL in new tab (without password parameter since we're copying instead)
+    window.open(url, '_blank');
+  };
+
+  // Copy password to clipboard
+  const handleCopyPassword = async (snapshotId: string, password: string, event: React.MouseEvent) => {
+    try {
+      await navigator.clipboard.writeText(password);
+      
+      // Show success feedback
+      setCopiedPasswords(prev => new Set(prev).add(snapshotId));
+      setCursorTooltip({ x: event.clientX, y: event.clientY, text: 'Password Copied' });
+      
+      // Reset after 2 seconds
+      setTimeout(() => {
+        setCopiedPasswords(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(snapshotId);
+          return newSet;
+        });
+        setCursorTooltip(null);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy password:', err);
+    }
+  };
+
+  // Handle password change
+  const handleChangePassword = async (snapshotId: string) => {
+    if (!newPassword.trim()) return;
+    
+    try {
+      const response = await api.put(`/api/snapshots/${snapshotId}`, {
+        password: newPassword
+      });
+      
+      // Copy new password to clipboard
+      await navigator.clipboard.writeText(newPassword);
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Password Copied' });
+      
+      setTimeout(() => {
+        setCursorTooltip(null);
+      }, 2000);
+      
+      // Close modal and refresh
+      setShowChangePasswordModal(null);
+      setNewPassword('');
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to change password:', error);
     }
   };
 
@@ -335,38 +437,83 @@ export default function SnapshotTable({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-2">
-                      <Link
-                        to={`/viewer/${snapshot.id}`}
+                      {/* View Button */}
+                      <button
+                        onClick={() => handleView(snapshot.id, snapshot.password)}
                         className="text-indigo-600 hover:text-indigo-900"
-                        title="View"
+                        title="View snapshot"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                      </Link>
+                      </button>
                       
+                      {/* Copy URL Button */}
                       <button
-                        onClick={() => handleCopyLink(snapshot.id, snapshot.password)}
+                        onClick={(e) => handleCopyLink(snapshot.id, e, snapshot.password)}
                         className="text-gray-600 hover:text-gray-900"
-                        title="Copy link"
+                        title="Copy URL"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
+                        {copiedSnapshots.has(snapshot.id) ? (
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        )}
                       </button>
 
-                      {!isExpired && daysUntilExpiry <= 3 && (
+                      {/* Extend Expiration Button - show for snapshots within 7 days */}
+                      {!isExpired && daysUntilExpiry <= 7 && (
                         <button
-                          onClick={() => handleExtend(snapshot.id)}
+                          onClick={(e) => handleExtend(snapshot.id, e)}
                           className="text-orange-600 hover:text-orange-900"
-                          title="Extend expiry"
+                          title="Extend expiration by 7 days"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          {extendedSnapshots.has(snapshot.id) ? (
+                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
                         </button>
                       )}
+
+                      {/* Password Copy Button */}
+                      {snapshot.password && (
+                        <button
+                          onClick={(e) => handleCopyPassword(snapshot.id, snapshot.password!, e)}
+                          className="text-gray-600 hover:text-gray-900"
+                          title="Copy password"
+                        >
+                          {copiedPasswords.has(snapshot.id) ? (
+                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+
+                      {/* Change Password Button */}
+                      <button
+                        onClick={() => setShowChangePasswordModal(snapshot.id)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="Change password"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -386,6 +533,71 @@ export default function SnapshotTable({
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery ? 'Try adjusting your search' : 'Get started by creating a new snapshot'}
           </p>
+        </div>
+      )}
+
+      {/* Cursor Tooltip */}
+      {cursorTooltip && (
+        <div
+          className="fixed z-50 bg-black text-white px-2 py-1 rounded text-sm pointer-events-none"
+          style={{
+            left: cursorTooltip.x + 10,
+            top: cursorTooltip.y - 30,
+          }}
+        >
+          {cursorTooltip.text}
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Current Password
+              </label>
+              <div className="p-3 bg-gray-100 rounded border text-sm text-gray-800 font-mono">
+                {snapshots.find(s => s.id === showChangePasswordModal)?.password || 'No password set'}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                New Password
+              </label>
+              <input
+                type="text"
+                id="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Enter new password"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowChangePasswordModal(null);
+                  setNewPassword('');
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleChangePassword(showChangePasswordModal)}
+                disabled={!newPassword.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-lg"
+              >
+                Set new password
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

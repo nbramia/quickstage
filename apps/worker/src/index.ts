@@ -5,7 +5,8 @@ import { corsMiddleware } from './middleware/cors';
 import { 
   createNewUserWithSchema, 
   createNewSnapshotWithSchema,
-  migrateUserToNewSchema 
+  migrateUserToNewSchema,
+  migrateSnapshotToNewSchema
 } from './migrate-schema';
 import { CreateSnapshotBodySchema, FinalizeSnapshotBodySchema } from '@quickstage/shared/schemas';
 import { DEFAULT_CAPS, VIEWER_COOKIE_PREFIX, ALLOW_MIME_PREFIXES } from '@quickstage/shared/index';
@@ -458,28 +459,31 @@ app.get('/api/snapshots/list', async (c: any) => {
     if (metaRaw) {
       try {
         const meta = JSON.parse(metaRaw) as SnapshotRecord;
+        // Migrate snapshot to ensure proper schema
+        const migratedMeta = migrateSnapshotToNewSchema(meta);
+        
         // Always include the snapshot, let the frontend handle filtering
         snapshots.push({
-          id: meta.id,
-          name: meta.name || `Snapshot ${meta.id.slice(0, 8)}`,
-          projectId: meta.projectId,
-          createdAt: meta.createdAt,
-          updatedAt: meta.updatedAt || meta.createdAt,
-          expiresAt: meta.expiresAt,
-          lastModifiedAt: meta.lastModifiedAt || meta.updatedAt || meta.createdAt,
-          password: meta.password || (meta.passwordHash ? 'Password protected' : null),
-          isPublic: meta.public || false,
-          viewCount: meta.analytics?.viewCount || 0,
-          uniqueViewers: meta.analytics?.uniqueViewers || 0,
-          commentCount: meta.analytics?.commentCount || meta.commentsCount || 0,
-          metadata: meta.metadata || {},
-          review: meta.review,
-          status: meta.status || 'active',
-          tags: meta.metadata?.tags || [],
-          description: meta.metadata?.description,
-          version: meta.metadata?.version,
-          clientName: meta.metadata?.clientName,
-          milestone: meta.metadata?.milestone
+          id: migratedMeta.id,
+          name: migratedMeta.name || `Snapshot ${migratedMeta.id.slice(0, 8)}`,
+          projectId: migratedMeta.projectId,
+          createdAt: migratedMeta.createdAt,
+          updatedAt: migratedMeta.updatedAt || migratedMeta.createdAt,
+          expiresAt: migratedMeta.expiresAt,
+          lastModifiedAt: migratedMeta.lastModifiedAt || migratedMeta.updatedAt || migratedMeta.createdAt,
+          password: migratedMeta.password || (migratedMeta.passwordHash ? 'Password protected' : null),
+          isPublic: migratedMeta.public || false,
+          viewCount: migratedMeta.analytics?.viewCount || 0,
+          uniqueViewers: migratedMeta.analytics?.uniqueViewers || 0,
+          commentCount: migratedMeta.analytics?.commentCount || migratedMeta.commentsCount || 0,
+          metadata: migratedMeta.metadata || {},
+          review: migratedMeta.review,
+          status: migratedMeta.status || 'active',
+          tags: migratedMeta.metadata?.tags || [],
+          description: migratedMeta.metadata?.description,
+          version: migratedMeta.metadata?.version,
+          clientName: migratedMeta.metadata?.clientName,
+          milestone: migratedMeta.metadata?.milestone
         });
       } catch {}
     }
@@ -591,6 +595,55 @@ app.post('/api/snapshots/:id/rotate-password', async (c: any) => {
   meta.password = newPass; // Store plain text password for display
   await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
   return c.json({ password: newPass });
+});
+
+app.put('/api/snapshots/:id', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) return c.json({ error: 'unauthorized' }, 401);
+  const id = c.req.param('id');
+  const body: any = await c.req.json();
+  
+  console.log(`PUT /api/snapshots/${id} - User: ${uid}, Body:`, JSON.stringify(body));
+  
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) {
+    console.log(`Snapshot ${id} not found in KV store`);
+    return c.json({ error: 'snapshot_not_found', snapshotId: id }, 404);
+  }
+  
+  let meta;
+  try {
+    meta = JSON.parse(metaRaw);
+  } catch (error) {
+    console.log(`Failed to parse snapshot ${id} metadata:`, error);
+    return c.json({ error: 'invalid_snapshot_data' }, 500);
+  }
+  
+  if (meta.ownerUid !== uid) return c.json({ error: 'forbidden' }, 403);
+  
+  // Update password if provided
+  if (body.password) {
+    const newPass = body.password;
+    const saltHex = randomHex(8);
+    meta.passwordHash = await hashPasswordArgon2id(newPass, saltHex);
+    meta.password = newPass; // Store plain text password for display
+  }
+  
+  // Update name if provided
+  if (body.name !== undefined) {
+    meta.name = body.name;
+  }
+  
+  // Update projectId if provided
+  if (body.projectId !== undefined) {
+    meta.projectId = body.projectId;
+  }
+  
+  // Update updatedAt timestamp
+  meta.updatedAt = Date.now();
+  
+  await c.env.KV_SNAPS.put(`snap:${id}`, JSON.stringify(meta));
+  return c.json({ ok: true, password: meta.password, name: meta.name, projectId: meta.projectId });
 });
 
 // Add /api prefixed routes for Cloudflare routing

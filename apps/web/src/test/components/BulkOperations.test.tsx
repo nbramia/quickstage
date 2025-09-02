@@ -36,6 +36,11 @@ describe('BulkOperations Component', () => {
     }
   ];
 
+  const mockSnapshots = [
+    { id: 'snap1', name: 'Test Snapshot 1' },
+    { id: 'snap2', name: 'Test Snapshot 2' }
+  ];
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockApi.post.mockResolvedValue({});
@@ -49,6 +54,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={new Set()} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -63,6 +69,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -77,6 +84,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -93,6 +101,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -112,6 +121,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -126,6 +136,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -147,6 +158,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -174,6 +186,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -199,6 +212,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -213,6 +227,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -231,6 +246,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -250,6 +266,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -280,6 +297,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -308,6 +326,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -333,6 +352,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -347,6 +367,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -365,6 +386,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -393,6 +415,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -416,6 +439,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />
@@ -433,6 +457,7 @@ describe('BulkOperations Component', () => {
         <BulkOperations 
           selectedSnapshots={selectedSnapshots} 
           projects={mockProjects}
+          snapshots={mockSnapshots}
           onClearSelection={mockOnClearSelection}
           onRefresh={mockOnRefresh}
         />

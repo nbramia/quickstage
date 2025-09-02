@@ -55,15 +55,57 @@ export async function handleGetProjects(c) {
             prefix: `${uid}:`
         });
         const projects = [];
+        // Get all snapshots to calculate accurate counts
+        const snapshotsList = await c.env.KV_SNAPS.list({
+            prefix: `snap:`
+        });
+        // Count snapshots per project
+        const projectCounts = {};
+        let noProjectCount = 0;
+        for (const key of snapshotsList.keys) {
+            const snapshotData = await c.env.KV_SNAPS.get(key.name);
+            if (snapshotData) {
+                try {
+                    const snapshot = JSON.parse(snapshotData);
+                    if (snapshot.ownerUid === uid) {
+                        if (snapshot.projectId && snapshot.projectId.trim() !== '') {
+                            projectCounts[snapshot.projectId] = (projectCounts[snapshot.projectId] || 0) + 1;
+                        }
+                        else {
+                            noProjectCount++;
+                            console.log(`No project snapshot: ${snapshot.id}, projectId: "${snapshot.projectId}"`);
+                        }
+                    }
+                }
+                catch (e) {
+                    // Skip invalid snapshot data
+                }
+            }
+        }
         for (const key of projectsList.keys) {
             const projectData = await c.env.KV_PROJECTS.get(key.name);
             if (projectData) {
                 const project = JSON.parse(projectData);
+                // Update with accurate count
+                project.snapshotCount = projectCounts[project.id] || 0;
                 projects.push(project);
             }
         }
-        // Sort by sortOrder, then by createdAt
-        projects.sort((a, b) => {
+        // Add the virtual "No project" project at the beginning
+        const noProject = {
+            id: '__no_project__',
+            name: 'No project',
+            color: '#6B7280',
+            createdAt: 0,
+            updatedAt: 0,
+            snapshotCount: noProjectCount,
+            isArchived: false,
+            ownerUid: uid
+        };
+        projects.unshift(noProject);
+        // Sort user projects by sortOrder, then by createdAt (but keep No project first)
+        const userProjects = projects.slice(1);
+        userProjects.sort((a, b) => {
             if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                 if (a.sortOrder !== b.sortOrder) {
                     return a.sortOrder - b.sortOrder;
@@ -71,7 +113,8 @@ export async function handleGetProjects(c) {
             }
             return b.createdAt - a.createdAt;
         });
-        return c.json({ success: true, projects });
+        console.log(`Projects for user ${uid}: No Project count = ${noProjectCount}, Project counts:`, projectCounts);
+        return c.json({ success: true, projects: [noProject, ...userProjects] });
     }
     catch (error) {
         console.error('Error fetching projects:', error);

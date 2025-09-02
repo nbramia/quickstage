@@ -5,6 +5,7 @@ import { api } from '../api';
 interface BulkOperationsProps {
   selectedSnapshots: Set<string>;
   projects: Project[];
+  snapshots: any[]; // Add snapshots to get current snapshot data
   onClearSelection: () => void;
   onRefresh: () => void;
 }
@@ -12,20 +13,28 @@ interface BulkOperationsProps {
 export default function BulkOperations({
   selectedSnapshots,
   projects,
+  snapshots,
   onClearSelection,
   onRefresh
 }: BulkOperationsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [newName, setNewName] = useState('');
   
   if (selectedSnapshots.size === 0) return null;
+
+  // Get the selected snapshot for rename functionality
+  const selectedSnapshot = selectedSnapshots.size === 1 
+    ? snapshots.find(s => selectedSnapshots.has(s.id))
+    : null;
 
   const handleBulkExtend = async () => {
     setIsLoading(true);
     try {
       const promises = Array.from(selectedSnapshots).map(id =>
-        api.post(`/api/snapshots/${id}/extend`)
+        api.post(`/api/snapshots/${id}/extend`, { days: 7 })
       );
       await Promise.all(promises);
       onRefresh();
@@ -43,18 +52,26 @@ export default function BulkOperations({
 
     setIsLoading(true);
     try {
-      const promises = Array.from(selectedSnapshots).map(id =>
-        api.put(`/api/snapshots/${id}`, { 
-          projectId: selectedProjectId === 'none' ? null : selectedProjectId 
-        })
+      const results = await Promise.allSettled(
+        Array.from(selectedSnapshots).map(id =>
+          api.put(`/api/snapshots/${id}`, { 
+            projectId: selectedProjectId === '__no_project__' ? null : selectedProjectId 
+          })
+        )
       );
-      await Promise.all(promises);
+      
+      const failed = results.filter(result => result.status === 'rejected');
+      if (failed.length > 0) {
+        console.error('Failed to move some snapshots:', failed);
+        alert(`${failed.length} snapshot(s) could not be moved. They may have been deleted or you may not have permission.`);
+      }
+      
       onRefresh();
       onClearSelection();
       setShowMoveDialog(false);
     } catch (error) {
       console.error('Failed to move snapshots:', error);
-      alert('Some snapshots could not be moved');
+      alert('Failed to move snapshots');
     } finally {
       setIsLoading(false);
     }
@@ -82,6 +99,33 @@ export default function BulkOperations({
     }
   };
 
+  const handleRename = async () => {
+    if (!selectedSnapshot || !newName.trim()) return;
+
+    setIsLoading(true);
+    try {
+      await api.put(`/api/snapshots/${selectedSnapshot.id}`, {
+        name: newName.trim()
+      });
+      onRefresh();
+      onClearSelection();
+      setShowRenameDialog(false);
+      setNewName('');
+    } catch (error) {
+      console.error('Failed to rename snapshot:', error);
+      alert('Failed to rename snapshot');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openRenameDialog = () => {
+    if (selectedSnapshot) {
+      setNewName(selectedSnapshot.name || '');
+      setShowRenameDialog(true);
+    }
+  };
+
   return (
     <>
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
@@ -92,6 +136,16 @@ export default function BulkOperations({
             </span>
             
             <div className="flex gap-2">
+              {selectedSnapshots.size === 1 && (
+                <button
+                  onClick={openRenameDialog}
+                  disabled={isLoading}
+                  className="px-3 py-1 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
+                >
+                  Rename
+                </button>
+              )}
+              
               <button
                 onClick={() => setShowMoveDialog(true)}
                 disabled={isLoading}
@@ -152,7 +206,6 @@ export default function BulkOperations({
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
             >
               <option value="">Select project...</option>
-              <option value="none">No project (root)</option>
               {projects
                 .filter(p => !p.isArchived)
                 .map(project => (
@@ -174,6 +227,57 @@ export default function BulkOperations({
                 onClick={() => {
                   setShowMoveDialog(false);
                   setSelectedProjectId('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Dialog */}
+      {showRenameDialog && selectedSnapshot && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Rename Snapshot
+            </h3>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              Enter a new name for "{selectedSnapshot.name}":
+            </p>
+            
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newName.trim()) {
+                  handleRename();
+                } else if (e.key === 'Escape') {
+                  setShowRenameDialog(false);
+                  setNewName('');
+                }
+              }}
+              placeholder="Snapshot name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 mb-4"
+              autoFocus
+            />
+            
+            <div className="flex gap-3">
+              <button
+                onClick={handleRename}
+                disabled={!newName.trim() || isLoading}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
+              >
+                {isLoading ? 'Renaming...' : 'Rename'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowRenameDialog(false);
+                  setNewName('');
                 }}
                 className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
               >

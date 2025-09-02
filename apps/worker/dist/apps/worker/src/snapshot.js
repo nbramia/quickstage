@@ -27,10 +27,23 @@ export async function incrementUniqueViewCount(c, snapshotId, meta) {
                 timestamp: now,
                 snapshotId
             }), { expirationTtl: 86400 }); // 24 hours
-            // Increment view count
+            // Increment view count - update both legacy and new schema
             meta.viewCount = (meta.viewCount || 0) + 1;
+            // Ensure analytics object exists and update it
+            if (!meta.analytics) {
+                meta.analytics = {
+                    viewCount: 0,
+                    uniqueViewers: 0,
+                    commentCount: 0,
+                    lastViewedAt: 0,
+                    createdAt: meta.createdAt || Date.now(),
+                    viewerCountries: []
+                };
+            }
+            meta.analytics.viewCount = (meta.analytics.viewCount || 0) + 1;
+            meta.analytics.lastViewedAt = Date.now();
             await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(meta));
-            console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.viewCount})`);
+            console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.analytics.viewCount})`);
         }
         else {
             console.log(`👁️ Returning viewer for snapshot ${snapshotId}: ${ip} (not counted)`);

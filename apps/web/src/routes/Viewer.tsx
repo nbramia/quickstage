@@ -61,21 +61,18 @@ export function Viewer() {
     }
   }, [snapshot]);
 
-  // Check for password in URL query parameters
+  // Auto-focus password field when form becomes visible
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const passwordParam = urlParams.get('p');
-    if (passwordParam) {
-      setPassword(decodeURIComponent(passwordParam));
-      // If we have a password in the URL, try to submit it automatically
-      if (passwordParam && snapshotId) {
-        // Small delay to ensure the component is fully mounted
-        setTimeout(() => {
-          handlePasswordSubmitWithPassword(decodeURIComponent(passwordParam));
-        }, 100);
-      }
+    if (showPasswordForm && !loading) {
+      // Small delay to ensure the form is fully rendered, then focus the password field
+      setTimeout(() => {
+        const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+        if (passwordInput) {
+          passwordInput.focus();
+        }
+      }, 100);
     }
-  }, [snapshotId]);
+  }, [showPasswordForm, loading]);
 
   const fetchSnapshot = async () => {
     try {

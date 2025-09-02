@@ -139,7 +139,10 @@ describe('Dashboard Component', () => {
         expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
       });
       
-      expect(screen.getByText(/admin/i)).toBeInTheDocument();
+      // Look for the Admin link more specifically
+      const adminLink = screen.getByRole('link', { name: /admin/i });
+      expect(adminLink).toBeInTheDocument();
+      expect(adminLink).toHaveAttribute('href', '/admin');
     });
   });
 });

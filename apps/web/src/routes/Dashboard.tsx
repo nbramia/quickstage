@@ -327,13 +327,12 @@ export default function Dashboard() {
       {/* Header */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <Link to="/" className="flex items-center">
-                <span className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                  QuickStage
-                </span>
+              <Link to="/dashboard" className="flex items-center">
+                <span className="text-xl font-share-tech-mono font-bold text-gray-900">QuickStage</span>
               </Link>
+              
               
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -346,46 +345,18 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* Navigation Links */}
-              <nav className="hidden md:flex items-center space-x-4">
-                <Link
-                  to="/dashboard"
-                  className="text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/settings"
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Settings
-                </Link>
-                {user?.role === 'superadmin' && (
-                  <Link
-                    to="/admin"
-                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    🛡️ Admin
-                  </Link>
-                )}
-              </nav>
-
-              {/* Notifications */}
-              <NotificationBell className="relative" />
-
-              {/* Subscription Status */}
-              <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                {getSubscriptionStatus()}
-              </div>
-              
-              {/* User Menu */}
+              <NotificationBell />
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-700">Welcome back, {user.name}!</span>
+                <span className="text-sm text-gray-700">{user.name}</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  {user.subscriptionDisplay || 'Free'}
+                </span>
                 <button
                   onClick={logout}
-                  className="text-gray-600 hover:text-gray-900"
+                  className="text-gray-400 hover:text-gray-500"
+                  title="Sign out"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
                 </button>
@@ -407,13 +378,16 @@ export default function Dashboard() {
       )}
 
       <div className="flex h-[calc(100vh-4rem)]">
-        {/* Project Sidebar */}
+        {/* Sidebar */}
         <div className={`${sidebarCollapsed ? 'hidden' : 'block'} lg:block flex-shrink-0`}>
           <ProjectSidebar
             projects={projects}
             selectedProjectId={selectedProjectId}
             onSelectProject={setSelectedProjectId}
             onRefreshProjects={loadData}
+            user={user}
+            isCollapsed={false}
+            onToggleCollapse={() => {}}
           />
         </div>
 
@@ -551,6 +525,7 @@ export default function Dashboard() {
                 {/* Bulk Operations */}
                 <BulkOperations
                   selectedSnapshots={selectedSnapshots}
+                  snapshots={filteredSnapshots}
                   projects={projects}
                   onClearSelection={handleClearSelection}
                   onRefresh={loadData}

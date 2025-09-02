@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
+import { useSidebar } from '../hooks/useSidebar';
+import ProjectSidebar from '../components/ProjectSidebar';
 import NotificationBell from '../components/NotificationBell';
 import SubscriptionManager from '../components/SubscriptionManager';
 import '../fonts.css';
@@ -13,6 +15,16 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Use centralized sidebar logic
+  const {
+    projects,
+    selectedProjectId,
+    handleSelectProject,
+    loadProjects,
+    isSidebarCollapsed,
+    handleToggleSidebar
+  } = useSidebar();
 
   // Debug logging
   useEffect(() => {
@@ -159,134 +171,63 @@ export function Settings() {
   return (
     <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Header */}
-      <header className="bg-white shadow-lg border-b border-gray-200">
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16 sm:h-20">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent font-share-tech-mono">
-                QuickStage
-              </h1>
-            </div>
-            
-            {/* Desktop Navigation */}
-            <nav className="hidden sm:flex items-center space-x-4">
-              <Link
-                to="/dashboard"
-                className="text-gray-600 hover:text-gray-900 px-4 py-2 text-sm font-medium transition-colors"
-              >
-                Dashboard
+              <Link to="/dashboard" className="flex items-center">
+                <span className="text-xl font-share-tech-mono font-bold text-gray-900">QuickStage</span>
               </Link>
-              <Link
-                to="/settings"
-                className="relative text-blue-600 px-4 py-2 text-sm font-semibold transition-colors"
-              >
-                Settings
-                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full"></div>
-              </Link>
-              {user?.role === 'superadmin' && (
-                <Link
-                  to="/admin"
-                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 hover:shadow-md"
-                >
-                  🛡️ Admin Panel
-                </Link>
-              )}
               
-              {/* Notifications */}
-              <NotificationBell className="relative" />
-              
-              {/* User Menu */}
-              <div className="flex items-center space-x-4">
-                <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full">
-                  <div className="text-sm text-gray-700">
-                    <span className="font-semibold">{user.subscriptionDisplay || 'Free'}</span>
-                    <span className="text-gray-500 ml-2">Plan</span>
-                  </div>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 hover:shadow-md"
-                >
-                  Sign Out
-                </button>
-              </div>
-            </nav>
-
-            {/* Mobile Hamburger Menu */}
-            <div className="sm:hidden">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                className="ml-4 p-2 rounded-md text-gray-600 hover:bg-gray-100 lg:hidden"
               >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
             </div>
-          </div>
-
-          {/* Mobile Menu Overlay */}
-          {isMobileMenuOpen && (
-            <div className="sm:hidden">
-              <div className="px-2 pt-2 pb-3 space-y-1 bg-white border-t border-gray-200">
-                {/* Plan Indicator */}
-                <div className="px-3 py-2">
-                  <div className="bg-gradient-to-r from-green-100 to-blue-100 px-4 py-2 rounded-full text-center">
-                    <div className="text-sm text-gray-700">
-                      <span className="font-semibold">{user.subscriptionDisplay || 'Free'}</span>
-                      <span className="text-gray-500 ml-2">Plan</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Navigation Links */}
-                <Link
-                  to="/dashboard"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/settings"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-base font-medium text-blue-600 border-l-4 border-blue-600 bg-blue-50"
-                >
-                  Settings
-                </Link>
-                {user?.role === 'superadmin' && (
-                  <Link
-                    to="/admin"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-base font-medium text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 mx-3 rounded-lg"
-                  >
-                    🛡️ Admin Panel
-                  </Link>
-                )}
-
-                {/* Notifications - Mobile */}
-                <div className="px-3 py-2">
-                  <NotificationBell className="block" />
-                </div>
-
-                {/* Sign Out Button */}
+            
+            <div className="flex items-center space-x-4">
+              <NotificationBell />
+              <div className="flex items-center space-x-3">
+                <span className="text-sm text-gray-700">{user.name}</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  {user.subscriptionDisplay || 'Free'}
+                </span>
                 <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    handleLogout();
-                  }}
-                  className="block w-full text-left px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                  onClick={handleLogout}
+                  className="text-gray-400 hover:text-gray-500"
+                  title="Sign out"
                 >
-                  Sign Out
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
                 </button>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
+      <div className="flex h-[calc(100vh-4rem)]">
+        {/* Sidebar */}
+        <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} lg:block flex-shrink-0`}>
+          <ProjectSidebar
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={handleSelectProject}
+            onRefreshProjects={loadProjects}
+            user={user}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+          />
+        </div>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto">
+        <div className="max-w-4xl mx-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-8">
         {/* Page Header */}
         <div className="mb-6 sm:mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 font-inconsolata">Account Settings</h2>
@@ -586,7 +527,9 @@ export function Settings() {
             </div>
           </div>
         </div>
-      </main>
+        </div>
+        </main>
+      </div>
     </div>
   );
 }

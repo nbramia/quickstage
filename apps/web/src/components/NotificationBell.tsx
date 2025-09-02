@@ -85,22 +85,16 @@ export default function NotificationBell({ className = '' }: NotificationBellPro
       {/* Notification Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:text-gray-900 transition-colors"
+        className="relative p-1.5 text-gray-600 hover:text-gray-900 focus:outline-none focus:text-gray-900 transition-colors"
         aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
       >
         <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+          className="w-5 h-5"
+          fill="currentColor"
+          viewBox="0 0 20 20"
           aria-hidden="true"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15 17h5l-3.405-3.405A9.048 9.048 0 0118 9a9 9 0 10-18 0 9.048 9.048 0 001.405 4.595L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-          />
+          <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
         </svg>
         
         {/* Unread count badge */}
@@ -141,8 +135,8 @@ export default function NotificationBell({ className = '' }: NotificationBellPro
                 <div className="p-4 text-center text-gray-500">Loading...</div>
               ) : notifications.length === 0 ? (
                 <div className="p-6 text-center text-gray-500">
-                  <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-3.405-3.405A9.048 9.048 0 0118 9a9 9 0 10-18 0 9.048 9.048 0 001.405 4.595L2 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  <svg className="w-12 h-12 mx-auto mb-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                   </svg>
                   <p className="text-sm">No notifications yet</p>
                 </div>

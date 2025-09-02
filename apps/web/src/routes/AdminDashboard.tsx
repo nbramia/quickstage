@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, adminApi } from '../api';
+import { useSidebar } from '../hooks/useSidebar';
+import ProjectSidebar from '../components/ProjectSidebar';
+import NotificationBell from '../components/NotificationBell';
 import '../fonts.css';
 
 interface AdminUser {
@@ -45,10 +49,21 @@ export default function AdminDashboard() {
   });
   const [showSuccess, setShowSuccess] = useState<string | null>(null);
   
+  // Use centralized sidebar logic
+  const {
+    projects,
+    selectedProjectId,
+    isSidebarCollapsed,
+    loadProjects,
+    handleSelectProject,
+    handleToggleSidebar
+  } = useSidebar();
+  
   // Analytics state
   const [analytics, setAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'users' | 'analytics'>('users');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Additional analytics data
   const [userAnalytics, setUserAnalytics] = useState<any>(null);
@@ -193,6 +208,7 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
 
   useEffect(() => {
     loadUsers();
@@ -822,24 +838,78 @@ export default function AdminDashboard() {
     );
   }
 
+  const handleLogout = () => {
+    // Add logout handler if needed
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-poppins">
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 font-inconsolata">Admin Dashboard</h1>
-              <p className="mt-2 text-gray-600">Manage QuickStage users and accounts</p>
+      {/* Header */}
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <Link to="/dashboard" className="flex items-center">
+                <span className="text-xl font-share-tech-mono font-bold text-gray-900">QuickStage</span>
+              </Link>
+              
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="ml-4 p-2 rounded-md text-gray-600 hover:bg-gray-100 lg:hidden"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
             </div>
-            <a
-              href="/dashboard"
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-            >
-              ← Back to Dashboard
-            </a>
+            <div className="flex items-center space-x-4">
+              <NotificationBell />
+              <div className="flex items-center space-x-3">
+                <span className="text-sm text-gray-700">{user.name}</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  Superadmin
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-gray-400 hover:text-gray-500"
+                  title="Sign out"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+      </nav>
+
+      <div className="flex h-[calc(100vh-4rem)]">
+        {/* Sidebar */}
+        <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} lg:block flex-shrink-0`}>
+          <ProjectSidebar
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={handleSelectProject}
+            onRefreshProjects={loadProjects}
+            user={user}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+          />
+        </div>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 font-inconsolata">Admin Dashboard</h1>
+                <p className="mt-2 text-gray-600">Manage QuickStage users and accounts</p>
+              </div>
+            </div>
+          </div>
 
         {/* Success/Error Messages */}
         {showSuccess && (
@@ -1731,6 +1801,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+        </div>
+        </main>
       </div>
     </div>
   );
