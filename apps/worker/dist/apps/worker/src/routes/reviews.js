@@ -79,11 +79,24 @@ export async function handleCreateReview(c) {
         };
         // Store review with safe JSON serialization
         try {
-            await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
+            // Debug: Clean the review object of any non-serializable data
+            const cleanReview = JSON.parse(JSON.stringify({
+                id: review.id,
+                snapshotId: review.snapshotId,
+                requestedBy: review.requestedBy,
+                requestedAt: review.requestedAt,
+                reviewers: review.reviewers,
+                deadline: typeof review.deadline === 'number' ? review.deadline : undefined,
+                reminderSent: review.reminderSent,
+                status: review.status,
+                notes: review.notes
+            }));
+            await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(cleanReview));
         }
         catch (jsonError) {
             console.error('Failed to serialize review data:', jsonError);
-            console.error('Review object:', review);
+            console.error('Review object keys:', Object.keys(review));
+            console.error('Review deadline type:', typeof review.deadline, review.deadline);
             throw new Error('JSON serialization failed for review data');
         }
         // Update snapshot with review info
@@ -96,11 +109,24 @@ export async function handleCreateReview(c) {
             status: 'pending'
         };
         try {
-            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
+            // Clean snapshot object of any problematic properties
+            const cleanSnapshot = {
+                ...snapshot,
+                review: {
+                    isRequested: true,
+                    reviewId,
+                    checkedOffCount: 0,
+                    totalReviewers: participants.length,
+                    deadline: typeof review.deadline === 'number' ? review.deadline : undefined,
+                    status: 'pending'
+                }
+            };
+            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(cleanSnapshot));
         }
         catch (jsonError) {
             console.error('Failed to serialize snapshot data:', jsonError);
-            console.error('Snapshot object:', snapshot);
+            console.error('Snapshot keys:', snapshot ? Object.keys(snapshot) : 'null');
+            console.error('Review deadline in snapshot:', review.deadline, typeof review.deadline);
             throw new Error('JSON serialization failed for snapshot data');
         }
         // Track analytics (non-blocking, don't fail the request if analytics fail)
