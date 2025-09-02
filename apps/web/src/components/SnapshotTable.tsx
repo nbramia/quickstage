@@ -246,6 +246,8 @@ export default function SnapshotTable({
       return;
     }
     
+    console.log('Requesting review for snapshot:', showReviewModal);
+    
     // Validate snapshot exists in our current list
     const snapshot = snapshots.find(s => s.id === showReviewModal);
     if (!snapshot) {
@@ -254,15 +256,54 @@ export default function SnapshotTable({
       setTimeout(() => setCursorTooltip(null), 2000);
       return;
     }
+
+    // Check if snapshot is expired
+    const isExpired = new Date(snapshot.expiresAt) <= new Date();
+    if (isExpired) {
+      console.warn('Attempting to request review on expired snapshot:', showReviewModal);
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Cannot request review on expired snapshot' });
+      setTimeout(() => setCursorTooltip(null), 3000);
+      return;
+    }
+
+    // Additional validation: Check if snapshot still exists on backend before attempting review request
+    try {
+      // First verify the snapshot still exists in the backend
+      console.log('Verifying snapshot exists on backend:', showReviewModal);
+      await api.get(`/api/snapshots/${showReviewModal}`);
+      console.log('Snapshot verification successful');
+    } catch (verificationError: any) {
+      console.error('Snapshot verification failed:', verificationError);
+      if (verificationError.message && verificationError.message.includes('404')) {
+        console.error('Snapshot no longer exists on backend:', showReviewModal);
+        setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Snapshot no longer exists - refreshing list...' });
+        setTimeout(() => {
+          setCursorTooltip(null);
+          onRefresh(); // Refresh to sync with backend
+        }, 2000);
+        return;
+      }
+      // If it's not a 404, continue with the review request as the error might be temporary
+      console.warn('Could not verify snapshot existence, proceeding with review request:', verificationError);
+    }
     
     try {
       const endpoint = `/api/snapshots/${showReviewModal}/reviews`;
+      
+      console.log('Making review request to:', endpoint);
+      console.log('Request data:', {
+        reviewers: data.reviewers,
+        deadline: data.deadline?.toISOString(),
+        notes: data.notes
+      });
       
       await api.post(endpoint, {
         reviewers: data.reviewers,
         deadline: data.deadline?.toISOString(),
         notes: data.notes
       });
+      
+      console.log('Review request successful for snapshot:', showReviewModal);
       
       // Close modal and refresh snapshots
       setShowReviewModal(null);
@@ -274,13 +315,27 @@ export default function SnapshotTable({
         setCursorTooltip(null);
       }, 2000);
     } catch (error: any) {
-      console.error('Failed to request review:', error);
+      console.error('Failed to request review for snapshot:', showReviewModal);
+      console.error('Error details:', error);
+      console.error('Error message:', error.message);
+      console.error('Error response:', error.response);
       
       // Extract more specific error information
       let errorMessage = 'Review Request Failed';
       if (error.message) {
         if (error.message.includes('404')) {
-          errorMessage = 'API endpoint not found';
+          // Handle the specific case where snapshot doesn't exist in backend
+          if (error.message.includes('Snapshot not found')) {
+            console.log('Snapshot not found error detected, refreshing snapshot list');
+            errorMessage = 'Snapshot no longer exists - refreshing list...';
+            // Refresh the snapshot list to sync with backend
+            setTimeout(() => {
+              console.log('Refreshing snapshot list due to 404 error');
+              onRefresh();
+            }, 1000);
+          } else {
+            errorMessage = 'API endpoint not found';
+          }
         } else if (error.message.includes('401')) {
           errorMessage = 'Authentication required';
         } else if (error.message.includes('403')) {

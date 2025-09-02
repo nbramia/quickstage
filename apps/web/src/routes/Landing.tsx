@@ -32,7 +32,7 @@ export default function Landing() {
     "No finnicky <strong>envs</strong>",
     "No deployment <strong>pipelines</strong>",
     "No <strong>configs</strong>",
-    "No <strong>Kubernetes</strong>"
+    "No <strong>DevOps</strong>"
   ];
 
   const handleGetStarted = () => {
