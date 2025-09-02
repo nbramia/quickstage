@@ -241,10 +241,24 @@ export default function SnapshotTable({
     deadline?: Date;
     notes?: string;
   }) => {
-    if (!showReviewModal) return;
+    if (!showReviewModal) {
+      console.error('No snapshot ID provided for review request');
+      return;
+    }
+    
+    // Validate snapshot exists in our current list
+    const snapshot = snapshots.find(s => s.id === showReviewModal);
+    if (!snapshot) {
+      console.error('Snapshot not found in current list:', showReviewModal);
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Snapshot not found' });
+      setTimeout(() => setCursorTooltip(null), 2000);
+      return;
+    }
     
     try {
-      await api.post(`/api/snapshots/${showReviewModal}/reviews`, {
+      const endpoint = `/api/snapshots/${showReviewModal}/reviews`;
+      
+      await api.post(endpoint, {
         reviewers: data.reviewers,
         deadline: data.deadline?.toISOString(),
         notes: data.notes
@@ -259,17 +273,49 @@ export default function SnapshotTable({
       setTimeout(() => {
         setCursorTooltip(null);
       }, 2000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to request review:', error);
+      
+      // Extract more specific error information
+      let errorMessage = 'Review Request Failed';
+      if (error.message) {
+        if (error.message.includes('404')) {
+          errorMessage = 'API endpoint not found';
+        } else if (error.message.includes('401')) {
+          errorMessage = 'Authentication required';
+        } else if (error.message.includes('403')) {
+          errorMessage = 'Not authorized - you must own this snapshot to request reviews';
+        } else if (error.message.includes('500')) {
+          errorMessage = 'Server error';
+        }
+      }
+      
+      // Show error feedback to user
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: errorMessage });
+      setTimeout(() => {
+        setCursorTooltip(null);
+      }, 3000);
     }
   };
 
   // Check if current user owns a snapshot
   const isOwner = (snapshot: Snapshot) => {
-    // For now, we'll assume ownership if user is authenticated
-    // In a real scenario, snapshots would have owner information
-    // This matches the existing behavior where all authenticated users see all snapshots
-    return !!user;
+    if (!user) return false;
+    
+    // Check if the current user is the owner of this snapshot
+    // The user object should have an id or uid property
+    const userId = (user as any).uid || (user as any).id;
+    
+    if (!userId) {
+      return false;
+    }
+    
+    if (!snapshot.ownerUid) {
+      // For backward compatibility, if no ownerUid is set, assume ownership for authenticated users
+      return true;
+    }
+    
+    return snapshot.ownerUid === userId;
   };
 
   // Format date

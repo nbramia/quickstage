@@ -89,27 +89,29 @@ export function ReviewRequestModal({ onClose, onSubmit }: ReviewRequestModalProp
                 Add Reviewers
               </label>
               
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="Reviewer name"
-                  value={newReviewerName}
-                  onChange={(e) => setNewReviewerName(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="email"
-                  placeholder="reviewer@example.com"
-                  value={newReviewerEmail}
-                  onChange={(e) => setNewReviewerEmail(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="space-y-2 mb-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Reviewer name"
+                    value={newReviewerName}
+                    onChange={(e) => setNewReviewerName(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="email"
+                    placeholder="reviewer@example.com"
+                    value={newReviewerEmail}
+                    onChange={(e) => setNewReviewerEmail(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleAddReviewer}
-                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  Add
+                  Add Reviewer
                 </button>
               </div>
 

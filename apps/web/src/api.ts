@@ -75,7 +75,9 @@ export const api = {
       headers['Authorization'] = `Bearer ${token}`;
     }
     
-    const response = await fetch(`${BASE_URL}${endpoint}`, {
+    const fullUrl = `${BASE_URL}${endpoint}`;
+    
+    const response = await fetch(fullUrl, {
       method: 'POST',
       credentials: 'include',
       headers,
@@ -83,6 +85,15 @@ export const api = {
     });
     
     if (!response.ok) {
+      // Try to get error details from response
+      let errorDetails = '';
+      try {
+        const errorText = await response.text();
+        errorDetails = errorText;
+      } catch (e) {
+        // Could not read error response body
+      }
+      
       // Handle authentication errors by clearing invalid tokens
       if (response.status === 401) {
         console.log('Token invalid, clearing session...');
@@ -92,7 +103,7 @@ export const api = {
         throw new Error('Authentication failed - please log in again');
       }
       
-      throw new Error(`API request failed: ${response.status}`);
+      throw new Error(`API request failed: ${response.status}${errorDetails ? ': ' + errorDetails : ''}`);
     }
     
     return response.json();

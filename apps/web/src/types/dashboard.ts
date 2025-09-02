@@ -14,6 +14,7 @@ export interface Project {
 export interface Snapshot {
   id: string;
   name?: string;
+  ownerUid?: string; // Owner user ID for authorization checks
   projectId?: string;
   createdAt: string | number;
   updatedAt?: string | number;
