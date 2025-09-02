@@ -4,12 +4,69 @@
 @source "../index.html";
 @source "./**/*.{ts,tsx,js,jsx,html}";
 
+/* Force Poppins as the absolute default everywhere - override everything */
+*, 
+*::before, 
+*::after,
+html, 
+body, 
+div, 
+span, 
+p, 
+a, 
+button, 
+input, 
+textarea, 
+select, 
+label,
+nav,
+header,
+main,
+section,
+article,
+aside,
+footer,
+ul,
+li,
+table,
+tr,
+td,
+th {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+/* Override any Tailwind base styles */
+.font-sans,
+.font-serif,
+.font-mono {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+/* Override specific font classes */
+.font-poppins, .font-poppins * {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+.font-inconsolata, .font-inconsolata * {
+  font-family: 'Inconsolata', monospace !important;
+}
+
+.font-share-tech-mono, .font-share-tech-mono * {
+  font-family: 'Share Tech Mono', monospace !important;
+}
+
+/* Headers should use Inconsolata */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inconsolata', monospace !important;
+}
+
 /* Custom base styles */
 html {
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: 'Poppins', sans-serif !important;
 }
 
 body {
+  font-family: 'Poppins', sans-serif !important;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: #111827; /* gray-900 */

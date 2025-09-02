@@ -84,7 +84,7 @@ export default function WelcomeModal() {
         <div className="px-8 py-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">
+              <h2 className="text-2xl font-bold text-gray-900 font-inconsolata">
                 {currentSlideData?.title}
               </h2>
               <p className="text-gray-600 mt-1">
@@ -108,7 +108,7 @@ export default function WelcomeModal() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 font-inconsolata">
                 Key Features:
               </h3>
               <ul className="space-y-3">

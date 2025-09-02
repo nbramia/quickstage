@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { TutorialProvider } from './contexts/TutorialContext'
 import WelcomeModal from './components/WelcomeModal'
 import './index.css'
+import './fonts.css'
 
 // Protected route wrapper using auth context
 function ProtectedRoute({ children }: { children: React.ReactNode }) {

@@ -68,7 +68,7 @@ describe('Dashboard Component', () => {
       
       // Wait for content to appear
       await waitFor(() => {
-        expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+        expect(screen.getByText('Test User')).toBeInTheDocument();
       });
       
       expect(mockNavigate).not.toHaveBeenCalled();
@@ -89,7 +89,7 @@ describe('Dashboard Component', () => {
       
       // Wait for loading to complete
       await waitFor(() => {
-        expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+        expect(screen.getByText('Test User')).toBeInTheDocument();
       });
       
       // Find the logout button by its SVG content (it's an icon-only button)
@@ -117,7 +117,7 @@ describe('Dashboard Component', () => {
       
       // Wait for loading to complete
       await waitFor(() => {
-        expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+        expect(screen.getByText('Test User')).toBeInTheDocument();
       });
       
       expect(screen.getByText(/settings/i)).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('Dashboard Component', () => {
       
       // Wait for loading to complete
       await waitFor(() => {
-        expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+        expect(screen.getByText('Test Admin')).toBeInTheDocument();
       });
       
       // Look for the Admin link more specifically

@@ -167,7 +167,7 @@ export default function AISuggestionsPanel({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-gray-900 font-inconsolata">
             🤖 AI UX Assistant
           </h3>
           <p className="text-sm text-gray-600">

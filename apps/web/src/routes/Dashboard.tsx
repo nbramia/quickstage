@@ -323,7 +323,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Header */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -413,7 +413,7 @@ export default function Dashboard() {
                 {/* Page Header */}
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
+                    <h1 className="text-2xl font-bold text-gray-900 font-inconsolata">
                       {selectedProjectId 
                         ? projects.find(p => p.id === selectedProjectId)?.name || 'Project'
                         : 'Dashboard'
@@ -445,7 +445,7 @@ export default function Dashboard() {
                     <div className="bg-white rounded-lg shadow p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900">QuickStage Extension</h3>
+                          <h3 className="text-lg font-semibold text-gray-900 font-inconsolata">QuickStage Extension</h3>
                           <p className="text-sm text-gray-600">
                             Download the VS Code/Cursor extension to start staging your projects
                           </p>
@@ -542,7 +542,7 @@ export default function Dashboard() {
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Installation Instructions</h3>
+                <h3 className="text-lg font-medium text-gray-900 font-inconsolata">Installation Instructions</h3>
                 <button
                   onClick={() => setShowInstallInstructions(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -604,7 +604,7 @@ export default function Dashboard() {
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">AI Assistant Instructions</h3>
+                <h3 className="text-lg font-medium text-gray-900 font-inconsolata">AI Assistant Instructions</h3>
                 <button
                   onClick={() => setShowAIInstructions(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -710,7 +710,7 @@ Please create this step by step, ensuring it's production-ready and can be easil
           <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Personal Access Tokens</h3>
+                <h3 className="text-lg font-medium text-gray-900 font-inconsolata">Personal Access Tokens</h3>
                 <button
                   onClick={() => {
                     setShowPATModal(false);

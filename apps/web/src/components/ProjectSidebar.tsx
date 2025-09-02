@@ -79,7 +79,7 @@ export default function ProjectSidebar({
   const archivedProjects = projects.filter(p => p.isArchived && p.id !== '__no_project__');
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-gray-200 h-full overflow-y-auto transition-all duration-300 flex flex-col`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-gray-200 h-full overflow-y-auto transition-all duration-300 flex flex-col font-poppins`}>
 
       {/* Main Navigation Section */}
       <div className="p-4 flex-1">

@@ -529,7 +529,7 @@ export default function SnapshotTable({
           <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No snapshots found</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900 font-inconsolata">No snapshots found</h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchQuery ? 'Try adjusting your search' : 'Get started by creating a new snapshot'}
           </p>
@@ -553,7 +553,7 @@ export default function SnapshotTable({
       {showChangePasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-96">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4 font-inconsolata">Change Password</h3>
             
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">

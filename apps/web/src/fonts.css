@@ -1,59 +1,13 @@
-@font-face {
-  font-family: 'Share Tech Mono';
-  src: url('/Share_Tech_Mono/ShareTechMono-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Inconsolata';
-  src: url('/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('truetype-variations');
-  font-weight: 200 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Poppins';
-  src: url('/Poppins/Poppins-Regular.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Poppins';
-  src: url('/Poppins/Poppins-Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Poppins';
-  src: url('/Poppins/Poppins-SemiBold.ttf') format('truetype');
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Poppins';
-  src: url('/Poppins/Poppins-Bold.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* Use Google Fonts instead of local files to avoid conflicts */
 
 .font-share-tech-mono {
-  font-family: 'Share Tech Mono', monospace;
+  font-family: 'Share Tech Mono', monospace !important;
 }
 
 .font-inconsolata {
-  font-family: 'Inconsolata', monospace;
+  font-family: 'Inconsolata', monospace !important;
 }
 
 .font-poppins {
-  font-family: 'Poppins', sans-serif;
+  font-family: 'Poppins', sans-serif !important;
 }
