@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import AISuggestionsPanel from '../components/AISuggestionsPanel';
 import { ReviewPanel } from '../components/ReviewPanel';
+import { useAuth } from '../contexts/AuthContext';
 import '../fonts.css';
 
 type Comment = {
@@ -31,6 +32,7 @@ type Snapshot = {
 
 export function Viewer() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -428,7 +430,7 @@ export function Viewer() {
             <div className="mt-6">
               <ReviewPanel 
                 snapshotId={snapshotId || ''}
-                isOwner={true} // TODO: Determine actual ownership
+                isOwner={!!user} // Show review functionality to authenticated users
               />
             </div>
           </div>

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Snapshot, SortField, SortDirection, FilterOptions } from '../types/dashboard';
 import { api } from '../api';
 import config from '../config';
+import { useAuth } from '../contexts/AuthContext';
+import { ReviewRequestModal } from './ReviewRequestModal';
 
 interface SnapshotTableProps {
   snapshots: Snapshot[];
@@ -31,6 +33,12 @@ export default function SnapshotTable({
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [cursorTooltip, setCursorTooltip] = useState<{x: number, y: number, text: string} | null>(null);
+  
+  // Review request modal state
+  const [showReviewModal, setShowReviewModal] = useState<string | null>(null);
+  
+  // Get current user for ownership detection
+  const { user } = useAuth();
 
   // Handle sorting
   const handleSort = (field: SortField) => {
@@ -225,6 +233,43 @@ export default function SnapshotTable({
     } catch (error) {
       console.error('Failed to change password:', error);
     }
+  };
+
+  // Handle review request submission
+  const handleReviewRequest = async (data: {
+    reviewers: Array<{ userId: string; userName: string; userEmail: string }>;
+    deadline?: Date;
+    notes?: string;
+  }) => {
+    if (!showReviewModal) return;
+    
+    try {
+      await api.post(`/api/snapshots/${showReviewModal}/reviews`, {
+        reviewers: data.reviewers,
+        deadline: data.deadline?.toISOString(),
+        notes: data.notes
+      });
+      
+      // Close modal and refresh snapshots
+      setShowReviewModal(null);
+      onRefresh();
+      
+      // Show success feedback
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Review Requested' });
+      setTimeout(() => {
+        setCursorTooltip(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to request review:', error);
+    }
+  };
+
+  // Check if current user owns a snapshot
+  const isOwner = (snapshot: Snapshot) => {
+    // For now, we'll assume ownership if user is authenticated
+    // In a real scenario, snapshots would have owner information
+    // This matches the existing behavior where all authenticated users see all snapshots
+    return !!user;
   };
 
   // Format date
@@ -504,6 +549,19 @@ export default function SnapshotTable({
                         </button>
                       )}
 
+                      {/* Request Review Button - only for owners without active review */}
+                      {isOwner(snapshot) && !snapshot.review?.isRequested && (
+                        <button
+                          onClick={() => setShowReviewModal(snapshot.id)}
+                          className="text-purple-600 hover:text-purple-900"
+                          title="Request review"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                      )}
+                      
                       {/* Change Password Button */}
                       <button
                         onClick={() => setShowChangePasswordModal(snapshot.id)}
@@ -599,6 +657,14 @@ export default function SnapshotTable({
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Review Request Modal */}
+      {showReviewModal && (
+        <ReviewRequestModal
+          onClose={() => setShowReviewModal(null)}
+          onSubmit={handleReviewRequest}
+        />
       )}
     </div>
   );
