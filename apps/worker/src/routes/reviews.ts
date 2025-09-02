@@ -19,8 +19,34 @@ export async function handleCreateReview(c: any) {
     const body = await c.req.json();
     const { reviewers, deadline, notes } = body;
 
+    // Enhanced input validation
     if (!reviewers || !Array.isArray(reviewers) || reviewers.length === 0) {
       return c.json({ error: 'At least one reviewer is required' }, 400);
+    }
+
+    // Validate reviewers array structure
+    for (let i = 0; i < reviewers.length; i++) {
+      const reviewer = reviewers[i];
+      if (!reviewer || typeof reviewer !== 'object') {
+        return c.json({ error: `Invalid reviewer data at index ${i}` }, 400);
+      }
+      if (!reviewer.userId || !reviewer.userName || !reviewer.userEmail) {
+        return c.json({ error: `Missing required reviewer fields at index ${i}` }, 400);
+      }
+    }
+
+    // Safe deadline parsing with validation
+    let parsedDeadline: number | undefined = undefined;
+    if (deadline) {
+      if (typeof deadline === 'string' || typeof deadline === 'number') {
+        const dateObj = new Date(deadline);
+        if (isNaN(dateObj.getTime())) {
+          return c.json({ error: 'Invalid deadline format' }, 400);
+        }
+        parsedDeadline = dateObj.getTime();
+      } else {
+        return c.json({ error: 'Deadline must be a valid date string or timestamp' }, 400);
+      }
     }
 
     // Get snapshot to verify ownership
@@ -58,14 +84,20 @@ export async function handleCreateReview(c: any) {
       requestedBy: uid,
       requestedAt: now,
       reviewers: participants,
-      deadline: deadline ? new Date(deadline).getTime() : undefined,
+      deadline: parsedDeadline,
       reminderSent: false,
       status: 'pending',
       notes
     };
 
-    // Store review
-    await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
+    // Store review with safe JSON serialization
+    try {
+      await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
+    } catch (jsonError) {
+      console.error('Failed to serialize review data:', jsonError);
+      console.error('Review object:', review);
+      throw new Error('JSON serialization failed for review data');
+    }
 
     // Update snapshot with review info
     snapshot.review = {
@@ -77,26 +109,62 @@ export async function handleCreateReview(c: any) {
       status: 'pending'
     };
 
-    await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
+    try {
+      await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
+    } catch (jsonError) {
+      console.error('Failed to serialize snapshot data:', jsonError);
+      console.error('Snapshot object:', snapshot);
+      throw new Error('JSON serialization failed for snapshot data');
+    }
 
-    // Track analytics
-    const analytics = getAnalyticsManager(c);
-    await analytics.trackEvent(
-      uid,
-      'review_requested',
-      { 
-        reviewId, 
-        snapshotId, 
-        reviewerCount: participants.length,
-        hasDeadline: !!deadline 
-      }
-    );
+    // Track analytics (non-blocking, don't fail the request if analytics fail)
+    try {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(
+        uid,
+        'review_requested',
+        { 
+          reviewId, 
+          snapshotId, 
+          reviewerCount: participants.length,
+          hasDeadline: !!parsedDeadline 
+        }
+      );
+    } catch (analyticsError) {
+      console.warn('Analytics tracking failed for review creation:', analyticsError);
+      // Don't fail the request if analytics fail - this is non-critical
+    }
 
     // TODO: Send email notifications to reviewers
 
     return c.json({ success: true, review });
   } catch (error: any) {
     console.error('Error creating review:', error);
+    
+    // Get uid for error logging (might be null if auth failed)
+    let uidForLogging: string | null = null;
+    try {
+      uidForLogging = await getUidFromSession(c);
+    } catch (authError) {
+      // Ignore auth errors during error logging
+    }
+    
+    console.error('Review creation context:', {
+      snapshotId: c.req.param('snapshotId'),
+      uid: uidForLogging,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
+    
+    // More specific error responses based on error type
+    if (error.message && error.message.includes('KV')) {
+      return c.json({ error: 'Storage service temporarily unavailable' }, 500);
+    }
+    
+    if (error.message && error.message.includes('JSON')) {
+      return c.json({ error: 'Data serialization error' }, 500);
+    }
+    
     return c.json({ error: 'Failed to create review' }, 500);
   }
 }
