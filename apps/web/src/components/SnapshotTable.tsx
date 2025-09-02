@@ -238,7 +238,7 @@ export default function SnapshotTable({
   // Handle review request submission
   const handleReviewRequest = async (data: {
     reviewers: Array<{ userId: string; userName: string; userEmail: string }>;
-    deadline?: Date;
+    deadline?: string;
     notes?: string;
   }) => {
     if (!showReviewModal) {
@@ -293,13 +293,13 @@ export default function SnapshotTable({
       console.log('Making review request to:', endpoint);
       console.log('Request data:', {
         reviewers: data.reviewers,
-        deadline: data.deadline?.toISOString(),
+        deadline: data.deadline,
         notes: data.notes
       });
       
       await api.post(endpoint, {
         reviewers: data.reviewers,
-        deadline: data.deadline?.toISOString(),
+        deadline: data.deadline,
         notes: data.notes
       });
       

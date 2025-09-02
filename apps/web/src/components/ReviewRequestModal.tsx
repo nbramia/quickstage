@@ -4,7 +4,7 @@ interface ReviewRequestModalProps {
   onClose: () => void;
   onSubmit: (data: {
     reviewers: Array<{ userId: string; userName: string; userEmail: string }>;
-    deadline?: Date;
+    deadline?: string;
     notes?: string;
   }) => void;
 }
@@ -57,7 +57,7 @@ export function ReviewRequestModal({ onClose, onSubmit }: ReviewRequestModalProp
       return;
     }
 
-    const deadlineDate = deadline ? new Date(deadline) : undefined;
+    const deadlineDate = deadline ? new Date(deadline).toISOString() : undefined;
     
     onSubmit({
       reviewers,

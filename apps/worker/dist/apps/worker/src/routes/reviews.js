@@ -14,11 +14,36 @@ export async function handleCreateReview(c) {
         const snapshotId = c.req.param('snapshotId');
         const body = await c.req.json();
         const { reviewers, deadline, notes } = body;
+        // Enhanced input validation
         if (!reviewers || !Array.isArray(reviewers) || reviewers.length === 0) {
             return c.json({ error: 'At least one reviewer is required' }, 400);
         }
+        // Validate reviewers array structure
+        for (let i = 0; i < reviewers.length; i++) {
+            const reviewer = reviewers[i];
+            if (!reviewer || typeof reviewer !== 'object') {
+                return c.json({ error: `Invalid reviewer data at index ${i}` }, 400);
+            }
+            if (!reviewer.userId || !reviewer.userName || !reviewer.userEmail) {
+                return c.json({ error: `Missing required reviewer fields at index ${i}` }, 400);
+            }
+        }
+        // Safe deadline parsing with validation
+        let parsedDeadline = undefined;
+        if (deadline) {
+            if (typeof deadline === 'string' || typeof deadline === 'number') {
+                const dateObj = new Date(deadline);
+                if (isNaN(dateObj.getTime())) {
+                    return c.json({ error: 'Invalid deadline format' }, 400);
+                }
+                parsedDeadline = dateObj.getTime();
+            }
+            else {
+                return c.json({ error: 'Deadline must be a valid date string or timestamp' }, 400);
+            }
+        }
         // Get snapshot to verify ownership
-        const snapshotData = await c.env.KV_SNAPS.get(snapshotId);
+        const snapshotData = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
         if (!snapshotData) {
             return c.json({ error: 'Snapshot not found' }, 404);
         }
@@ -47,13 +72,20 @@ export async function handleCreateReview(c) {
             requestedBy: uid,
             requestedAt: now,
             reviewers: participants,
-            deadline: deadline ? new Date(deadline).getTime() : undefined,
+            deadline: parsedDeadline,
             reminderSent: false,
             status: 'pending',
             notes
         };
-        // Store review
-        await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
+        // Store review with safe JSON serialization
+        try {
+            await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
+        }
+        catch (jsonError) {
+            console.error('Failed to serialize review data:', jsonError);
+            console.error('Review object:', review);
+            throw new Error('JSON serialization failed for review data');
+        }
         // Update snapshot with review info
         snapshot.review = {
             isRequested: true,
@@ -63,20 +95,54 @@ export async function handleCreateReview(c) {
             deadline: review.deadline,
             status: 'pending'
         };
-        await c.env.KV_SNAPS.put(snapshotId, JSON.stringify(snapshot));
-        // Track analytics
-        const analytics = getAnalyticsManager(c);
-        await analytics.trackEvent(uid, 'review_requested', {
-            reviewId,
-            snapshotId,
-            reviewerCount: participants.length,
-            hasDeadline: !!deadline
-        });
+        try {
+            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
+        }
+        catch (jsonError) {
+            console.error('Failed to serialize snapshot data:', jsonError);
+            console.error('Snapshot object:', snapshot);
+            throw new Error('JSON serialization failed for snapshot data');
+        }
+        // Track analytics (non-blocking, don't fail the request if analytics fail)
+        try {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'review_requested', {
+                reviewId,
+                snapshotId,
+                reviewerCount: participants.length,
+                hasDeadline: !!parsedDeadline
+            });
+        }
+        catch (analyticsError) {
+            console.warn('Analytics tracking failed for review creation:', analyticsError);
+            // Don't fail the request if analytics fail - this is non-critical
+        }
         // TODO: Send email notifications to reviewers
         return c.json({ success: true, review });
     }
     catch (error) {
         console.error('Error creating review:', error);
+        // Get uid for error logging (might be null if auth failed)
+        let uidForLogging = null;
+        try {
+            uidForLogging = await getUidFromSession(c);
+        }
+        catch (authError) {
+            // Ignore auth errors during error logging
+        }
+        console.error('Review creation context:', {
+            snapshotId: c.req.param('snapshotId'),
+            uid: uidForLogging,
+            errorMessage: error.message,
+            errorStack: error.stack
+        });
+        // More specific error responses based on error type
+        if (error.message && error.message.includes('KV')) {
+            return c.json({ error: 'Storage service temporarily unavailable' }, 500);
+        }
+        if (error.message && error.message.includes('JSON')) {
+            return c.json({ error: 'Data serialization error' }, 500);
+        }
         return c.json({ error: 'Failed to create review' }, 500);
     }
 }
@@ -146,7 +212,7 @@ export async function handleSubmitReview(c) {
         // Save updated review
         await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(review));
         // Update snapshot review info
-        const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+        const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
         if (snapshotData) {
             const snapshot = JSON.parse(snapshotData);
             const checkedOffCount = review.reviewers.filter(r => r.status === 'approved' || r.status === 'changes_requested').length;
@@ -155,7 +221,7 @@ export async function handleSubmitReview(c) {
                 checkedOffCount,
                 status: review.status
             };
-            await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+            await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
         }
         // Track analytics
         const analytics = getAnalyticsManager(c);
@@ -176,7 +242,7 @@ export async function handleGetSnapshotReviews(c) {
     try {
         const snapshotId = c.req.param('snapshotId');
         // Get snapshot
-        const snapshotData = await c.env.KV_SNAPS.get(snapshotId);
+        const snapshotData = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
         if (!snapshotData) {
             return c.json({ error: 'Snapshot not found' }, 404);
         }
@@ -216,11 +282,11 @@ export async function handleCancelReview(c) {
             return c.json({ error: 'Unauthorized' }, 403);
         }
         // Update snapshot to remove review info
-        const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+        const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
         if (snapshotData) {
             const snapshot = JSON.parse(snapshotData);
             snapshot.review = undefined;
-            await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+            await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
         }
         // Delete review
         await c.env.KV_REVIEWS.delete(reviewId);
@@ -275,12 +341,12 @@ export async function handleSendReviewReminders(c) {
                 review.status = 'overdue';
                 await c.env.KV_REVIEWS.put(key.name, JSON.stringify(review));
                 // Update snapshot
-                const snapshotData = await c.env.KV_SNAPS.get(review.snapshotId);
+                const snapshotData = await c.env.KV_SNAPS.get(`snap:${review.snapshotId}`);
                 if (snapshotData) {
                     const snapshot = JSON.parse(snapshotData);
                     if (snapshot.review) {
                         snapshot.review.status = 'overdue';
-                        await c.env.KV_SNAPS.put(review.snapshotId, JSON.stringify(snapshot));
+                        await c.env.KV_SNAPS.put(`snap:${review.snapshotId}`, JSON.stringify(snapshot));
                     }
                 }
             }

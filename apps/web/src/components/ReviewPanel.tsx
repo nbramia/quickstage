@@ -38,13 +38,13 @@ export function ReviewPanel({ snapshotId, isOwner, onReviewUpdate }: ReviewPanel
   // Create new review
   const handleCreateReview = async (reviewData: {
     reviewers: Array<{ userId: string; userName: string; userEmail: string }>;
-    deadline?: Date;
+    deadline?: string;
     notes?: string;
   }) => {
     try {
       await api.post(`/api/snapshots/${snapshotId}/reviews`, {
         reviewers: reviewData.reviewers,
-        deadline: reviewData.deadline?.getTime(),
+        deadline: reviewData.deadline,
         notes: reviewData.notes
       });
       
@@ -57,7 +57,7 @@ export function ReviewPanel({ snapshotId, isOwner, onReviewUpdate }: ReviewPanel
             reviewerCount: reviewData.reviewers.length,
             hasDeadline: !!reviewData.deadline,
             hasNotes: !!reviewData.notes,
-            deadlineInDays: reviewData.deadline ? Math.ceil((reviewData.deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null
+            deadlineInDays: reviewData.deadline ? Math.ceil((new Date(reviewData.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null
           }
         });
       } catch (error) {
