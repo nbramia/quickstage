@@ -26,6 +26,7 @@ export default function AISuggestionsPanel({
   const [isInitializing, setIsInitializing] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,7 +59,14 @@ export default function AISuggestionsPanel({
       }
     } catch (error) {
       console.error('Failed to load conversation:', error);
+      // Don't set error for conversation loading - it's optional
     }
+  };
+
+  const retryStartConversation = () => {
+    setRetryCount(prev => prev + 1);
+    setError(null);
+    startConversation();
   };
 
   const startConversation = async () => {
@@ -66,6 +74,9 @@ export default function AISuggestionsPanel({
     setError(null);
     
     try {
+      // Add a small delay to ensure DOM is fully ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/start`);
       
       if (response.data.success) {
@@ -80,10 +91,16 @@ export default function AISuggestionsPanel({
       }
     } catch (error: any) {
       console.error('Failed to start conversation:', error);
+      
+      // Enhanced error handling for different error types
       if (error.response?.status === 429) {
         setError('Rate limit exceeded. Please try again in an hour.');
       } else if (error.response?.status === 503) {
         setError('AI service is temporarily unavailable. Please try again later.');
+      } else if (error.message?.includes('MutationObserver')) {
+        setError('Browser compatibility issue detected. Please refresh the page and try again.');
+      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument')) {
+        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded.');
       } else {
         setError('Failed to connect to AI service. Please try again.');
       }
@@ -102,13 +119,14 @@ export default function AISuggestionsPanel({
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = inputMessage.trim();
     setInputMessage('');
     setIsLoading(true);
     setError(null);
 
     try {
       const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/message`, {
-        message: inputMessage.trim()
+        message: messageToSend
       });
 
       if (response.data.success) {
@@ -123,10 +141,16 @@ export default function AISuggestionsPanel({
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
+      
+      // Enhanced error handling for different error types
       if (error.response?.status === 429) {
         setError('Rate limit exceeded. Please try again in an hour.');
       } else if (error.response?.status === 503) {
         setError('AI service is temporarily unavailable. Please try again later.');
+      } else if (error.message?.includes('MutationObserver')) {
+        setError('Browser compatibility issue detected. Please refresh the page and try again.');
+      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument')) {
+        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded.');
       } else {
         setError('Failed to send message. Please try again.');
       }
@@ -232,13 +256,26 @@ export default function AISuggestionsPanel({
 
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
-              <button 
-                onClick={startConversation}
-                className="ml-2 underline hover:no-underline"
-              >
-                Try again
-              </button>
+              <div className="mb-2">{error}</div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={retryStartConversation}
+                  className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                >
+                  Try Again {retryCount > 0 && `(${retryCount})`}
+                </button>
+                {retryCount > 2 && (
+                  <button 
+                    onClick={() => {
+                      setRetryCount(0);
+                      setError(null);
+                    }}
+                    className="px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-700 transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -285,7 +322,26 @@ export default function AISuggestionsPanel({
 
           {error && (
             <div className="mx-4 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+              <div className="mb-2">{error}</div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    setError(null);
+                    setRetryCount(0);
+                  }}
+                  className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                >
+                  Dismiss
+                </button>
+                {error.includes('MutationObserver') || error.includes('iframe') ? (
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+                  >
+                    Refresh Page
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
 

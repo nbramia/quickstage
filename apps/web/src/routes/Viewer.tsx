@@ -3,17 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import AISuggestionsPanel from '../components/AISuggestionsPanel';
 import { ReviewPanel } from '../components/ReviewPanel';
+import CommentThread from '../components/CommentThread';
+import CommentModal from '../components/CommentModal';
 import { useAuth } from '../contexts/AuthContext';
+import { Comment } from '../types/dashboard';
 import '../fonts.css';
-
-type Comment = {
-  id: string;
-  text: string;
-  createdAt: number;
-  author: string;
-  line?: number;
-  file?: string;
-};
 
 type Snapshot = {
   id: string;
@@ -39,13 +33,17 @@ export function Viewer() {
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [newComment, setNewComment] = useState('');
-  const [submittingComment, setSubmittingComment] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [showAISuggestions, setShowAISuggestions] = useState(false);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentPosition, setCommentPosition] = useState<{ x: number; y: number } | undefined>();
 
   const { id: snapshotId } = useParams();
+
+  // Detect if we're in an iframe and which section to show
+  const isInIframe = window.self !== window.top;
+  const urlHash = window.location.hash.slice(1); // Remove # from hash
+  const iframeSection = isInIframe ? urlHash : null;
 
   useEffect(() => {
     if (!snapshotId) {
@@ -62,6 +60,22 @@ export function Viewer() {
       fetchComments();
     }
   }, [snapshot]);
+
+  // Auto-open sections when in iframe mode
+  useEffect(() => {
+    if (isInIframe && iframeSection && snapshot) {
+      if (iframeSection === 'comments') {
+        // Comments are always shown via CommentThread now
+      } else if (iframeSection === 'reviews') {
+        // Reviews are shown by default in the component
+      } else if (iframeSection === 'ai') {
+        // Add a small delay to ensure DOM is ready for AI analysis
+        setTimeout(() => {
+          setShowAISuggestions(true);
+        }, 200);
+      }
+    }
+  }, [isInIframe, iframeSection, snapshot]);
 
   // Auto-focus password field when form becomes visible
   useEffect(() => {
@@ -83,6 +97,19 @@ export function Viewer() {
       setSnapshot(response.snapshot);
       if (response.snapshot.files.length > 0) {
         setSelectedFile(response.snapshot.files[0].name);
+      }
+      
+      // For protected snapshots, always ensure gate cookie is set for iframe access
+      if (!response.snapshot.public) {
+        // Check if we already have the gate cookie
+        const gateCookie = document.cookie
+          .split('; ')
+          .find(row => row.startsWith(`ps_gate_${snapshotId}=`));
+        
+        if (!gateCookie) {
+          // No gate cookie found, need password for iframe access
+          setShowPasswordForm(true);
+        }
       }
     } catch (error: any) {
       if (error.message.includes('401')) {
@@ -149,36 +176,52 @@ export function Viewer() {
     }
   };
 
-  const handleCommentSubmit = async () => {
-    if (!newComment.trim() || !turnstileToken) return;
-
+  const handleCommentSubmit = async (data: { 
+    text: string; 
+    attachments?: File[]; 
+    subscribe?: boolean; 
+    state?: string; 
+    parentId?: string 
+  }) => {
     try {
-      setSubmittingComment(true);
       setError(null);
       
-      await api.post(`/api/snapshots/${snapshotId}/comments`, { 
-        text: newComment,
-        turnstileToken 
-      });
-
-      setNewComment('');
-      setTurnstileToken(null);
-      // Reset Turnstile widget
-      if (window.turnstile) {
-        window.turnstile.reset();
+      // Create FormData for file upload support
+      const formData = new FormData();
+      formData.append('text', data.text);
+      if (data.state) formData.append('state', data.state);
+      if (data.parentId) formData.append('parentId', data.parentId);
+      if (data.subscribe !== undefined) formData.append('subscribe', String(data.subscribe));
+      
+      if (data.attachments) {
+        data.attachments.forEach(file => {
+          formData.append('attachments', file);
+        });
       }
+
+      // For file uploads, we need to use fetch directly  
+      const response = await fetch(`/api/snapshots/${snapshotId}/comments`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to post comment');
+      }
+
       // Fetch updated comments
-      fetchComments();
+      await fetchComments();
+      setShowCommentModal(false);
     } catch (error: any) {
       console.error('Failed to post comment:', error);
       setError(error.message || 'Failed to post comment');
-    } finally {
-      setSubmittingComment(false);
     }
   };
 
-  const handleTurnstileSuccess = (token: string) => {
-    setTurnstileToken(token);
+  const handleAddComment = (position?: { x: number; y: number }) => {
+    setCommentPosition(position);
+    setShowCommentModal(true);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -281,6 +324,40 @@ export function Viewer() {
 
   const currentFile = snapshot.files.find(f => f.name === selectedFile);
 
+  // Render iframe-only content when embedded
+  if (isInIframe && iframeSection) {
+    return (
+      <div className="min-h-screen bg-white font-poppins">
+        {iframeSection === 'comments' && snapshotId && (
+          <CommentThread
+            snapshotId={snapshotId}
+            comments={comments}
+            onClose={() => {}} // No close needed in iframe
+            isOwner={!!user}
+            onCommentsUpdate={(updatedComments) => setComments(updatedComments)}
+          />
+        )}
+        
+        {iframeSection === 'reviews' && snapshotId && (
+          <div className="p-6">
+            <ReviewPanel 
+              snapshotId={snapshotId}
+              isOwner={!!user}
+            />
+          </div>
+        )}
+        
+        {iframeSection === 'ai' && snapshotId && (
+          <AISuggestionsPanel
+            snapshotId={snapshotId}
+            isVisible={true}
+            onClose={() => {}} // No close needed in iframe
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 font-poppins">
       {/* Navigation Header */}
@@ -357,73 +434,29 @@ export function Viewer() {
                 src={`https://quickstage.tech/s/${snapshotId}/index.html`}
                 className="w-full h-[70vh] border-0"
                 title="Snapshot Preview"
+                onLoad={() => {
+                  // Ensure iframe is fully loaded before allowing AI analysis
+                  console.log('Snapshot iframe loaded successfully');
+                }}
+                onError={(e) => {
+                  console.error('Failed to load snapshot iframe:', e);
+                  setError('Failed to load snapshot preview. Please try refreshing the page.');
+                }}
               />
             </div>
           </div>
 
           {/* Comments Panel */}
           <div className="lg:col-span-3">
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4 font-inconsolata">Comments ({comments.length})</h3>
-              
-              {/* Comment Form */}
-              <div className="mb-6">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="w-full min-h-[80px] p-3 border border-gray-300 rounded-lg resize-vertical font-inherit text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                
-                {/* Turnstile Widget */}
-                <div 
-                  className="cf-turnstile" 
-                  data-sitekey="1x00000000000000000000AA"
-                  data-callback={handleTurnstileSuccess}
-                />
-                
-                <button 
-                  onClick={handleCommentSubmit}
-                  disabled={!newComment.trim() || !turnstileToken || submittingComment}
-                  className={`w-full py-2 px-4 rounded-lg font-medium text-sm transition-colors ${
-                    !newComment.trim() || !turnstileToken || submittingComment
-                      ? 'bg-gray-400 text-white cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  {submittingComment ? 'Posting...' : 'Post Comment'}
-                </button>
-              </div>
-
-              {/* Comments List */}
-              <div className="space-y-3">
-                {comments.length === 0 ? (
-                  <div className="text-center text-gray-500 text-sm py-4">
-                    No comments yet. Be the first to comment!
-                  </div>
-                ) : (
-                  comments.map((comment) => (
-                                      <div key={comment.id} className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-medium text-gray-900 text-sm">
-                        {comment.author}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {formatDate(comment.createdAt)}
-                      </span>
-                    </div>
-                    {comment.file && comment.line && (
-                      <div className="inline-block text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded mb-2">
-                        {comment.file}:{comment.line}
-                      </div>
-                    )}
-                    <div className="text-gray-700 text-sm mt-2">
-                      {comment.text}
-                    </div>
-                  </div>
-                  ))
-                )}
-              </div>
+            <div className="bg-white rounded-lg shadow">
+              {/* Always show the sophisticated CommentThread - unified experience */}
+              <CommentThread
+                snapshotId={snapshotId || ''}
+                comments={comments}
+                onClose={() => {}} // No close needed - this is the main comments panel
+                isOwner={!!user}
+                onCommentsUpdate={(updatedComments) => setComments(updatedComments)}
+              />
             </div>
             
             {/* Reviews Panel */}
@@ -443,6 +476,20 @@ export function Viewer() {
           snapshotId={snapshotId}
           isVisible={showAISuggestions}
           onClose={() => setShowAISuggestions(false)}
+        />
+      )}
+
+      {/* Comment Modal */}
+      {snapshotId && (
+        <CommentModal
+          isOpen={showCommentModal}
+          onClose={() => setShowCommentModal(false)}
+          onSubmit={handleCommentSubmit}
+          snapshotId={snapshotId}
+          position={commentPosition}
+          existingComments={comments}
+          showThread={false}
+          isOwner={!!user}
         />
       )}
 

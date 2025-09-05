@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import BulkOperations from '../../components/BulkOperations';
@@ -60,7 +61,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/snapshots selected/)).not.toBeInTheDocument();
     });
 
     it('renders bulk operations when snapshots are selected', () => {
@@ -75,7 +76,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.getByText('2 selected')).toBeInTheDocument();
+      expect(screen.getByText('2 snapshots selected')).toBeInTheDocument();
     });
 
     it('displays correct count for selected snapshots', () => {
@@ -90,7 +91,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.getByText('3 selected')).toBeInTheDocument();
+      expect(screen.getByText('3 snapshots selected')).toBeInTheDocument();
     });
   });
 
@@ -107,7 +108,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const clearButton = screen.getByLabelText('Clear selection');
+      const clearButton = screen.getByText('Cancel');
       fireEvent.click(clearButton);
       
       expect(mockOnClearSelection).toHaveBeenCalled();
@@ -127,7 +128,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.getByText('Extend All')).toBeInTheDocument();
+      expect(screen.getByText('Extend Expiry')).toBeInTheDocument();
     });
 
     it('calls API to extend snapshots when extend button is clicked', async () => {
@@ -142,13 +143,13 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const extendButton = screen.getByText('Extend All');
+      const extendButton = screen.getByText('Extend Expiry');
       fireEvent.click(extendButton);
       
       await waitFor(() => {
         expect(mockApi.post).toHaveBeenCalledTimes(2);
-        expect(mockApi.post).toHaveBeenCalledWith('/api/snapshots/snap1/extend');
-        expect(mockApi.post).toHaveBeenCalledWith('/api/snapshots/snap2/extend');
+        expect(mockApi.post).toHaveBeenCalledWith('/api/snapshots/snap1/extend', { days: 7 });
+        expect(mockApi.post).toHaveBeenCalledWith('/api/snapshots/snap2/extend', { days: 7 });
       });
     });
 
@@ -164,7 +165,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const extendButton = screen.getByText('Extend All');
+      const extendButton = screen.getByText('Extend Expiry');
       fireEvent.click(extendButton);
       
       await waitFor(() => {
@@ -192,7 +193,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const extendButton = screen.getByText('Extend All');
+      const extendButton = screen.getByText('Extend Expiry');
       fireEvent.click(extendButton);
       
       await waitFor(() => {
@@ -218,7 +219,7 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.getByText('Move To...')).toBeInTheDocument();
+      expect(screen.getByText('Move to Project')).toBeInTheDocument();
     });
 
     it('shows move dialog when move button is clicked', () => {
@@ -233,11 +234,11 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
-      expect(screen.getByText('Move Snapshots')).toBeInTheDocument();
-      expect(screen.getByText('Select destination:')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Move to Project' })).toBeInTheDocument();
+      expect(screen.getByText(/Move .* snapshot/)).toBeInTheDocument();
     });
 
     it('shows project options in move dialog', () => {
@@ -252,10 +253,10 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
-      expect(screen.getByText('No Project')).toBeInTheDocument();
+      expect(screen.getByText('Select project...')).toBeInTheDocument();
       expect(screen.getByText('Project Alpha')).toBeInTheDocument();
       expect(screen.getByText('Project Beta')).toBeInTheDocument();
     });
@@ -273,15 +274,15 @@ describe('BulkOperations Component', () => {
       );
       
       // Open move dialog
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
       // Select a project
-      const projectOption = screen.getByLabelText('Project Alpha');
-      fireEvent.click(projectOption);
+      const projectSelect = screen.getByDisplayValue('Select project...');
+      fireEvent.change(projectSelect, { target: { value: 'project1' } });
       
       // Confirm move
-      const confirmButton = screen.getByText('Move Snapshots');
+      const confirmButton = screen.getByText('Move');
       fireEvent.click(confirmButton);
       
       await waitFor(() => {
@@ -304,15 +305,15 @@ describe('BulkOperations Component', () => {
       );
       
       // Open move dialog
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
-      // Select "No Project"
-      const noProjectOption = screen.getByLabelText('No Project');
-      fireEvent.click(noProjectOption);
+      // Select no project (empty value)
+      const projectSelect = screen.getByDisplayValue('Select project...');
+      fireEvent.change(projectSelect, { target: { value: '__no_project__' } });
       
       // Confirm move
-      const confirmButton = screen.getByText('Move Snapshots');
+      const confirmButton = screen.getByText('Move');
       fireEvent.click(confirmButton);
       
       await waitFor(() => {
@@ -333,15 +334,19 @@ describe('BulkOperations Component', () => {
       );
       
       // Open move dialog
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
-      // Cancel
-      const cancelButton = screen.getByText('Cancel');
-      fireEvent.click(cancelButton);
+      // Cancel using the dialog cancel button (not the bulk operations cancel)
+      const dialogCancelButtons = screen.getAllByText('Cancel');
+      const dialogCancelButton = dialogCancelButtons.find(button => 
+        button.className.includes('flex-1')
+      );
+      fireEvent.click(dialogCancelButton!);
       
-      // Dialog should be closed
-      expect(screen.queryByText('Move Snapshots')).not.toBeInTheDocument();
+      // Dialog should be closed - only button should remain, not the dialog heading
+      expect(screen.getByRole('button', { name: 'Move to Project' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Move to Project' })).not.toBeInTheDocument();
     });
   });
 
@@ -358,10 +363,13 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      expect(screen.getByText('Delete All')).toBeInTheDocument();
+      expect(screen.getByText('Delete')).toBeInTheDocument();
     });
 
     it('shows confirmation dialog when delete button is clicked', () => {
+      // Mock window.confirm to return false (cancel)
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      
       const selectedSnapshots = new Set(['snap1']);
       render(
         <BulkOperations 
@@ -373,11 +381,13 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      const deleteButton = screen.getByText('Delete All');
+      const deleteButton = screen.getByText('Delete');
       fireEvent.click(deleteButton);
       
-      expect(screen.getByText('Delete Snapshots')).toBeInTheDocument();
-      expect(screen.getByText(/Are you sure you want to delete/)).toBeInTheDocument();
+      // Should show browser confirm dialog
+      expect(confirmSpy).toHaveBeenCalledWith('Are you sure you want to delete 1 snapshot? This action cannot be undone.');
+      
+      confirmSpy.mockRestore();
     });
 
     it('can confirm delete operation', async () => {
@@ -392,19 +402,20 @@ describe('BulkOperations Component', () => {
         />
       );
       
-      // Open delete dialog
-      const deleteButton = screen.getByText('Delete All');
+      // Mock window.confirm to return true
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      
+      const deleteButton = screen.getByText('Delete');
       fireEvent.click(deleteButton);
       
-      // Confirm delete
-      const confirmButton = screen.getByText('Delete');
-      fireEvent.click(confirmButton);
-      
       await waitFor(() => {
+        expect(confirmSpy).toHaveBeenCalledWith('Are you sure you want to delete 2 snapshots? This action cannot be undone.');
         expect(mockApi.delete).toHaveBeenCalledTimes(2);
         expect(mockApi.delete).toHaveBeenCalledWith('/api/snapshots/snap1');
         expect(mockApi.delete).toHaveBeenCalledWith('/api/snapshots/snap2');
       });
+      
+      confirmSpy.mockRestore();
     });
   });
 
@@ -422,13 +433,13 @@ describe('BulkOperations Component', () => {
       );
       
       // Start an operation
-      const extendButton = screen.getByText('Extend All');
+      const extendButton = screen.getByText('Extend Expiry');
       fireEvent.click(extendButton);
       
-      // Buttons should be disabled during operation
-      expect(screen.getByText('Extend All')).toBeDisabled();
-      expect(screen.getByText('Move To...')).toBeDisabled();
-      expect(screen.getByText('Delete All')).toBeDisabled();
+      // All buttons should be disabled during operation
+      expect(screen.getByText('Extend Expiry')).toBeDisabled();
+      expect(screen.getByText('Move to Project')).toBeDisabled();
+      expect(screen.getByText('Delete')).toBeDisabled();
     });
   });
 
@@ -464,11 +475,11 @@ describe('BulkOperations Component', () => {
       );
       
       // Open move dialog
-      const moveButton = screen.getByText('Move To...');
+      const moveButton = screen.getByRole('button', { name: 'Move to Project' });
       fireEvent.click(moveButton);
       
-      // Check for dialog content instead of role
-      expect(screen.getByText('Move Snapshots')).toBeInTheDocument();
+      // Check for dialog heading
+      expect(screen.getByRole('heading', { name: 'Move to Project' })).toBeInTheDocument();
     });
   });
 });

@@ -5,6 +5,8 @@ import { api, adminApi } from '../api';
 import { useSidebar } from '../hooks/useSidebar';
 import ProjectSidebar from '../components/ProjectSidebar';
 import NotificationBell from '../components/NotificationBell';
+import SnapshotDashboard from '../components/SnapshotDashboard';
+import { Project, Snapshot } from '../types/dashboard';
 import '../fonts.css';
 
 interface AdminUser {
@@ -62,8 +64,13 @@ export default function AdminDashboard() {
   // Analytics state
   const [analytics, setAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'users' | 'analytics'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'analytics' | 'snapshots'>('users');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Snapshots state
+  const [adminSnapshots, setAdminSnapshots] = useState<Snapshot[]>([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
   
   // Additional analytics data
   const [userAnalytics, setUserAnalytics] = useState<any>(null);
@@ -214,6 +221,7 @@ export default function AdminDashboard() {
     loadUsers();
     loadAnalytics();
     loadMigrationStats();
+    loadSnapshots();
     
     // Track page view
     const trackPageView = async () => {
@@ -247,6 +255,19 @@ export default function AdminDashboard() {
       setError(error.message || 'Failed to load users');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSnapshots = async () => {
+    try {
+      setSnapshotsLoading(true);
+      setSnapshotsError(null);
+      const response = await api.get('/admin/snapshots');
+      setAdminSnapshots(response.snapshots || []);
+    } catch (error: any) {
+      setSnapshotsError(error.message || 'Failed to load snapshots');
+    } finally {
+      setSnapshotsLoading(false);
     }
   };
 
@@ -980,6 +1001,16 @@ export default function AdminDashboard() {
               Users ({users.length})
             </button>
             <button
+              onClick={() => setActiveTab('snapshots')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'snapshots'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              📸 Snapshots ({adminSnapshots.length})
+            </button>
+            <button
               onClick={() => setActiveTab('analytics')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'analytics'
@@ -1171,6 +1202,47 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        ) : activeTab === 'snapshots' ? (
+          /* Snapshots Tab */
+          <div className="space-y-6">
+            {snapshotsLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+              </div>
+            ) : snapshotsError ? (
+              <div className="text-center py-12">
+                <div className="text-red-600 mb-4">{snapshotsError}</div>
+                <button
+                  onClick={loadSnapshots}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <SnapshotDashboard
+                snapshots={adminSnapshots}
+                projects={projects}
+                onRefresh={loadSnapshots}
+                onExtendSnapshot={async (snapshotId: string) => {
+                  try {
+                    await api.post(`/api/snapshots/${snapshotId}/extend`);
+                    loadSnapshots(); // Refresh data
+                    setShowSuccess('Snapshot extended successfully');
+                  } catch (error) {
+                    setError('Failed to extend snapshot');
+                  }
+                }}
+                selectedProjectId={selectedProjectId}
+                onSelectProject={handleSelectProject}
+                showWidgets={true}
+                showExtensionSection={false}
+                user={user}
+                title="All Snapshots"
+                subtitle={`${adminSnapshots.length} snapshots from all users`}
+              />
+            )}
+          </div>
 
         ) : (
           /* Analytics Content */

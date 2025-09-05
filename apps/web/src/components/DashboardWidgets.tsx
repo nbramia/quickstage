@@ -72,6 +72,8 @@ export default function DashboardWidgets({ snapshots, onExtend }: DashboardWidge
                 <Link
                   key={snapshot.id}
                   to={`/viewer/${snapshot.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="block py-1 text-sm text-indigo-600 hover:text-indigo-800 truncate"
                 >
                   {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}
@@ -99,6 +101,8 @@ export default function DashboardWidgets({ snapshots, onExtend }: DashboardWidge
                 <div key={snapshot.id} className="flex items-center justify-between">
                   <Link
                     to={`/viewer/${snapshot.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-sm text-gray-700 hover:text-indigo-600 truncate flex-1 mr-2"
                   >
                     {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}
@@ -142,6 +146,8 @@ export default function DashboardWidgets({ snapshots, onExtend }: DashboardWidge
               <div key={snapshot.id} className="flex items-center justify-between">
                 <Link
                   to={`/viewer/${snapshot.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-sm text-gray-700 hover:text-indigo-600 truncate flex-1 mr-2"
                 >
                   {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}
@@ -205,6 +211,8 @@ export default function DashboardWidgets({ snapshots, onExtend }: DashboardWidge
               <div key={snapshot.id} className="flex items-center justify-between">
                 <Link
                   to={`/viewer/${snapshot.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-sm text-gray-700 hover:text-indigo-600 truncate flex-1 mr-2"
                 >
                   {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}

@@ -361,8 +361,15 @@ app.get('/snapshots/:id', async (c: any) => {
     // Public snapshots can be viewed without authentication
     return c.json({ snapshot: meta });
   } else {
-    // Password protected snapshots require authentication
-    return c.json({ error: 'unauthorized' }, 401);
+    // Password protected snapshots - check for password gate cookie
+    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+    if (gateCookie && gateCookie === 'ok') {
+      // Password gate cookie is valid, allow access
+      return c.json({ snapshot: meta });
+    } else {
+      // No valid password gate cookie, require authentication
+      return c.json({ error: 'unauthorized' }, 401);
+    }
   }
 });
 
@@ -518,8 +525,15 @@ app.get('/api/snapshots/:id', async (c: any) => {
     // Public snapshots can be viewed without authentication
     return c.json({ snapshot: meta });
   } else {
-    // Password protected snapshots require authentication
-    return c.json({ error: 'unauthorized' }, 401);
+    // Password protected snapshots - check for password gate cookie
+    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+    if (gateCookie && gateCookie === 'ok') {
+      // Password gate cookie is valid, allow access
+      return c.json({ snapshot: meta });
+    } else {
+      // No valid password gate cookie, require authentication
+      return c.json({ error: 'unauthorized' }, 401);
+    }
   }
 });
 
@@ -715,6 +729,121 @@ app.delete('/admin/users/:uid', handleDeleteUser);
 
 // Create superadmin user (one-time setup)
 app.post('/admin/setup-superadmin', handleSetupSuperadmin);
+
+// Get all snapshots (admin only)
+app.get('/admin/snapshots', async (c: any) => {
+  const uid = await getUidFromSession(c);
+  if (!uid) {
+    // Track analytics event for unauthorized access attempt
+    try {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent('anonymous', 'unauthorized_access', { 
+        endpoint: '/admin/snapshots',
+        method: 'GET'
+      });
+    } catch (analyticsError) {
+      console.error('Failed to track analytics for unauthorized access:', analyticsError);
+    }
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+
+  // Check if user is superadmin
+  const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+  if (!userRaw) {
+    return c.json({ error: 'user_not_found' }, 404);
+  }
+
+  const user = JSON.parse(userRaw);
+  if (user.role !== 'superadmin') {
+    // Track analytics event for unauthorized access attempt
+    try {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(uid, 'unauthorized_access', { 
+        endpoint: '/admin/snapshots',
+        method: 'GET',
+        userRole: user.role
+      });
+    } catch (analyticsError) {
+      console.error('Failed to track analytics for unauthorized access:', analyticsError);
+    }
+    return c.json({ error: 'insufficient_permissions' }, 403);
+  }
+
+  // Track analytics event for page view
+  const analytics = getAnalyticsManager(c);
+  await analytics.trackEvent(uid, 'page_view', { page: '/admin/snapshots' });
+
+  try {
+    // Get all snapshots from KV
+    const list = await c.env.KV_SNAPS.list({ prefix: 'snap:' });
+    const snapshots = [];
+
+    for (const key of list.keys) {
+      if (key.name.startsWith('snap:') && !key.name.includes(':', 5)) {
+        const snapRaw = await c.env.KV_SNAPS.get(key.name);
+        if (snapRaw) {
+          try {
+            const meta = JSON.parse(snapRaw) as SnapshotRecord;
+            // Migrate snapshot to ensure proper schema
+            const migratedMeta = migrateSnapshotToNewSchema(meta);
+            
+            // Get owner information
+            const ownerRaw = await c.env.KV_USERS.get(`user:${migratedMeta.ownerUid}`);
+            const owner = ownerRaw ? JSON.parse(ownerRaw) : null;
+            
+            snapshots.push({
+              id: migratedMeta.id,
+              name: migratedMeta.name || `Snapshot ${migratedMeta.id.slice(0, 8)}`,
+              projectId: migratedMeta.projectId,
+              createdAt: migratedMeta.createdAt,
+              updatedAt: migratedMeta.updatedAt || migratedMeta.createdAt,
+              expiresAt: migratedMeta.expiresAt,
+              lastModifiedAt: migratedMeta.lastModifiedAt || migratedMeta.updatedAt || migratedMeta.createdAt,
+              password: migratedMeta.password || (migratedMeta.passwordHash ? 'Password protected' : null),
+              isPublic: migratedMeta.public || false,
+              viewCount: migratedMeta.analytics?.viewCount || 0,
+              uniqueViewers: migratedMeta.analytics?.uniqueViewers || 0,
+              commentCount: migratedMeta.analytics?.commentCount || migratedMeta.commentsCount || 0,
+              metadata: migratedMeta.metadata || {},
+              review: migratedMeta.review,
+              status: migratedMeta.status || 'active',
+              tags: migratedMeta.metadata?.tags || [],
+              description: migratedMeta.metadata?.description,
+              version: migratedMeta.metadata?.version,
+              clientName: migratedMeta.metadata?.clientName,
+              milestone: migratedMeta.metadata?.milestone,
+              ownerUid: migratedMeta.ownerUid,
+              ownerName: owner?.name || 'Unknown',
+              ownerEmail: owner?.email || 'Unknown'
+            });
+          } catch (parseError) {
+            console.error('Failed to parse snapshot:', key.name, parseError);
+          }
+        }
+      }
+    }
+
+    // Sort snapshots by createdAt in descending order (newest first)
+    snapshots.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    return c.json({ snapshots });
+  } catch (error: any) {
+    console.error('Admin snapshots error:', error);
+    
+    // Track analytics event for error
+    try {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(uid, 'error_occurred', { 
+        context: 'admin_snapshots',
+        error: error.message || 'Unknown error'
+      });
+    } catch (analyticsError) {
+      console.error('Failed to track analytics for admin snapshots error:', analyticsError);
+    }
+    
+    return c.json({ error: 'Failed to fetch snapshots' }, 500);
+  }
+});
 
 
 
@@ -2290,36 +2419,16 @@ app.get('/debug/export', async (c: any) => {
 // Health check endpoint (public, no auth required)
 app.get('/debug/health', async (c: any) => {
   try {
-    // Test KV access
-    const userCount = await c.env.KV_USERS.list({ prefix: 'user:', limit: 1 });
-    const snapCount = await c.env.KV_SNAPS.list({ prefix: 'snap:', limit: 1 });
-    
+    // Simple health check without KV access to avoid timeouts
     return c.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
-        kv_users: 'operational',
-        kv_snapshots: 'operational',
         worker: 'operational'
-      },
-      metrics: {
-        userKeys: userCount.keys.length,
-        snapshotKeys: snapCount.keys.length
       }
     });
   } catch (error: any) {
     console.error('Health check error:', error);
-    
-    // Track analytics event for health check error
-    try {
-      const analytics = getAnalyticsManager(c);
-      await analytics.trackEvent('system', 'error_occurred', { 
-        context: 'health_check',
-        error: error.message || 'Unknown error'
-      });
-    } catch (analyticsError) {
-      console.error('Failed to track analytics for health check error:', analyticsError);
-    }
     
     return c.json({
       status: 'unhealthy',
@@ -2327,6 +2436,27 @@ app.get('/debug/health', async (c: any) => {
       error: error.message
     }, 500);
   }
+});
+
+// Catch-all route for direct worker URL access
+app.all('*', async (c: any) => {
+  const url = new URL(c.req.url);
+  console.log(`🔍 Direct worker URL access: ${c.req.method} ${url.pathname}`);
+  
+  // If accessing the direct worker URL, redirect to main domain
+  if (url.hostname.includes('workers.dev')) {
+    const mainDomain = 'https://quickstage.tech';
+    const redirectUrl = `${mainDomain}${url.pathname}${url.search}`;
+    return c.redirect(redirectUrl, 302);
+  }
+  
+  // For other unmatched routes, return 404
+  return c.json({ 
+    error: 'Route not found', 
+    path: url.pathname,
+    method: c.req.method,
+    message: 'This endpoint is not available. Please use the main domain: https://quickstage.tech'
+  }, 404);
 });
 
 // Test analytics endpoint (for debugging)

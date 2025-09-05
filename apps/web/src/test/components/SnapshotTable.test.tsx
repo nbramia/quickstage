@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import SnapshotTable from '../../components/SnapshotTable';

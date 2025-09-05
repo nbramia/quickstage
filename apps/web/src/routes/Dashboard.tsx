@@ -6,9 +6,7 @@ import config from '../config';
 import { Project, Snapshot } from '../types/dashboard';
 import NotificationBell from '../components/NotificationBell';
 import ProjectSidebar from '../components/ProjectSidebar';
-import SnapshotTable from '../components/SnapshotTable';
-import DashboardWidgets from '../components/DashboardWidgets';
-import BulkOperations from '../components/BulkOperations';
+import SnapshotDashboard from '../components/SnapshotDashboard';
 import '../fonts.css';
 
 export default function Dashboard() {
@@ -20,7 +18,6 @@ export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
-  const [selectedSnapshots, setSelectedSnapshots] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState('');
@@ -133,33 +130,6 @@ export default function Dashboard() {
     }
   };
 
-  // Filter snapshots by selected project
-  const filteredSnapshots = selectedProjectId 
-    ? snapshots.filter(s => s.projectId === selectedProjectId)
-    : snapshots;
-
-  // Bulk selection handlers
-  const handleToggleSelect = (snapshotId: string) => {
-    const newSelected = new Set(selectedSnapshots);
-    if (newSelected.has(snapshotId)) {
-      newSelected.delete(snapshotId);
-    } else {
-      newSelected.add(snapshotId);
-    }
-    setSelectedSnapshots(newSelected);
-  };
-
-  const handleSelectAll = (selected: boolean) => {
-    if (selected) {
-      setSelectedSnapshots(new Set(filteredSnapshots.map(s => s.id)));
-    } else {
-      setSelectedSnapshots(new Set());
-    }
-  };
-
-  const handleClearSelection = () => {
-    setSelectedSnapshots(new Set());
-  };
 
   // Helper functions
   const showSuccess = (message: string) => {
@@ -410,35 +380,6 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                {/* Page Header */}
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900 font-inconsolata">
-                      {selectedProjectId 
-                        ? projects.find(p => p.id === selectedProjectId)?.name || 'Project'
-                        : 'Dashboard'
-                      }
-                    </h1>
-                    <p className="text-gray-600">
-                      {filteredSnapshots.length} snapshot{filteredSnapshots.length !== 1 ? 's' : ''}
-                      {selectedProjectId && projects.find(p => p.id === selectedProjectId)?.description && (
-                        <span> • {projects.find(p => p.id === selectedProjectId)?.description}</span>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center space-x-3">
-                    {canUpgrade() && (
-                      <button
-                        onClick={handleUpgradeToPro}
-                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-purple-700"
-                      >
-                        Upgrade to Pro
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 {/* Extension Download Section - Only show if viewing all snapshots */}
                 {!selectedProjectId && (
                   <div className="mb-6">
@@ -505,30 +446,18 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Dashboard Widgets - only show if viewing all snapshots */}
-                {!selectedProjectId && (
-                  <DashboardWidgets
-                    snapshots={snapshots}
-                    onExtend={handleExtendSnapshot}
-                  />
-                )}
-
-                {/* Snapshots Table */}
-                <SnapshotTable
-                  snapshots={filteredSnapshots}
-                  onRefresh={loadData}
-                  selectedSnapshots={selectedSnapshots}
-                  onToggleSelect={handleToggleSelect}
-                  onSelectAll={handleSelectAll}
-                />
-
-                {/* Bulk Operations */}
-                <BulkOperations
-                  selectedSnapshots={selectedSnapshots}
-                  snapshots={filteredSnapshots}
+                {/* Snapshot Dashboard */}
+                <SnapshotDashboard
+                  snapshots={snapshots}
                   projects={projects}
-                  onClearSelection={handleClearSelection}
                   onRefresh={loadData}
+                  onExtendSnapshot={handleExtendSnapshot}
+                  selectedProjectId={selectedProjectId}
+                  onSelectProject={setSelectedProjectId}
+                  showWidgets={!selectedProjectId}
+                  showExtensionSection={false}
+                  user={user}
+                  title="Dashboard"
                 />
               </>
             )}

@@ -109,6 +109,10 @@ id = "c4d22c0124d842168ec5647c999d81e2"
 binding = "KV_SUBSCRIPTIONS"
 id = "0e418bc8c6104af7b27c709dcca65d64"
 
+[[kv_namespaces]]
+binding = "KV_REVIEWS"
+id = "1126b1fb44e7460f9eed0d3a342cf685"
+
 [[r2_buckets]]
 binding = "R2_SNAPSHOTS"
 bucket_name = "snapshots"

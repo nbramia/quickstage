@@ -127,8 +127,8 @@ export async function handleGetSnapshotCommentsAlt(c) {
         // Get the Durable Object for this snapshot
         const id = c.env.COMMENTS_DO.idFromName(snapshotId);
         const obj = c.env.COMMENTS_DO.get(id);
-        // Call the getComments method
-        const response = await obj.fetch('https://dummy.com/comments', {
+        // Call the getComments method using the legacy endpoint
+        const response = await obj.fetch('https://dummy.com/', {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -157,8 +157,8 @@ export async function handlePostSnapshotCommentAlt(c) {
         // Get the Durable Object for this snapshot
         const id = c.env.COMMENTS_DO.idFromName(snapshotId);
         const obj = c.env.COMMENTS_DO.get(id);
-        // Call the addComment method
-        const response = await obj.fetch('https://dummy.com/comments', {
+        // Call the addComment method using the legacy endpoint (which works)
+        const response = await obj.fetch('https://dummy.com/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: text.trim(), author: author.trim() || 'Anonymous' })

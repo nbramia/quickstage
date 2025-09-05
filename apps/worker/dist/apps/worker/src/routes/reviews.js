@@ -65,38 +65,35 @@ export async function handleCreateReview(c) {
             assignedAt: now,
             status: 'pending'
         }));
-        // Create review object
-        const review = {
-            id: reviewId,
-            snapshotId,
-            requestedBy: uid,
-            requestedAt: now,
-            reviewers: participants,
-            deadline: parsedDeadline,
+        // Build review object from scratch with only safe primitive values
+        const safeReview = {
+            id: String(reviewId),
+            snapshotId: String(snapshotId),
+            requestedBy: String(uid),
+            requestedAt: Number(now),
+            reviewers: participants.map(p => ({
+                userId: String(p.userId),
+                userName: String(p.userName),
+                userEmail: String(p.userEmail),
+                assignedAt: Number(p.assignedAt),
+                status: String(p.status)
+            })),
+            deadline: parsedDeadline ? Number(parsedDeadline) : null,
             reminderSent: false,
             status: 'pending',
-            notes
+            notes: notes ? String(notes) : null
         };
-        // Store review with safe JSON serialization
+        // Store review
         try {
-            // Debug: Clean the review object of any non-serializable data
-            const cleanReview = JSON.parse(JSON.stringify({
-                id: review.id,
-                snapshotId: review.snapshotId,
-                requestedBy: review.requestedBy,
-                requestedAt: review.requestedAt,
-                reviewers: review.reviewers,
-                deadline: typeof review.deadline === 'number' ? review.deadline : undefined,
-                reminderSent: review.reminderSent,
-                status: review.status,
-                notes: review.notes
-            }));
-            await c.env.KV_REVIEWS.put(reviewId, JSON.stringify(cleanReview));
+            // Test serialization first
+            const testSerialize = JSON.stringify(safeReview);
+            // If successful, store it
+            await c.env.KV_REVIEWS.put(reviewId, testSerialize);
         }
         catch (jsonError) {
             console.error('Failed to serialize review data:', jsonError);
-            console.error('Review object keys:', Object.keys(review));
-            console.error('Review deadline type:', typeof review.deadline, review.deadline);
+            console.error('Error details:', jsonError.message);
+            console.error('Review object that failed:', safeReview);
             throw new Error('JSON serialization failed for review data');
         }
         // Update snapshot with review info
@@ -105,28 +102,82 @@ export async function handleCreateReview(c) {
             reviewId,
             checkedOffCount: 0,
             totalReviewers: participants.length,
-            deadline: review.deadline,
+            deadline: safeReview.deadline || undefined,
             status: 'pending'
         };
         try {
-            // Clean snapshot object of any problematic properties
-            const cleanSnapshot = {
-                ...snapshot,
+            // Build a safe snapshot object from known properties only
+            const safeSnapshot = {
+                id: String(snapshot.id || snapshotId),
+                name: snapshot.name ? String(snapshot.name) : undefined,
+                ownerUid: String(snapshot.ownerUid || uid),
+                passwordHash: String(snapshot.passwordHash || ''),
+                password: snapshot.password ? String(snapshot.password) : undefined,
+                projectId: snapshot.projectId ? String(snapshot.projectId) : undefined,
+                totalBytes: Number(snapshot.totalBytes || 0),
+                files: Array.isArray(snapshot.files) ? snapshot.files.map((file) => ({
+                    name: String(file.name || ''),
+                    size: Number(file.size || 0),
+                    type: String(file.type || ''),
+                    lastModified: file.lastModified ? Number(file.lastModified) : undefined
+                })) : [],
+                public: Boolean(snapshot.public),
+                status: String(snapshot.status || 'active'),
+                createdAt: Number(snapshot.createdAt || Date.now()),
+                updatedAt: Number(snapshot.updatedAt || Date.now()),
+                expiresAt: Number(snapshot.expiresAt || Date.now() + 30 * 24 * 60 * 60 * 1000),
+                lastAccessedAt: snapshot.lastAccessedAt ? Number(snapshot.lastAccessedAt) : undefined,
+                lastModifiedAt: snapshot.lastModifiedAt ? Number(snapshot.lastModifiedAt) : undefined,
+                analytics: snapshot.analytics || {
+                    viewCount: 0,
+                    uniqueViewers: 0,
+                    downloadCount: 0,
+                    commentCount: 0,
+                    averageTimeOnPage: 0,
+                    lastViewedAt: 0,
+                    viewerCountries: [],
+                    viewerIPs: [],
+                    viewSessions: []
+                },
+                metadata: {
+                    fileCount: Number(snapshot.metadata?.fileCount || 0),
+                    hasComments: Boolean(snapshot.metadata?.hasComments),
+                    tags: Array.isArray(snapshot.metadata?.tags) ? snapshot.metadata.tags.map((t) => String(t)) : undefined,
+                    description: snapshot.metadata?.description ? String(snapshot.metadata.description) : undefined,
+                    thumbnail: snapshot.metadata?.thumbnail ? String(snapshot.metadata.thumbnail) : undefined,
+                    version: snapshot.metadata?.version ? String(snapshot.metadata.version) : undefined,
+                    clientName: snapshot.metadata?.clientName ? String(snapshot.metadata.clientName) : undefined,
+                    milestone: snapshot.metadata?.milestone ? String(snapshot.metadata.milestone) : undefined,
+                    reviewSummary: snapshot.metadata?.reviewSummary ? String(snapshot.metadata.reviewSummary) : undefined,
+                    framework: snapshot.metadata?.framework ? String(snapshot.metadata.framework) : undefined
+                },
                 review: {
                     isRequested: true,
-                    reviewId,
+                    reviewId: String(reviewId),
                     checkedOffCount: 0,
-                    totalReviewers: participants.length,
-                    deadline: typeof review.deadline === 'number' ? review.deadline : undefined,
+                    totalReviewers: Number(participants.length),
+                    deadline: parsedDeadline ? Number(parsedDeadline) : undefined,
                     status: 'pending'
                 }
             };
-            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(cleanSnapshot));
+            // Test serialization first
+            const testSerialize = JSON.stringify(safeSnapshot);
+            // If successful, store it
+            await c.env.KV_SNAPS.put(`snap:${snapshotId}`, testSerialize);
         }
         catch (jsonError) {
             console.error('Failed to serialize snapshot data:', jsonError);
-            console.error('Snapshot keys:', snapshot ? Object.keys(snapshot) : 'null');
-            console.error('Review deadline in snapshot:', review.deadline, typeof review.deadline);
+            console.error('Error details:', jsonError?.message);
+            console.error('Snapshot type:', typeof snapshot);
+            console.error('Snapshot constructor:', snapshot?.constructor?.name);
+            // Log the actual problematic data
+            try {
+                console.error('Snapshot keys:', Object.keys(snapshot || {}));
+                console.error('Snapshot values types:', Object.entries(snapshot || {}).map(([k, v]) => `${k}: ${typeof v}`));
+            }
+            catch (e) {
+                console.error('Could not log snapshot details:', e);
+            }
             throw new Error('JSON serialization failed for snapshot data');
         }
         // Track analytics (non-blocking, don't fail the request if analytics fail)
@@ -144,7 +195,7 @@ export async function handleCreateReview(c) {
             // Don't fail the request if analytics fail - this is non-critical
         }
         // TODO: Send email notifications to reviewers
-        return c.json({ success: true, review });
+        return c.json({ success: true, review: safeReview });
     }
     catch (error) {
         console.error('Error creating review:', error);

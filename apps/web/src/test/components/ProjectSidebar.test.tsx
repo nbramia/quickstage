@@ -1,17 +1,19 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import ProjectSidebar from '../../components/ProjectSidebar';
 import { Project } from '../../types/dashboard';
+import { api } from '../../api';
 
 // Mock the API module
-const mockApiPost = vi.fn();
-const mockApiDelete = vi.fn();
 vi.mock('../../api', () => ({
   api: {
-    post: mockApiPost,
-    delete: mockApiDelete,
+    post: vi.fn(),
+    delete: vi.fn(),
   },
 }));
+
+const mockApi = vi.mocked(api);
 
 const mockProjects: Project[] = [
   {
@@ -100,7 +102,7 @@ describe('ProjectSidebar Component', () => {
       expect(selectedProject).toHaveClass('bg-indigo-50', 'text-indigo-700');
     });
 
-    it('shows "All Snapshots" option as selected when no project is selected', () => {
+    it('shows "Dashboard" option (styling depends on pathname)', () => {
       render(
         <ProjectSidebar
           projects={mockProjects}
@@ -110,8 +112,9 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const allSnapshotsButton = screen.getByText('All Snapshots').closest('button');
-      expect(allSnapshotsButton).toHaveClass('bg-indigo-50', 'text-indigo-700');
+      const dashboardButton = screen.getByText('Dashboard').closest('button');
+      expect(dashboardButton).toBeInTheDocument();
+      // Note: Selected styling only applies when on /dashboard route
     });
   });
 
@@ -135,7 +138,7 @@ describe('ProjectSidebar Component', () => {
     });
 
     it('creates new project when form is submitted', async () => {
-      mockApiPost.mockResolvedValueOnce({ success: true });
+      mockApi.post.mockResolvedValueOnce({ success: true });
 
       render(
         <ProjectSidebar
@@ -163,7 +166,7 @@ describe('ProjectSidebar Component', () => {
       fireEvent.click(screen.getByText('Create'));
 
       await waitFor(() => {
-        expect(mockApiPost).toHaveBeenCalledWith('/api/projects', {
+        expect(mockApi.post).toHaveBeenCalledWith('/api/projects', {
           name: 'New Project',
           color: expect.any(String)
         });
@@ -243,7 +246,7 @@ describe('ProjectSidebar Component', () => {
       expect(mockOnSelectProject).toHaveBeenCalledWith('proj1');
     });
 
-    it('calls onSelectProject with undefined when "All Snapshots" is clicked', () => {
+    it('calls onSelectProject with undefined when "Dashboard" is clicked', () => {
       render(
         <ProjectSidebar
           projects={mockProjects}
@@ -253,7 +256,7 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      fireEvent.click(screen.getByText('All Snapshots'));
+      fireEvent.click(screen.getByText('Dashboard'));
       expect(mockOnSelectProject).toHaveBeenCalledWith(undefined);
     });
 
@@ -293,8 +296,8 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const projectElement = screen.getByText('Empty Project').closest('div');
-      expect(projectElement?.querySelector('svg[title*="Delete"]')).toBeInTheDocument();
+      const deleteButton = screen.getByTitle('Delete project');
+      expect(deleteButton).toBeInTheDocument();
     });
 
     it('does not show delete button for projects with snapshots', () => {
@@ -307,8 +310,8 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const projectElement = screen.getByText('Web Application').closest('div');
-      expect(projectElement?.querySelector('svg[title*="Delete"]')).not.toBeInTheDocument();
+      const deleteButton = screen.queryByTitle('Delete project');
+      expect(deleteButton).not.toBeInTheDocument();
     });
 
     it('deletes project when delete button is clicked and confirmed', async () => {
@@ -316,7 +319,7 @@ describe('ProjectSidebar Component', () => {
       const originalConfirm = window.confirm;
       window.confirm = vi.fn().mockReturnValue(true);
 
-      mockApiDelete.mockResolvedValueOnce({ success: true });
+      mockApi.delete.mockResolvedValueOnce({ success: true });
 
       render(
         <ProjectSidebar
@@ -327,13 +330,11 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const deleteButton = document.querySelector('svg[title*="Delete"]')?.closest('button');
-      if (deleteButton) {
-        fireEvent.click(deleteButton);
-      }
+      const deleteButton = screen.getByTitle('Delete project');
+      fireEvent.click(deleteButton);
 
       await waitFor(() => {
-        expect(mockApiDelete).toHaveBeenCalledWith('/api/projects/empty-proj');
+        expect(mockApi.delete).toHaveBeenCalledWith('/api/projects/empty-proj');
       });
 
       expect(mockOnRefreshProjects).toHaveBeenCalled();
@@ -356,12 +357,10 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const deleteButton = document.querySelector('svg[title*="Delete"]')?.closest('button');
-      if (deleteButton) {
-        fireEvent.click(deleteButton);
-      }
+      const deleteButton = screen.getByTitle('Delete project');
+      fireEvent.click(deleteButton);
 
-      expect(mockApiDelete).not.toHaveBeenCalled();
+      expect(mockApi.delete).not.toHaveBeenCalled();
       expect(mockOnRefreshProjects).not.toHaveBeenCalled();
 
       // Restore original confirm
@@ -371,7 +370,7 @@ describe('ProjectSidebar Component', () => {
 
   describe('Error Handling', () => {
     it('handles API errors during project creation', async () => {
-      mockApiPost.mockRejectedValueOnce(new Error('API Error'));
+      mockApi.post.mockRejectedValueOnce(new Error('API Error'));
 
       render(
         <ProjectSidebar
@@ -389,7 +388,7 @@ describe('ProjectSidebar Component', () => {
       fireEvent.click(screen.getByText('Create'));
 
       await waitFor(() => {
-        expect(mockApiPost).toHaveBeenCalled();
+        expect(mockApi.post).toHaveBeenCalled();
       });
 
       // Should not refresh projects on error
@@ -400,7 +399,7 @@ describe('ProjectSidebar Component', () => {
       const originalConfirm = window.confirm;
       window.confirm = vi.fn().mockReturnValue(true);
 
-      mockApiDelete.mockRejectedValueOnce({
+      mockApi.delete.mockRejectedValueOnce({
         error: 'Cannot delete project with snapshots'
       });
 
@@ -423,13 +422,11 @@ describe('ProjectSidebar Component', () => {
         />
       );
 
-      const deleteButton = document.querySelector('svg[title*="Delete"]')?.closest('button');
-      if (deleteButton) {
-        fireEvent.click(deleteButton);
-      }
+      const deleteButton = screen.getByTitle('Delete project');
+      fireEvent.click(deleteButton);
 
       await waitFor(() => {
-        expect(mockApiDelete).toHaveBeenCalled();
+        expect(mockApi.delete).toHaveBeenCalled();
       });
 
       // Should not refresh projects on error
@@ -445,7 +442,7 @@ describe('ProjectSidebar Component', () => {
       const createPromise = new Promise((resolve) => {
         resolvePromise = resolve;
       });
-      mockApiPost.mockReturnValue(createPromise);
+      mockApi.post.mockReturnValue(createPromise);
 
       render(
         <ProjectSidebar

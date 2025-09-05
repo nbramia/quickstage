@@ -12,8 +12,10 @@ A modern, lightning-fast platform for sharing and collaborating on web prototype
 - **Project Management**: Organize snapshots into folders with bulk operations and modern sidebar interface
 - **Notification System**: Real-time notifications with unread badges accessible from all main pages
 - **Subscription Management**: Comment thread subscriptions with pause/resume controls in account settings
+- **Follow System**: Follow snapshots to get notifications for new comments and review updates
 - **Review Workflows**: Structured review requests with participant management and approval workflows
 - **Unified Dashboard**: Modern interface combining project management, extension downloads, and analytics
+- **Admin Dashboard**: Comprehensive admin interface for managing users, snapshots, and system analytics
 - **Secure Access Control**: Role-based permissions and secure sharing
 - **Mobile Responsive**: Optimized for all devices and screen sizes
 - **Pro Features**: Advanced features for power users and teams
@@ -163,6 +165,9 @@ QuickStage includes a powerful AI assistant that analyzes your prototypes and pr
 - **Conversation Limits**: 20 messages per conversation (24-hour expiry)
 - **Graceful Degradation**: Clear error messages when service is unavailable
 - **Privacy**: User-friendly error messages (doesn't expose API funding issues)
+- **Browser Compatibility**: Enhanced error handling for MutationObserver and iframe-related issues
+- **Retry Mechanism**: Automatic retry functionality with user-friendly error messages
+- **DOM Safety**: Proper null checks and timing delays to prevent browser compatibility issues
 
 ### Configuration
 
@@ -182,7 +187,9 @@ wrangler secret put OPENAI_API_KEY --config ../../infra/wrangler.toml
 - **AI Model**: GPT-4o-mini for fast, cost-effective responses
 - **Storage**: Conversations stored in Cloudflare KV with automatic expiry
 - **Frontend**: Real-time chat interface with markdown-like formatting
-- **Error Handling**: Comprehensive error handling for API failures and rate limits
+- **Error Handling**: Comprehensive error handling for API failures, rate limits, and browser compatibility issues
+- **DOM Safety**: Enhanced iframe handling with proper timing and null checks
+- **Retry Logic**: Built-in retry mechanism with exponential backoff for failed requests
 
 ## 💬 Enhanced Comment System
 

@@ -37,8 +37,46 @@ export default function SnapshotTable({
   // Review request modal state
   const [showReviewModal, setShowReviewModal] = useState<string | null>(null);
   
+  // Rename state
+  const [renamingSnapshot, setRenamingSnapshot] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  
+  // Follow state
+  const [followedSnapshots, setFollowedSnapshots] = useState<Set<string>>(new Set());
+  const [pausedSnapshots, setPausedSnapshots] = useState<Set<string>>(new Set());
+  const [followFeedback, setFollowFeedback] = useState<{snapshotId: string, message: string} | null>(null);
+  const [loadingFollow, setLoadingFollow] = useState<Set<string>>(new Set());
+  
   // Get current user for ownership detection
   const { user } = useAuth();
+
+  // Load user's subscriptions on mount
+  React.useEffect(() => {
+    const loadUserSubscriptions = async () => {
+      if (!user) return;
+      
+      try {
+        const response = await api.get('/api/subscriptions');
+        const subscriptions = response.subscriptions || [];
+        
+        // Extract snapshot IDs that are being followed (both active and paused)
+        const activeIds = subscriptions
+          .filter((sub: any) => sub.isActive && !sub.commentId) // Active snapshot-level subscriptions
+          .map((sub: any) => sub.snapshotId);
+        
+        const pausedIds = subscriptions
+          .filter((sub: any) => !sub.isActive && !sub.commentId) // Paused snapshot-level subscriptions
+          .map((sub: any) => sub.snapshotId);
+        
+        setFollowedSnapshots(new Set([...activeIds, ...pausedIds]));
+        setPausedSnapshots(new Set(pausedIds));
+      } catch (error) {
+        console.error('Failed to load user subscriptions:', error);
+      }
+    };
+
+    loadUserSubscriptions();
+  }, [user]);
 
   // Handle sorting
   const handleSort = (field: SortField) => {
@@ -235,6 +273,52 @@ export default function SnapshotTable({
     }
   };
 
+  // Handle rename functionality
+  const handleStartRename = (snapshot: Snapshot) => {
+    if (!isOwner(snapshot)) return;
+    setRenamingSnapshot(snapshot.id);
+    setRenameValue(snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`);
+  };
+
+  const handleCancelRename = () => {
+    setRenamingSnapshot(null);
+    setRenameValue('');
+  };
+
+  const handleSaveRename = async (snapshotId: string) => {
+    if (!renameValue.trim()) {
+      handleCancelRename();
+      return;
+    }
+
+    try {
+      await api.put(`/api/snapshots/${snapshotId}`, {
+        name: renameValue.trim()
+      });
+      
+      // Show success feedback
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Name updated' });
+      setTimeout(() => setCursorTooltip(null), 2000);
+      
+      // Close rename mode and refresh
+      setRenamingSnapshot(null);
+      setRenameValue('');
+      onRefresh();
+    } catch (error) {
+      console.error('Failed to rename snapshot:', error);
+      setCursorTooltip({ x: window.innerWidth / 2, y: window.innerHeight / 2, text: 'Failed to update name' });
+      setTimeout(() => setCursorTooltip(null), 2000);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, snapshotId: string) => {
+    if (e.key === 'Enter') {
+      handleSaveRename(snapshotId);
+    } else if (e.key === 'Escape') {
+      handleCancelRename();
+    }
+  };
+
   // Handle review request submission
   const handleReviewRequest = async (data: {
     reviewers: Array<{ userId: string; userName: string; userEmail: string }>;
@@ -351,6 +435,65 @@ export default function SnapshotTable({
         setCursorTooltip(null);
       }, 3000);
     }
+  };
+
+  // Handle follow/unfollow snapshot
+  const handleToggleFollow = async (snapshotId: string) => {
+    if (!user) return;
+    
+    const isCurrentlyFollowed = followedSnapshots.has(snapshotId);
+    const isCurrentlyPaused = pausedSnapshots.has(snapshotId);
+    setLoadingFollow(prev => new Set(prev).add(snapshotId));
+    
+    try {
+      if (isCurrentlyFollowed) {
+        if (isCurrentlyPaused) {
+          // Resume paused subscription by creating a new active subscription
+          await api.post(`/api/snapshots/${snapshotId}/subscribe`, {});
+          setPausedSnapshots(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(snapshotId);
+            return newSet;
+          });
+          showFollowFeedback(snapshotId, 'Resumed');
+        } else {
+          // Pause active subscription by unsubscribing
+          await api.post(`/api/snapshots/${snapshotId}/unsubscribe`, {});
+          setPausedSnapshots(prev => new Set(prev).add(snapshotId));
+          showFollowFeedback(snapshotId, 'Paused');
+        }
+      } else {
+        // Follow (create new subscription)
+        await api.post(`/api/snapshots/${snapshotId}/subscribe`, {});
+        setFollowedSnapshots(prev => new Set(prev).add(snapshotId));
+        setPausedSnapshots(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(snapshotId);
+          return newSet;
+        });
+        showFollowFeedback(snapshotId, 'Followed');
+      }
+    } catch (error: any) {
+      console.error('Follow/unfollow error:', error);
+      const action = isCurrentlyFollowed 
+        ? (isCurrentlyPaused ? 'resume' : 'pause')
+        : 'follow';
+      console.error(error.message || `Failed to ${action} snapshot`);
+    } finally {
+      setLoadingFollow(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(snapshotId);
+        return newSet;
+      });
+    }
+  };
+
+  // Show follow feedback
+  const showFollowFeedback = (snapshotId: string, message: string) => {
+    setFollowFeedback({ snapshotId, message });
+    setTimeout(() => {
+      setFollowFeedback(null);
+    }, 2000);
   };
 
   // Check if current user owns a snapshot
@@ -534,9 +677,32 @@ export default function SnapshotTable({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}
-                      </div>
+                      {renamingSnapshot === snapshot.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, snapshot.id)}
+                            onBlur={() => handleSaveRename(snapshot.id)}
+                            className="text-sm font-medium text-gray-900 bg-transparent border-b border-indigo-500 focus:outline-none focus:border-indigo-700"
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <div 
+                            className={`text-sm font-medium text-gray-900 ${isOwner(snapshot) ? 'cursor-pointer hover:text-indigo-600' : ''}`}
+                            onClick={() => handleStartRename(snapshot)}
+                            title={isOwner(snapshot) ? 'Click to rename' : ''}
+                          >
+                            {snapshot.name || `Snapshot ${snapshot.id.slice(0, 8)}`}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            ID: {snapshot.id}
+                          </div>
+                        </div>
+                      )}
                       {snapshot.tags && snapshot.tags.length > 0 && (
                         <div className="flex gap-1 mt-1">
                           {snapshot.tags.map(tag => (
@@ -557,11 +723,11 @@ export default function SnapshotTable({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-900">{snapshot.viewCount || 0}</span>
-                      {snapshot.uniqueViewers && snapshot.uniqueViewers > 0 && (
-                        <span className="text-xs text-gray-500">({snapshot.uniqueViewers} unique)</span>
-                      )}
+                    <div 
+                      className="text-sm text-gray-900 cursor-default"
+                      title="Views - Unique Viewers"
+                    >
+                      {snapshot.viewCount || 0} - {snapshot.uniqueViewers || 0}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -673,6 +839,49 @@ export default function SnapshotTable({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                       </button>
+
+                      {/* Follow/Unfollow Button */}
+                      <button
+                        onClick={() => handleToggleFollow(snapshot.id)}
+                        disabled={loadingFollow.has(snapshot.id)}
+                        className={`${
+                          followedSnapshots.has(snapshot.id) 
+                            ? pausedSnapshots.has(snapshot.id)
+                              ? 'text-yellow-600 hover:text-yellow-900' // Paused state
+                              : 'text-green-600 hover:text-green-900'   // Active state
+                            : 'text-gray-600 hover:text-gray-900'        // Not followed
+                        } ${loadingFollow.has(snapshot.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title={
+                          followedSnapshots.has(snapshot.id) 
+                            ? pausedSnapshots.has(snapshot.id)
+                              ? 'Resume notifications (currently paused)'
+                              : 'Unfollow notifications (currently active)'
+                            : 'Follow notifications'
+                        }
+                      >
+                        {loadingFollow.has(snapshot.id) ? (
+                          <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        ) : followedSnapshots.has(snapshot.id) ? (
+                          pausedSnapshots.has(snapshot.id) ? (
+                            // Paused state - pause icon
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          ) : (
+                            // Active state - checkmark
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )
+                        ) : (
+                          // Not followed - plus icon
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                        )}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -705,6 +914,13 @@ export default function SnapshotTable({
           }}
         >
           {cursorTooltip.text}
+        </div>
+      )}
+
+      {/* Follow Feedback */}
+      {followFeedback && (
+        <div className="fixed top-4 right-4 z-50 bg-green-100 border border-green-200 text-green-800 px-4 py-2 rounded-lg shadow-lg">
+          {followFeedback.message}
         </div>
       )}
 

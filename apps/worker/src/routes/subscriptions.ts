@@ -135,7 +135,7 @@ export async function handleGetUserSubscriptions(c: any) {
         const subRaw = await c.env.KV_SUBSCRIPTIONS.get(key.name);
         if (subRaw) {
           const sub = JSON.parse(subRaw);
-          if (sub.id === subId && sub.isActive) {
+          if (sub.id === subId) {
             // Enrich with snapshot name if available
             const snapshotRaw = await c.env.KV_SNAPS.get(`snap:${sub.snapshotId}`);
             if (snapshotRaw) {

@@ -68,6 +68,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             
             {/* Snapshot viewer (public but password protected) */}
             <Route path="/s/:id/*" element={<Viewer />} />
+            <Route path="/viewer/:id" element={<Viewer />} />
             
             {/* Redirect old routes */}
             <Route path="/app/*" element={<Navigate to="/dashboard" replace />} />

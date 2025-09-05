@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import AdminDashboard from '../../routes/AdminDashboard';
@@ -92,7 +93,7 @@ describe('AdminDashboard Component', () => {
   });
 
   describe('Core Actions', () => {
-    it('shows back to dashboard link', async () => {
+    it('shows QuickStage logo link to dashboard', async () => {
       mockUseAuth.user = { 
         role: 'superadmin',
         uid: 'superadmin',
@@ -107,9 +108,9 @@ describe('AdminDashboard Component', () => {
         expect(screen.getByText(/admin dashboard/i)).toBeInTheDocument();
       });
       
-      const backLink = screen.getByRole('link', { name: /back to dashboard/i });
-      expect(backLink).toBeInTheDocument();
-      expect(backLink).toHaveAttribute('href', '/dashboard');
+      const logoLink = screen.getByRole('link', { name: /quickstage/i });
+      expect(logoLink).toBeInTheDocument();
+      expect(logoLink).toHaveAttribute('href', '/dashboard');
     });
 
     it('shows admin dashboard content for superadmin users', async () => {

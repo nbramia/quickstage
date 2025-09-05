@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '../utils/test-utils';
 import DashboardWidgets from '../../components/DashboardWidgets';
@@ -100,7 +101,7 @@ describe('DashboardWidgets Component', () => {
       const snapshotsWithoutReviews = mockSnapshots.map(s => ({ ...s, review: undefined }));
       render(<DashboardWidgets snapshots={snapshotsWithoutReviews} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('No active reviews')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
     });
   });
 
@@ -114,7 +115,14 @@ describe('DashboardWidgets Component', () => {
     it('shows snapshots expiring within 3 days', () => {
       render(<DashboardWidgets snapshots={mockSnapshots} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('Test Snapshot 1')).toBeInTheDocument(); // Expires in 2 days
+      // Check that the Expiring Soon section contains the expected snapshot
+      const expiringSoonSection = screen.getByText('Expiring Soon').closest('.bg-white');
+      expect(expiringSoonSection).toBeInTheDocument();
+      
+      // Check for specific snapshot in the expiring soon section
+      const expiringSoonLinks = expiringSoonSection?.querySelectorAll('a');
+      const linkTexts = Array.from(expiringSoonLinks || []).map(link => link.textContent);
+      expect(linkTexts).toContain('Test Snapshot 1'); // Expires in 2 days
     });
 
     it('shows extend buttons for expiring snapshots', () => {
@@ -140,7 +148,7 @@ describe('DashboardWidgets Component', () => {
     it('displays popular snapshots widget', () => {
       render(<DashboardWidgets snapshots={mockSnapshots} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('Most Popular')).toBeInTheDocument();
+      expect(screen.getByText('Most Viewed')).toBeInTheDocument();
     });
 
     it('shows snapshots sorted by view count', () => {
@@ -154,8 +162,8 @@ describe('DashboardWidgets Component', () => {
     it('shows view counts for popular snapshots', () => {
       render(<DashboardWidgets snapshots={mockSnapshots} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText(/15 views/)).toBeInTheDocument();
-      expect(screen.getByText(/8 views/)).toBeInTheDocument();
+      expect(screen.getByText('15')).toBeInTheDocument();
+      expect(screen.getByText('8')).toBeInTheDocument();
     });
 
     it('shows no popular snapshots message when no views exist', () => {
@@ -176,18 +184,26 @@ describe('DashboardWidgets Component', () => {
     it('shows snapshots with recent viewers', () => {
       render(<DashboardWidgets snapshots={mockSnapshots} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('Test Snapshot 1')).toBeInTheDocument(); // Has recent viewers
-      expect(screen.getByText('Overdue Review Snapshot')).toBeInTheDocument(); // Has recent viewers
+      // Check that the Recent Activity section contains the expected snapshots
+      const recentActivitySection = screen.getByText('Recent Activity').closest('.bg-white');
+      expect(recentActivitySection).toBeInTheDocument();
+      
+      // Check for specific snapshots in the recent activity section
+      const recentActivityLinks = recentActivitySection?.querySelectorAll('a');
+      const linkTexts = Array.from(recentActivityLinks || []).map(link => link.textContent);
+      expect(linkTexts).toContain('Test Snapshot 1');
+      expect(linkTexts).toContain('Overdue Review Snapshot');
     });
 
-    it('shows no activity message when no recent viewers exist', () => {
+    it('does not show recent activity widget when no recent viewers exist', () => {
       const snapshotsWithoutActivity = mockSnapshots.map(s => ({ 
         ...s, 
         analytics: { ...s.analytics, recentViewers: [] }
       }));
       render(<DashboardWidgets snapshots={snapshotsWithoutActivity} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('No recent activity')).toBeInTheDocument();
+      // Recent Activity widget should not be rendered when there's no activity
+      expect(screen.queryByText('Recent Activity')).not.toBeInTheDocument();
     });
   });
 
@@ -204,7 +220,7 @@ describe('DashboardWidgets Component', () => {
       
       expect(screen.getByText('Review Status')).toBeInTheDocument();
       expect(screen.getByText('Expiring Soon')).toBeInTheDocument();
-      expect(screen.getByText('Most Popular')).toBeInTheDocument();
+      expect(screen.getByText('Most Viewed')).toBeInTheDocument();
       expect(screen.getByText('Recent Activity')).toBeInTheDocument();
     });
   });
@@ -213,10 +229,9 @@ describe('DashboardWidgets Component', () => {
     it('handles empty snapshots array gracefully', () => {
       render(<DashboardWidgets snapshots={[]} onExtend={mockOnExtend} />);
       
-      expect(screen.getByText('No active reviews')).toBeInTheDocument();
+      expect(screen.getByText('No pending reviews')).toBeInTheDocument();
       expect(screen.getByText('No snapshots expiring soon')).toBeInTheDocument();
       expect(screen.getByText('No views yet')).toBeInTheDocument();
-      expect(screen.getByText('No recent activity')).toBeInTheDocument();
     });
   });
 

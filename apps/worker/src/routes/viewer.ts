@@ -6,385 +6,652 @@ import { getUidFromSession } from '../auth';
 
 // Viewer route handlers for snapshot display and access
 
-export async function handleViewerById(c: any) {
-  const id = c.req.param('id');
-  console.log(`🔍 Worker: /s/:id route hit - id: ${id}`);
+// Inject viewer overlay components into HTML
+function injectViewerOverlay(html: string, snapshotId: string): string {
+  const overlayCSS = `
+<style id="quickstage-overlay-styles">
+/* QuickStage Viewer Overlay - Designed to work with any app */
+#quickstage-viewer-overlay {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  --qs-primary: #4f46e5;
+  --qs-primary-hover: #4338ca;
+  --qs-bg: rgba(255, 255, 255, 0.95);
+  --qs-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --qs-border: rgba(0, 0, 0, 0.1);
+}
+
+#quickstage-viewer-toggle {
+  background: var(--qs-primary);
+  color: white;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12px;
+  box-shadow: var(--qs-shadow);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+}
+
+#quickstage-viewer-toggle:hover {
+  background: var(--qs-primary-hover);
+  transform: translateY(-1px);
+}
+
+#quickstage-viewer-panel {
+  background: var(--qs-bg);
+  border: 1px solid var(--qs-border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 8px;
+  box-shadow: var(--qs-shadow);
+  backdrop-filter: blur(12px);
+  min-width: 250px;
+  max-width: 300px;
+  display: none;
+  animation: slideIn 0.2s ease;
+}
+
+#quickstage-viewer-panel.show {
+  display: block;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.qs-panel-header {
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qs-button {
+  background: white;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-start;
+  margin-bottom: 6px;
+}
+
+.qs-button:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.qs-button:last-child {
+  margin-bottom: 0;
+}
+
+.qs-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 12px 0;
+}
+
+/* Ensure overlay doesn't interfere with app content */
+#quickstage-viewer-overlay * {
+  box-sizing: border-box;
+}
+
+/* Hide overlay on small screens to avoid interference */
+@media (max-width: 640px) {
+  #quickstage-viewer-overlay {
+    top: 8px;
+    right: 8px;
+  }
+  #quickstage-viewer-panel {
+    min-width: 200px;
+    max-width: calc(100vw - 32px);
+  }
+}
+</style>`;
+
+  const overlayHTML = `
+<div id="quickstage-viewer-overlay">
+  <button id="quickstage-viewer-toggle">
+    <span>📋</span>
+    <span>QuickStage</span>
+  </button>
   
-  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.text('Snapshot not found', 404);
+  <div id="quickstage-viewer-panel">
+    <div class="qs-panel-header">
+      <span>🎯</span>
+      <span>Snapshot Tools</span>
+    </div>
+    
+    <button class="qs-button" onclick="window.qsShowCommentThread?.()">
+      <span>💬</span>
+      <span>Comments & Thread</span>
+    </button>
+    
+    <button class="qs-button" onclick="window.qsShowCommentModal?.()">
+      <span>➕</span>
+      <span>Add Comment</span>
+    </button>
+    
+    <button class="qs-button" onclick="window.qsRequestReview?.()">
+      <span>🔍</span>
+      <span>Request Review</span>
+    </button>
+    
+    <button class="qs-button" onclick="window.qsShowAIAssistant?.()">
+      <span>🤖</span>
+      <span>AI UX Assistant</span>
+    </button>
+    
+    <div class="qs-divider"></div>
+    
+    <a href="https://quickstage.tech/" target="_blank" class="qs-button">
+      <span>🏠</span>
+      <span>Dashboard</span>
+    </a>
+    
+    <div class="qs-divider"></div>
+    
+    <a href="https://quickstage.tech/" target="_blank" class="qs-button">
+      <span>🏠</span>
+      <span>Dashboard</span>
+    </a>
+  </div>
+</div>`;
+
+  const overlayJS = `
+<script id="quickstage-overlay-script">
+(function() {
+  'use strict';
   
-  const meta = JSON.parse(metaRaw);
-  if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
-    return c.text('Snapshot expired', 410);
+  // Wait for DOM to be ready
+  function initOverlay() {
+    const toggle = document.getElementById('quickstage-viewer-toggle');
+    const panel = document.getElementById('quickstage-viewer-panel');
+    
+    if (!toggle || !panel) return;
+    
+    let isOpen = false;
+    
+    toggle.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      isOpen = !isOpen;
+      panel.classList.toggle('show', isOpen);
+      
+      // Update toggle appearance
+      toggle.style.background = isOpen ? '#4338ca' : '#4f46e5';
+    });
+    
+    // Close panel when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!toggle.contains(e.target) && !panel.contains(e.target)) {
+        isOpen = false;
+        panel.classList.remove('show');
+        toggle.style.background = '#4f46e5';
+      }
+    });
+    
+    // Global functions for enhanced interactions
+    window.qsShowCommentThread = function() {
+      // Show full comment thread in embedded iframe
+      createEmbeddedViewer('${snapshotId}', 'comments');
+    };
+    
+    window.qsShowCommentModal = function() {
+      // Create inline comment modal for quick comments
+      createInlineCommentModal('${snapshotId}');
+    };
+    
+    window.qsRequestReview = function() {
+      // Show review system in embedded iframe
+      createEmbeddedViewer('${snapshotId}', 'reviews');
+    };
+    
+    window.qsShowAIAssistant = function() {
+      // Show AI assistant in embedded iframe
+      createEmbeddedViewer('${snapshotId}', 'ai');
+    };
+    
+    // Create embedded viewer sidebar
+    function createEmbeddedViewer(snapshotId, section) {
+      // Remove any existing embedded viewer
+      const existing = document.getElementById('qs-embedded-viewer');
+      if (existing) existing.remove();
+      
+      const sidebar = document.createElement('div');
+      sidebar.id = 'qs-embedded-viewer';
+      sidebar.style.cssText = \`
+        position: fixed; top: 0; right: 0; bottom: 0; 
+        width: 450px; background: white; z-index: 1000000;
+        box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15);
+        transform: translateX(100%); transition: transform 0.3s ease;
+        border-left: 1px solid #e5e7eb;
+      \`;
+      
+      // Header
+      const header = document.createElement('div');
+      header.style.cssText = \`
+        padding: 16px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;
+        display: flex; align-items: center; justify-content: space-between;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      \`;
+      
+      const title = document.createElement('h3');
+      title.style.cssText = 'margin: 0; font-size: 16px; font-weight: 600; color: #374151;';
+      title.textContent = section === 'comments' ? 'Comments & Thread' : 
+                         section === 'reviews' ? 'Review System' : 'AI UX Assistant';
+      
+      const closeBtn = document.createElement('button');
+      closeBtn.style.cssText = \`
+        background: none; border: none; color: #6b7280; cursor: pointer;
+        padding: 4px; border-radius: 4px; font-size: 18px;
+      \`;
+      closeBtn.innerHTML = '×';
+      closeBtn.onclick = function() {
+        sidebar.style.transform = 'translateX(100%)';
+        setTimeout(() => sidebar.remove(), 300);
+      };
+      
+      header.appendChild(title);
+      header.appendChild(closeBtn);
+      
+      // Iframe container
+      const iframeContainer = document.createElement('div');
+      iframeContainer.style.cssText = 'height: calc(100% - 64px); overflow: hidden;';
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'width: 100%; height: 100%; border: none;';
+      
+      let viewerUrl = \`https://quickstage.tech/viewer/\${snapshotId}\`;
+      if (section === 'comments') viewerUrl += '#comments';
+      else if (section === 'reviews') viewerUrl += '#reviews';  
+      else if (section === 'ai') viewerUrl += '#ai';
+      
+      iframe.src = viewerUrl;
+      
+      // Loading state
+      const loading = document.createElement('div');
+      loading.style.cssText = \`
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        text-align: center; color: #6b7280; font-size: 14px;
+      \`;
+      loading.innerHTML = \`
+        <div style="width: 32px; height: 32px; border: 2px solid #e5e7eb; border-top: 2px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 8px;"></div>
+        Loading...
+        <style>
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+      \`;
+      
+      iframeContainer.appendChild(loading);
+      iframeContainer.appendChild(iframe);
+      
+      iframe.onload = function() {
+        loading.style.display = 'none';
+      };
+      
+      sidebar.appendChild(header);
+      sidebar.appendChild(iframeContainer);
+      document.body.appendChild(sidebar);
+      
+      // Animate in
+      setTimeout(() => {
+        sidebar.style.transform = 'translateX(0)';
+      }, 50);
+      
+      // Close on escape key
+      const escapeHandler = function(e) {
+        if (e.key === 'Escape') {
+          closeBtn.click();
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
+    }
+
+    // Inline modal creators (keep for quick comment)
+    function createInlineCommentModal(snapshotId) {
+      const modal = createModal('Add Comment', \`
+        <form id="qs-comment-form" style="display: flex; flex-direction: column; gap: 12px;">
+          <textarea id="qs-comment-text" placeholder="Enter your comment..." 
+                    style="min-height: 100px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; resize: vertical;"></textarea>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button type="button" onclick="closeQSModal()" 
+                    style="padding: 8px 16px; border: 1px solid #e5e7eb; background: white; border-radius: 6px; cursor: pointer;">Cancel</button>
+            <button type="submit" 
+                    style="padding: 8px 16px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer;">Post Comment</button>
+          </div>
+        </form>
+      \`);
+      
+      document.getElementById('qs-comment-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const text = document.getElementById('qs-comment-text').value.trim();
+        if (!text) return;
+        
+        try {
+          const response = await fetch(\`/comments/\${snapshotId}\`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, author: 'Anonymous' })
+          });
+          
+          if (response.ok) {
+            closeQSModal();
+            showQSNotification('Comment posted successfully!', 'success');
+          } else {
+            showQSNotification('Failed to post comment', 'error');
+          }
+        } catch (error) {
+          showQSNotification('Failed to post comment', 'error');
+        }
+      });
+    }
+    
+    
+    function createModal(title, content) {
+      // Remove any existing modal
+      const existing = document.getElementById('qs-modal-overlay');
+      if (existing) existing.remove();
+      
+      const overlay = document.createElement('div');
+      overlay.id = 'qs-modal-overlay';
+      overlay.style.cssText = \`
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0, 0, 0, 0.5); z-index: 1000000; 
+        display: flex; align-items: center; justify-content: center; 
+        padding: 20px; backdrop-filter: blur(4px);
+      \`;
+      
+      const modal = document.createElement('div');
+      modal.style.cssText = \`
+        background: white; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      \`;
+      
+      modal.innerHTML = \`
+        <div style="padding: 20px; border-bottom: 1px solid #e5e7eb;">
+          <h3 style="margin: 0; color: #1f2937; font-size: 18px;">\${title}</h3>
+        </div>
+        <div style="padding: 20px;">
+          \${content}
+        </div>
+      \`;
+      
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+      
+      // Close on overlay click
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) closeQSModal();
+      });
+      
+      // Close on escape key
+      document.addEventListener('keydown', function escapeHandler(e) {
+        if (e.key === 'Escape') {
+          closeQSModal();
+          document.removeEventListener('keydown', escapeHandler);
+        }
+      });
+      
+      return modal;
+    }
+    
+    window.closeQSModal = function() {
+      const modal = document.getElementById('qs-modal-overlay');
+      if (modal) modal.remove();
+    };
+    
+    function showQSNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.style.cssText = \`
+        position: fixed; top: 20px; right: 20px; z-index: 1000001;
+        background: \${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+        color: white; padding: 12px 16px; border-radius: 8px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        font-size: 14px; max-width: 300px;
+      \`;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 3000);
+    }
+    
+    console.log('QuickStage viewer overlay initialized');
   }
   
-  // Check if password protected
-  if (!meta.public) {
-    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
-    if (!gateCookie || gateCookie !== 'ok') {
-      // Serve a password prompt page instead of 401
-      const passwordPromptHTML = `
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initOverlay);
+  } else {
+    initOverlay();
+  }
+})();
+</script>`;
+
+  // Insert CSS in head, HTML and JS before closing body
+  let modifiedHtml = html;
+  
+  // Insert CSS in head (or create head if missing)
+  if (modifiedHtml.includes('</head>')) {
+    modifiedHtml = modifiedHtml.replace('</head>', overlayCSS + '\n</head>');
+  } else if (modifiedHtml.includes('<head>')) {
+    modifiedHtml = modifiedHtml.replace('<head>', '<head>\n' + overlayCSS);
+  } else {
+    // No head tag, insert at beginning of HTML
+    modifiedHtml = overlayCSS + '\n' + modifiedHtml;
+  }
+  
+  // Insert HTML and JS before closing body (or at end if no body)
+  if (modifiedHtml.includes('</body>')) {
+    modifiedHtml = modifiedHtml.replace('</body>', overlayHTML + '\n' + overlayJS + '\n</body>');
+  } else {
+    // No body tag, append at end
+    modifiedHtml = modifiedHtml + '\n' + overlayHTML + '\n' + overlayJS;
+  }
+  
+  return modifiedHtml;
+}
+
+// Generate password gate HTML form
+function getPasswordGateHTML(id: string): string {
+  return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enter Password - QuickStage</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 0; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
-        h1 { margin: 0 0 1rem 0; font-size: 1.5rem; color: #333; text-align: center; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #555; }
-        input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; box-sizing: border-box; }
-        button { width: 100%; padding: 0.75rem; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        .error { color: #dc3545; margin-top: 0.5rem; font-size: 0.875rem; }
-        .footer { text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #666; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Protected Snapshot - QuickStage</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      max-width: 400px;
+      width: 100%;
+      margin: 1rem;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 0.5rem;
+      font-size: 1.8rem;
+      font-weight: 600;
+    }
+    p {
+      text-align: center;
+      color: #666;
+      margin-bottom: 2rem;
+      font-size: 0.95rem;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid #e1e5e9;
+      border-radius: 8px;
+      font-size: 1rem;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    input[type="password"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    button {
+      width: 100%;
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background: #5a67d8;
+    }
+    button:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+    .error {
+      color: #e53e3e;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+    .loading {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🔒 Password Required</h1>
-        <form onsubmit="submitPassword(event)">
-            <div class="form-group">
-                <label for="password">Enter the password to view this snapshot:</label>
-                <input type="password" id="password" name="password" required autofocus>
-            </div>
-            <button type="submit">Access Snapshot</button>
-            <div id="error" class="error" style="display: none;"></div>
-        </form>
-        <div class="footer">
-            <a href="https://quickstage.tech" target="_blank">Powered by QuickStage</a>
-        </div>
-    </div>
+  <div class="container">
+    <h1>🔒 Password Protected</h1>
+    <p>This snapshot is password protected. Please enter the password to continue.</p>
     
-    <script>
-        async function submitPassword(event) {
-            event.preventDefault();
-            const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('error');
-            
-            try {
-                const response = await fetch('/s/${id}/gate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                
-                if (response.ok) {
-                    // Password accepted, reload page
-                    window.location.reload();
-                } else {
-                    // Password rejected
-                    errorDiv.textContent = 'Incorrect password. Please try again.';
-                    errorDiv.style.display = 'block';
-                    document.getElementById('password').value = '';
-                    document.getElementById('password').focus();
-                }
-            } catch (error) {
-                errorDiv.textContent = 'Error verifying password. Please try again.';
-                errorDiv.style.display = 'block';
-            }
+    <form id="passwordForm">
+      <div class="form-group">
+        <input 
+          type="password" 
+          id="password" 
+          placeholder="Enter password" 
+          required 
+          autofocus
+        />
+      </div>
+      <button type="submit" id="submitBtn">View Snapshot</button>
+      <div id="error" class="error" style="display: none;"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('passwordForm');
+    const passwordInput = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorDiv = document.getElementById('error');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const password = passwordInput.value.trim();
+      if (!password) return;
+
+      // Show loading state
+      form.classList.add('loading');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Verifying...';
+      errorDiv.style.display = 'none';
+
+      try {
+        const response = await fetch('/s/${id}/gate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ password })
+        });
+
+        if (response.ok) {
+          // Password correct, reload page to show snapshot
+          window.location.reload();
+        } else {
+          const data = await response.json();
+          errorDiv.textContent = data.error || 'Invalid password';
+          errorDiv.style.display = 'block';
         }
-    </script>
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      } finally {
+        // Reset loading state
+        form.classList.remove('loading');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'View Snapshot';
+      }
+    });
+  </script>
 </body>
 </html>`;
-      
-      return new Response(passwordPromptHTML, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        status: 200
-      });
-    }
-  }
-  
-  // Increment view count for unique viewers
-  await incrementUniqueViewCount(c, id, meta);
-  
-  // Track analytics event for snapshot viewing
-  // Note: We don't have user ID here for anonymous viewers, so we'll track it as a system event
-  // In a real implementation, you'd want to pass user context when available
-  console.log(`👁️ Snapshot viewed: ${id} (public: ${meta.public}, password protected: ${!meta.public})`);
-  
-  // Get the main index.html file
-  const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
-  if (!indexObj) {
-    return c.text('Snapshot index not found', 404);
-  }
-  
-  // Read and modify the HTML content to fix asset paths
-  let htmlContent = await indexObj.text();
-  
-  console.log(`🔍 Original HTML content preview:`, htmlContent.substring(0, 500));
-  
-  // Replace absolute asset paths with relative ones scoped to this snapshot
-  const beforeReplace = htmlContent;
-  
-  // Use a single, comprehensive replacement that handles all cases at once
-  // This prevents double-replacement by doing everything in one pass
-  htmlContent = htmlContent.replace(
-    /(href|src)=["']\/([^"']*)/g,
-    (match: string, attr: string, path: string) => {
-      // Only replace if it looks like an asset path
-      if (path.startsWith('assets/') || /\.(css|js|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot)$/.test(path)) {
-        return `${attr}="/s/${id}/${path}"`;
-      }
-      return match; // Keep original if not an asset
-    }
-  );
-  
-  // Inject the QuickStage commenting overlay
-  const commentsOverlay = `
-    <!-- QuickStage Comments Overlay -->
-    <div id="quickstage-comments-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <!-- Comments Button -->
-      <div id="quickstage-comments-button" style="position: fixed; top: 20px; right: 20px; pointer-events: auto; background: #007bff; color: white; border: none; border-radius: 8px; padding: 12px 20px; font-size: 14px; font-weight: 500; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: all 0.2s ease;">
-        💬 Comments
-      </div>
-      
-      <!-- Comments Side Panel -->
-      <div id="quickstage-comments-panel" style="position: fixed; top: 0; right: -400px; width: 400px; height: 100%; background: white; box-shadow: -4px 0 20px rgba(0,0,0,0.1); pointer-events: auto; transition: right 0.3s ease; display: flex; flex-direction: column;">
-        <!-- Panel Header -->
-        <div style="padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
-          <h3 style="margin: 0; color: #333; font-size: 18px;">💬 Comments</h3>
-          <button id="quickstage-close-panel" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">×</button>
-        </div>
-        
-        <!-- Comment Form -->
-        <div style="padding: 20px; border-bottom: 1px solid #eee;">
-          <div style="margin-bottom: 15px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: 500; color: #555;">Your Name:</label>
-            <input type="text" id="quickstage-comment-name" placeholder="Anonymous" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
-          </div>
-          <div style="margin-bottom: 15px;">
-            <label style="display: block; margin-bottom: 5px; font-weight: 500; color: #555;">Comment:</label>
-            <textarea id="quickstage-comment-text" placeholder="Share your thoughts..." rows="3" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
-          </div>
-          <button id="quickstage-submit-comment" style="background: #007bff; color: white; border: none; border-radius: 4px; padding: 10px 20px; font-size: 14px; cursor: pointer; width: 100%; transition: background 0.2s ease;">Post Comment</button>
-        </div>
-        
-        <!-- Comments List -->
-        <div id="quickstage-comments-list" style="flex: 1; overflow-y: auto; padding: 20px;">
-          <div id="quickstage-loading" style="text-align: center; color: #666; padding: 20px;">Loading comments...</div>
-        </div>
-      </div>
-    </div>
-    
-    <script>
-      (function() {
-        const overlay = document.getElementById('quickstage-comments-overlay');
-        const button = document.getElementById('quickstage-comments-button');
-        const panel = document.getElementById('quickstage-comments-panel');
-        const closeBtn = document.getElementById('quickstage-close-panel');
-        const commentForm = document.getElementById('quickstage-submit-comment');
-        const nameInput = document.getElementById('quickstage-comment-name');
-        const textInput = document.getElementById('quickstage-comment-text');
-        const commentsList = document.getElementById('quickstage-comments-list');
-        const loading = document.getElementById('quickstage-loading');
-        
-        const snapshotId = '${id}';
-        
-        // Toggle panel
-        button.addEventListener('click', () => {
-          panel.style.right = '0';
-          loadComments();
-        });
-        
-        closeBtn.addEventListener('click', () => {
-          panel.style.right = '-400px';
-        });
-        
-        // Close panel when clicking outside
-        overlay.addEventListener('click', (e) => {
-          if (e.target === overlay) {
-            panel.style.right = '-400px';
-          }
-        });
-        
-        // Load comments
-        async function loadComments() {
-          try {
-            loading.style.display = 'block';
-            const response = await fetch(\`/comments/\${snapshotId}\`);
-            const data = await response.json();
-            
-            if (data.comments && data.comments.length > 0) {
-              loading.style.display = 'none';
-              commentsList.innerHTML = data.comments.map(comment => \`
-                <div style="padding: 15px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 15px; background: #f9f9f9;">
-                  <div style="font-weight: 500; color: #333; margin-bottom: 5px;">\${comment.author || 'Anonymous'}</div>
-                  <div style="color: #555; line-height: 1.4;">\${comment.text}</div>
-                  <div style="font-size: 12px; color: #999; margin-top: 8px;">\${new Date(comment.createdAt).toLocaleString()}</div>
-                </div>
-              \`).join('');
-            } else {
-              loading.style.display = 'none';
-              commentsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No comments yet. Be the first to comment!</div>';
-            }
-          } catch (error) {
-            loading.style.display = 'none';
-            commentsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Error loading comments.</div>';
-          }
-        }
-        
-        // Submit comment
-        commentForm.addEventListener('click', async () => {
-          const name = nameInput.value.trim() || 'Anonymous';
-          const text = textInput.value.trim();
-          
-          if (!text) {
-            alert('Please enter a comment.');
-            return;
-          }
-          
-          try {
-            commentForm.disabled = true;
-            commentForm.textContent = 'Posting...';
-            
-            const response = await fetch(\`/comments/\${snapshotId}\`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text, author: name })
-            });
-            
-            if (response.ok) {
-              nameInput.value = '';
-              textInput.value = '';
-              loadComments();
-              commentForm.textContent = 'Comment Posted!';
-              setTimeout(() => {
-                commentForm.textContent = 'Post Comment';
-                commentForm.disabled = false;
-              }, 2000);
-            } else {
-              throw new Error('Failed to post comment');
-            }
-          } catch (error) {
-            commentForm.textContent = 'Error - Try Again';
-            commentForm.disabled = false;
-            setTimeout(() => {
-              commentForm.textContent = 'Post Comment';
-            }, 2000);
-          }
-        });
-        
-        // Enter key to submit
-        textInput.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            commentForm.click();
-          }
-        });
-      })();
-    </script>
-  `;
-  
-  // Insert the overlay before the closing </body> tag, or at the end if no body tag
-  if (htmlContent.includes('</body>')) {
-    htmlContent = htmlContent.replace('</body>', commentsOverlay + '</body>');
-  } else {
-    htmlContent += commentsOverlay;
-  }
-  
-  console.log(`🔍 HTML content after replacement:`, htmlContent.substring(0, 500));
-  console.log(`🔍 Asset path replacements made:`, {
-    before: beforeReplace.includes('/assets/'),
-    after: htmlContent.includes(`/s/${id}/assets/`),
-    id: id
-  });
-  
-  // Return the modified HTML with proper headers
-  const headers: Record<string, string> = {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
-  };
-  
-  return new Response(htmlContent, { headers });
 }
 
-// Asset serving with password gate - for individual files (CSS, JS, images, etc.)
-export async function handleViewerByIdWithPath(c: any) {
+export async function handleViewerById(c: any) {
   const id = c.req.param('id');
-  let path = c.req.param('*') || '';
+  console.log(`🔍 Worker: /s/:id route hit - Serving full-screen snapshot: ${id}`);
   
-  // If Hono wildcard fails, extract path manually from URL
-  if (!path) {
-    const url = new URL(c.req.url);
-    const pathMatch = url.pathname.match(`^/s/${id}/(.+)$`);
-    path = pathMatch ? pathMatch[1] : '';
-  }
-  
-  console.log(`🔍 Worker: /s/:id/* route hit - id: ${id}, path: "${path}", url: ${c.req.url}`);
-  
-  if (!path) {
-    console.log(`❌ No path extracted from URL: ${c.req.url}`);
-    return c.text('Not found', 404);
-  }
-  
-  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.text('Gone', 410);
-  const meta = JSON.parse(metaRaw);
-  if (meta.status === 'expired' || meta.expiresAt < nowMs()) return c.text('Gone', 410);
-  if (!meta.public) {
-    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
-    if (!gateCookie || gateCookie !== 'ok') return c.json({ error: 'unauthorized' }, 401);
-  }
-  
-  console.log(`🔍 Looking for asset: snap/${id}/${path}`);
-  const r2obj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/${path}`);
-  if (!r2obj) {
-    console.log(`❌ Asset not found: snap/${id}/${path}`);
-    return c.text('Not found', 404);
-  }
-  console.log(`✅ Asset found: snap/${id}/${path}, size: ${r2obj.size}, type: ${r2obj.httpMetadata?.contentType}`);
-  const headers: Record<string, string> = {
-    'Cache-Control': 'public, max-age=3600',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
-  };
-  const ct = r2obj.httpMetadata?.contentType;
-  if (ct) headers['Content-Type'] = ct;
-  return new Response(r2obj.body, { headers });
-}
-
-// Alternative /snap/* routes for better Pages compatibility
-export async function handleSnapByIdWithPath(c: any) {
-  const id = c.req.param('id');
-  const path = c.req.param('*') || '';
-  console.log(`🔍 Worker: /snap/:id/* route hit - id: ${id}, path: ${path}`);
-  
-  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-  if (!metaRaw) return c.text('Gone', 410);
-  const meta = JSON.parse(metaRaw);
-  if (meta.status === 'expired' || meta.expiresAt < nowMs()) return c.text('Gone', 410);
-  if (!meta.public) {
-    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
-    if (!gateCookie || gateCookie !== 'ok') return c.json({ error: 'unauthorized' }, 401);
-  }
-  const r2obj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/${path}`);
-  if (!r2obj) {
-    return c.text('Not found', 404);
-  }
-  const headers: Record<string, string> = {
-    'Cache-Control': 'public, max-age=3600',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
-  };
-  const ct = r2obj.httpMetadata?.contentType;
-  if (ct) headers['Content-Type'] = ct;
-  return new Response(r2obj.body, { headers });
-}
-
-// Alternative /snap/:id route for better Pages compatibility
-export async function handleSnapById(c: any) {
-  const id = c.req.param('id');
-  console.log(`🔍 Worker: /snap/:id route hit - id: ${id}`);
-  
+  // Verify snapshot exists and is accessible
   const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
   if (!metaRaw) return c.text('Snapshot not found', 404);
   
@@ -395,102 +662,228 @@ export async function handleSnapById(c: any) {
   
   // Check if password protected
   if (!meta.public) {
-    const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
-    if (!gateCookie || gateCookie !== 'ok') {
-      return c.text('Password required', 401);
+    // First check if user is authenticated and owns this snapshot
+    const uid = await getUidFromSession(c);
+    if (uid && meta.ownerUid === uid) {
+      // Owner can access directly
+    } else {
+      // Non-owners need password gate cookie
+      const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`);
+      if (!gateCookie || gateCookie !== 'ok') {
+        // Return password gate form
+        return new Response(getPasswordGateHTML(id), {
+          headers: { 
+            'Content-Type': 'text/html',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+      }
     }
   }
   
-  // Increment view count for unique viewers
+  // Increment view count
   await incrementUniqueViewCount(c, id, meta);
   
-  // Get the main index.html file
-  const indexObj = await c.env.R2_SNAPSHOTS.get(`snap/${id}/index.html`);
-  if (!indexObj) {
-    return c.text('Snapshot index not found', 404);
-  }
-  
-  // Return the HTML with proper headers
-  const headers: Record<string, string> = {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'no-referrer',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
-  };
-  
-  return new Response(indexObj.body, { headers });
+  // Serve the main HTML file full-screen
+  return handleSnapshotFile(c, id, 'index.html');
 }
 
-// Gate - Password verification endpoint
-export async function handleViewerGate(c: any) {
-  try {
-    const id = c.req.param('id');
-    console.log(`🔐 Gate endpoint called for snapshot: ${id}`);
-    
-    const body: any = await c.req.json();
-    const password: string = String(body?.password || '');
-    console.log(`🔐 Password received: ${password ? '***' : 'empty'}`);
-    
-    const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
-    if (!metaRaw) {
-      console.log(`❌ Snapshot metadata not found for: ${id}`);
-      return c.json({ error: 'not_found' }, 404);
-    }
-    
-    const meta = JSON.parse(metaRaw);
-    console.log(`🔐 Snapshot metadata found:`, { 
-      id: meta.id, 
-      hasPasswordHash: !!meta.passwordHash,
-      passwordHashLength: meta.passwordHash?.length || 0
-    });
-    
-    // Handle both old and new metadata structures
-    let passwordToVerify = meta.passwordHash;
-    let isLegacy = false;
-    
-    if (!passwordToVerify && meta.password) {
-      // Legacy structure - use plain text password
-      passwordToVerify = meta.password;
-      isLegacy = true;
-      console.log(`🔐 Using legacy password structure for: ${id}`);
-    }
-    
-    if (!passwordToVerify) {
-      console.log(`❌ No password found in metadata (neither passwordHash nor password)`);
-      return c.json({ error: 'no_password_set' }, 400);
-    }
-    
-    let ok = false;
-    if (isLegacy) {
-      // Legacy: direct string comparison
-      ok = password === passwordToVerify;
-      console.log(`🔐 Legacy password verification result: ${ok}`);
-    } else {
-      // New: hash verification
-      ok = await verifyPasswordHash(password, passwordToVerify);
-      console.log(`🔐 Hash password verification result: ${ok}`);
-    }
-    
-    if (!ok) return c.json({ error: 'forbidden' }, 403);
-    
-    setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
-      secure: true,
-      sameSite: 'None',
-      path: `/s/${id}`,
-      maxAge: 60 * 60,
-    });
-    
-    console.log(`✅ Password verified, cookie set for: ${id}`);
-    
-    // Track analytics event for password verification
-    // Note: We don't have user ID here for anonymous viewers, so we'll track it as a system event
-    console.log(`🔐 Password verified for snapshot: ${id}`);
-    
-    return c.json({ ok: true });
-    
-  } catch (error) {
-    console.error(`❌ Error in gate endpoint:`, error);
-    return c.json({ error: 'internal_error', details: String(error) }, 500);
+// Handle password gate for protected snapshots
+export async function handleSnapshotGate(c: any) {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const { password } = body;
+  
+  if (!password) {
+    return c.json({ error: 'Password required' }, 400);
   }
+  
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${id}`);
+  if (!metaRaw) {
+    return c.json({ error: 'Snapshot not found' }, 404);
+  }
+  
+  const meta = JSON.parse(metaRaw);
+  if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+    return c.json({ error: 'Snapshot expired' }, 410);
+  }
+  
+  // Verify password
+  const isValid = await verifyPasswordHash(password, meta.passwordHash);
+  if (!isValid) {
+    return c.json({ error: 'Invalid password' }, 401);
+  }
+  
+  // Set gate cookie
+  setCookie(c, `${VIEWER_COOKIE_PREFIX}${id}`, 'ok', {
+    path: '/',
+    maxAge: 60 * 60 * 24, // 24 hours
+    secure: true,
+    sameSite: 'Lax'
+  });
+  
+  return c.json({ success: true });
 }
+
+
+// Handle file serving for snapshots
+export async function handleSnapshotFile(c: any, id?: string, fileName?: string) {
+  // Extract snapshot ID - prioritize passed ID, then URL param, then extract from URL path
+  let snapshotId = id || c.req.param('id');
+  
+  // Debug logging
+  console.log(`🔧 DEBUG: handleSnapshotFile called with id=${id}, fileName=${fileName}`);
+  console.log(`🔧 DEBUG: c.req.param('id')=${c.req.param('id')}`);
+  console.log(`🔧 DEBUG: c.req.url=${c.req.url}`);
+  
+  // If no snapshot ID found, extract from URL path
+  if (!snapshotId) {
+    const url = new URL(c.req.url);
+    const pathParts = url.pathname.split('/');
+    console.log(`🔧 DEBUG: pathParts=${JSON.stringify(pathParts)}`);
+    // URL format is /s/{id}/{file...}, so get the ID part
+    const sIndex = pathParts.indexOf('s');
+    if (sIndex >= 0 && sIndex + 1 < pathParts.length) {
+      snapshotId = pathParts[sIndex + 1];
+      console.log(`🔧 DEBUG: extracted snapshotId from URL=${snapshotId}`);
+    }
+  }
+  
+  console.log(`🔧 DEBUG: final snapshotId=${snapshotId}`);
+  
+  // Handle file path extraction
+  let actualFilePath = fileName || c.req.param('*');
+  if (!actualFilePath) {
+    const url = new URL(c.req.url);
+    const pathParts = url.pathname.split('/');
+    // URL format is /s/{id}/{file...}, so get everything after /s/{id}/
+    const sIndex = pathParts.indexOf('s');
+    if (sIndex >= 0 && sIndex + 2 < pathParts.length) {
+      actualFilePath = pathParts.slice(sIndex + 2).join('/');
+    }
+  }
+  
+  // If still no file path, default to index.html for direct snapshot access
+  if (!actualFilePath) {
+    actualFilePath = 'index.html';
+  }
+  
+  console.log(`📁 Worker: Serving file ${actualFilePath} for snapshot ${snapshotId}`);
+  
+  // Verify snapshot exists and is accessible
+  const metaRaw = await c.env.KV_SNAPS.get(`snap:${snapshotId}`);
+  if (!metaRaw) return c.text('Snapshot not found', 404);
+  
+  const meta = JSON.parse(metaRaw);
+  if (meta.status === 'expired' || meta.expiresAt < nowMs()) {
+    return c.text('Snapshot expired', 410);
+  }
+  
+  // Check if password protected
+  if (!meta.public) {
+    // First check if user is authenticated and owns this snapshot
+    const uid = await getUidFromSession(c);
+    if (uid && meta.ownerUid === uid) {
+      // Owner can access files directly
+    } else {
+      // Non-owners need password gate cookie
+      const gateCookie = getCookie(c, `${VIEWER_COOKIE_PREFIX}${snapshotId}`);
+      if (!gateCookie || gateCookie !== 'ok') {
+        return c.text('Unauthorized', 401);
+      }
+    }
+  }
+  
+  // Get file from R2
+  const fileObj = await c.env.R2_SNAPSHOTS.get(`snap/${snapshotId}/${actualFilePath}`);
+  if (!fileObj) {
+    return c.text('File not found', 404);
+  }
+  
+  // Determine content type
+  let contentType = 'application/octet-stream';
+  if (actualFilePath.endsWith('.html')) contentType = 'text/html';
+  else if (actualFilePath.endsWith('.js')) contentType = 'application/javascript';
+  else if (actualFilePath.endsWith('.css')) contentType = 'text/css';
+  else if (actualFilePath.endsWith('.json')) contentType = 'application/json';
+  else if (actualFilePath.endsWith('.png')) contentType = 'image/png';
+  else if (actualFilePath.endsWith('.jpg') || actualFilePath.endsWith('.jpeg')) contentType = 'image/jpeg';
+  else if (actualFilePath.endsWith('.svg')) contentType = 'image/svg+xml';
+  else if (actualFilePath.endsWith('.ico')) contentType = 'image/x-icon';
+  
+  // For HTML, CSS, and JS files, rewrite asset paths to include snapshot ID
+  if (actualFilePath.endsWith('.html') || actualFilePath.endsWith('.css') || actualFilePath.endsWith('.js')) {
+    let content = await fileObj.text();
+    
+    // Comprehensive asset path rewriting from /path to /s/{id}/path
+    content = content
+      // CSS and JS assets with href and src attributes
+      .replace(/href="\/([^"]+)"/g, `href="/s/${snapshotId}/$1"`)
+      .replace(/src="\/([^"]+)"/g, `src="/s/${snapshotId}/$1"`)
+      // Single quotes
+      .replace(/href='\/([^']+)'/g, `href='/s/${snapshotId}/$1'`)
+      .replace(/src='\/([^']+)'/g, `src='/s/${snapshotId}/$1'`)
+      // Import statements and other asset references  
+      .replace(/import\s+.*from\s+["']\/([^"']+)["']/g, (match: string, path: string) => match.replace(`"/${path}"`, `"/s/${snapshotId}/${path}"`))
+      .replace(/import\s+.*from\s+['"]\/([^"']+)["']/g, (match: string, path: string) => match.replace(`'/${path}'`, `'/s/${snapshotId}/${path}'`))
+      // URL() references in CSS
+      .replace(/url\(["']?\/([^"')]+)["']?\)/g, `url("/s/${snapshotId}/$1")`)
+      // Background images and other CSS url references
+      .replace(/background-image:\s*url\(["']?\/([^"')]+)["']?\)/g, `background-image: url("/s/${snapshotId}/$1")`)
+      // Dynamic imports in JS
+      .replace(/import\(['"]\/([^'"]+)['"]\)/g, `import("/s/${snapshotId}/$1")`)
+      // Fetch and other dynamic asset loading
+      .replace(/fetch\(['"]\/([^'"]+)['"]\)/g, `fetch("/s/${snapshotId}/$1")`)
+      // New URL construction
+      .replace(/new\s+URL\(['"]\/([^'"]+)['"]/g, `new URL("/s/${snapshotId}/$1"`);
+    
+    // For HTML files, inject viewer overlay components
+    if (actualFilePath.endsWith('.html')) {
+      content = injectViewerOverlay(content, snapshotId);
+    }
+    
+    console.log(`🔧 ${actualFilePath} asset paths rewritten for snapshot ${snapshotId}`);
+    
+    return new Response(content, {
+      headers: {
+        'Content-Type': contentType,
+        // Don't cache HTML files since we do server-side rewriting - cache assets for longer
+        'Cache-Control': actualFilePath.endsWith('.html') ? 'no-cache, no-store, must-revalidate' : 'public, max-age=31536000',
+        // Fix CSP to allow our overlay scripts
+        ...(actualFilePath.endsWith('.html') ? {
+          'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://quickstage.tech; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://quickstage.tech; font-src 'self' data:",
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'ETag': `"${Date.now()}-${Math.random()}"` // Force unique ETag for every request
+        } : {})
+      }
+    });
+  }
+  
+  return new Response(fileObj.body, {
+    headers: {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000'
+    }
+  });
+}
+
+// Legacy exports for compatibility with index.ts
+export async function handleViewerByIdWithPath(c: any) {
+  const id = c.req.param('id');
+  const filePath = c.req.param('*');
+  console.log(`🔧 ROUTE DEBUG: handleViewerByIdWithPath called - id=${id}, filePath=${filePath}`);
+  return handleSnapshotFile(c, id, filePath);
+}
+
+export async function handleSnapByIdWithPath(c: any) {
+  const id = c.req.param('id');
+  const filePath = c.req.param('*');
+  console.log(`🔧 ROUTE DEBUG: handleSnapByIdWithPath called - id=${id}, filePath=${filePath}`);
+  return handleSnapshotFile(c, id, filePath);
+}
+
+export const handleSnapById = handleViewerById;  
+export const handleViewerGate = handleSnapshotGate;

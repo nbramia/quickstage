@@ -206,6 +206,7 @@ export default function BulkOperations({
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-4"
             >
               <option value="">Select project...</option>
+              <option value="__no_project__">No Project</option>
               {projects
                 .filter(p => !p.isArchived)
                 .map(project => (

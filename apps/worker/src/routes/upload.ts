@@ -92,12 +92,31 @@ export async function handleUpload(c: any) {
   const body = c.req.raw.body;
   if (!body) return c.json({ error: 'no_body' }, 400);
   
-  try {
-    await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
-    return c.json({ ok: true });
-  } catch (error) {
-    console.error('R2 upload failed:', error);
-    return c.json({ error: 'upload_failed', details: String(error) }, 500);
+  // Add retry logic for R2 operations to handle rate limiting
+  const maxRetriesR2 = 3;
+  let retryCountR2 = 0;
+  
+  while (retryCountR2 < maxRetriesR2) {
+    try {
+      await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
+      return c.json({ ok: true });
+    } catch (error: any) {
+      retryCountR2++;
+      const errorMessage = String(error);
+      
+      // Check if this is a rate limiting error
+      if (errorMessage.includes('10058') || errorMessage.includes('concurrent request rate') || errorMessage.includes('429')) {
+        if (retryCountR2 < maxRetriesR2) {
+          console.log(`R2 upload rate limited, retrying (${retryCountR2}/${maxRetriesR2})...`);
+          // Wait with exponential backoff: 1s, 2s, 4s
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountR2 - 1) * 1000));
+          continue;
+        }
+      }
+      
+      console.error('R2 upload failed:', error);
+      return c.json({ error: 'upload_failed', details: errorMessage }, 500);
+    }
   }
 }
 
@@ -156,13 +175,32 @@ export async function handleApiUpload(c: any) {
     
     console.log('Attempting R2 upload to:', objectKey);
     
-    try {
-      await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
-      console.log('R2 upload successful');
-      return c.json({ ok: true });
-    } catch (error) {
-      console.error('R2 upload failed:', error);
-      return c.json({ error: 'upload_failed', details: String(error) }, 500);
+    // Add retry logic for R2 operations to handle rate limiting
+    const maxRetriesR2 = 3;
+    let retryCountR2 = 0;
+    
+    while (retryCountR2 < maxRetriesR2) {
+      try {
+        await c.env.R2_SNAPSHOTS.put(objectKey, body, { httpMetadata: { contentType: ct } });
+        console.log('R2 upload successful');
+        return c.json({ ok: true });
+      } catch (error: any) {
+        retryCountR2++;
+        const errorMessage = String(error);
+        
+        // Check if this is a rate limiting error
+        if (errorMessage.includes('10058') || errorMessage.includes('concurrent request rate') || errorMessage.includes('429')) {
+          if (retryCountR2 < maxRetriesR2) {
+            console.log(`R2 upload rate limited, retrying (${retryCountR2}/${maxRetriesR2})...`);
+            // Wait with exponential backoff: 1s, 2s, 4s
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCountR2 - 1) * 1000));
+            continue;
+          }
+        }
+        
+        console.error('R2 upload failed:', error);
+        return c.json({ error: 'upload_failed', details: errorMessage }, 500);
+      }
     }
   } catch (error) {
     console.error('Unexpected error in upload endpoint:', error);

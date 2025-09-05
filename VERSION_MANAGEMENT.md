@@ -11,11 +11,96 @@ This document covers version management, deployment procedures, and schema evolu
 - **Extension**: ✅ Ready for deployment
 - **Database**: ✅ All KV namespaces and Durable Objects active
 
-### **Latest Release - v2.3.0 (Jan 2, 2025)**
+### **Latest Release - v2.6.0 (Jan 5, 2025)**
+
+**AI Analysis MutationObserver Fix & Enhanced Error Handling**
+
+This release fixes the critical MutationObserver error in the AI analysis feature and adds comprehensive error handling for better user experience.
+
+**AI Analysis Fixes:**
+- ✅ **MutationObserver Error Fix**: Resolved "parameter 1 is not of type 'Node'" error in AI analysis
+- ✅ **Enhanced Error Handling**: Added specific error messages for different failure types
+- ✅ **Retry Mechanism**: Built-in retry functionality with user-friendly error messages
+- ✅ **DOM Safety**: Proper null checks and timing delays to prevent browser compatibility issues
+- ✅ **Iframe Handling**: Improved iframe loading and content access for AI analysis
+- ✅ **Browser Compatibility**: Enhanced error handling for MutationObserver and iframe-related issues
+
+**Technical Implementation:**
+- ✅ **AISuggestionsPanel**: Enhanced with comprehensive error handling and retry logic
+- ✅ **Viewer Component**: Added iframe error handling and loading delays
+- ✅ **Error Categorization**: Specific error messages for different failure scenarios
+- ✅ **Retry Counter**: Visual retry counter with reset functionality
+- ✅ **DOM Timing**: Added delays to ensure DOM is ready before AI analysis
+
+**Files Modified:**
+- `AISuggestionsPanel.tsx`: Enhanced error handling, retry mechanism, and DOM safety
+- `Viewer.tsx`: Added iframe error handling and AI panel initialization delays
+- `README.md`: Updated AI assistant documentation with error handling details
+- `VERSION_MANAGEMENT.md`: This file - documenting the AI analysis fixes
+
+### **Previous Release - v2.5.0 (Jan 2, 2025)**
+
+**Admin Dashboard Snapshots Tab & Component Reuse**
+
+This release adds a new "Snapshots" tab to the AdminDashboard that displays ALL snapshots from ALL users, while maintaining code reusability and consistency.
+
+**New Admin Dashboard Features:**
+- ✅ **Snapshots Tab**: New tab in AdminDashboard showing all snapshots across all users
+- ✅ **Component Reuse**: Reuses SnapshotDashboard component from main Dashboard for consistency
+- ✅ **Admin API Endpoint**: New `/admin/snapshots` endpoint provides all snapshots across users
+- ✅ **Code Reuse Architecture**: No code duplication - AdminDashboard references same components as Dashboard
+- ✅ **Automatic Updates**: When Dashboard components are updated, AdminDashboard inherits changes
+- ✅ **Unified Interface**: Same UI/UX as main Dashboard but with admin-level data access
+
+**Technical Implementation:**
+- ✅ **SnapshotDashboard Component**: Extracted shared component from Dashboard for reuse
+- ✅ **Admin API Integration**: New endpoint in worker for fetching all snapshots
+- ✅ **State Management**: Admin-specific state for snapshots, loading, and error handling
+- ✅ **Tab Navigation**: Added snapshots tab to existing admin interface
+- ✅ **TypeScript Support**: Full type safety with proper error handling
+
+**Files Modified:**
+- `SnapshotDashboard.tsx`: New shared component extracted from Dashboard
+- `Dashboard.tsx`: Refactored to use shared SnapshotDashboard component
+- `AdminDashboard.tsx`: Added snapshots tab with shared component integration
+- `apps/worker/src/index.ts`: Added `/admin/snapshots` endpoint
+- `README.md`: Updated feature list to include Admin Dashboard
+- `HOW_TO.md`: Added admin dashboard documentation and guidelines
+- `VERSION_MANAGEMENT.md`: This file - documenting the new feature
+
+### **Previous Release - v2.4.0 (Jan 2, 2025)**
+
+**Follow System & Enhanced Notifications**
+
+This release adds a comprehensive follow system allowing users to subscribe to snapshot notifications for comments and reviews.
+
+**New Follow System:**
+- ✅ **Follow/Unfollow Snapshots**: Users can follow any snapshot to receive notifications for new comments and review updates
+- ✅ **Visual Indicators**: Plus icon (+) for unfollowed snapshots, checkmark icon (✓) for followed snapshots
+- ✅ **Real-time Feedback**: "Followed" and "Unfollowed" confirmation messages with 2-second display
+- ✅ **Settings Integration**: Followed snapshots appear in the Settings page subscription list
+- ✅ **API Integration**: Uses existing subscription system with snapshot-level subscriptions
+- ✅ **Loading States**: Spinner animation during follow/unfollow operations
+- ✅ **Error Handling**: Graceful error handling with user-friendly messages
+
+**Technical Implementation:**
+- ✅ **SnapshotTable Enhancement**: Added follow/unfollow button in Actions column
+- ✅ **State Management**: Real-time tracking of followed snapshots with Set-based state
+- ✅ **API Endpoints**: Leverages existing `/api/snapshots/:id/subscribe` and `/api/snapshots/:id/unsubscribe` endpoints
+- ✅ **Notification System**: Integrated with existing notification infrastructure for comment and review alerts
+- ✅ **TypeScript Support**: Full type safety with proper error handling
+
+**Files Modified:**
+- `SnapshotTable.tsx`: Added follow/unfollow functionality with visual indicators
+- `README.md`: Updated feature list to include Follow System
+- `HOW_TO.md`: Added follow system documentation and guidelines
+- `VERSION_MANAGEMENT.md`: This file - documenting the new feature
+
+### **Previous Release - v2.3.0 (Jan 2, 2025)**
 
 **Major UI/UX Overhaul & Typography System**
 
-This release addresses critical UI/UX issues and implements a comprehensive font system for visual consistency across the platform.
+This release addressed critical UI/UX issues and implemented a comprehensive font system for visual consistency across the platform.
 
 **UI/UX Improvements:**
 - ✅ **Unified Header System**: Added consistent headers to Settings and Admin pages with mobile hamburger menu

@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import { Viewer } from '../../routes/Viewer';
@@ -32,10 +33,16 @@ vi.mock('../../api', () => ({
       snapshot: {
         id: 'test-snapshot-id',
         name: 'Test Snapshot',
-        files: ['index.html', 'main.js'],
+        files: [
+          { name: 'index.html', size: 512, type: 'text/html', content: '<html><body>Test content</body></html>' },
+          { name: 'main.js', size: 512, type: 'application/javascript', content: 'console.log("test");' }
+        ],
         totalBytes: 1024,
         createdAt: Date.now(),
-        expiresAt: Date.now() + 86400000
+        expiresAt: Date.now() + 86400000,
+        password: 'test-password',
+        public: true, // This is the key property the component checks
+        status: 'active'
       }
     }),
     post: vi.fn(),

@@ -216,7 +216,9 @@ export default function SubscriptionManager({ className = '' }: SubscriptionMana
                   
                   {/* View Snapshot */}
                   <Link
-                    to={`/view/${subscription.snapshotId}`}
+                    to={`/viewer/${subscription.snapshotId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-md transition-colors"
                     title="View snapshot"
                   >

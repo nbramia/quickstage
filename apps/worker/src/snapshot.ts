@@ -1,5 +1,6 @@
 import { sha256Hex } from './utils';
 import { Bindings } from './types';
+import { getAnalyticsManager } from './worker-utils';
 
 /**
  * Snapshot management utilities for the QuickStage Worker
@@ -24,36 +25,73 @@ export async function incrementUniqueViewCount(c: any, snapshotId: string, meta:
     const viewerKey = `viewer:${snapshotId}:${viewerFingerprint}`;
     const existingView = await c.env.KV_SNAPS.get(viewerKey);
     
+    console.log(`🔍 View counting debug for ${snapshotId}: existingView=${!!existingView}, current analytics.viewCount=${meta.analytics?.viewCount || 0}`);
+    
     if (!existingView) {
       // This is a new unique viewer
-      // Store viewer record with 24-hour expiration to prevent immediate re-counting
-      await c.env.KV_SNAPS.put(viewerKey, JSON.stringify({
-        ip,
-        userAgent,
-        timestamp: now,
-        snapshotId
-      }), { expirationTtl: 86400 }); // 24 hours
+      // Use a distributed lock to prevent race conditions
+      const lockKey = `lock:${snapshotId}:${viewerFingerprint}`;
+      const lockValue = JSON.stringify({ timestamp: now, ip, userAgent });
       
-      // Increment view count - update both legacy and new schema
-      meta.viewCount = (meta.viewCount || 0) + 1;
+      // Try to acquire lock with 5 second expiration
+      const lockAcquired = await c.env.KV_SNAPS.put(lockKey, lockValue, { expirationTtl: 5 });
       
-      // Ensure analytics object exists and update it
-      if (!meta.analytics) {
-        meta.analytics = {
-          viewCount: 0,
-          uniqueViewers: 0,
-          commentCount: 0,
-          lastViewedAt: 0,
-          createdAt: meta.createdAt || Date.now(),
-          viewerCountries: []
-        };
+      if (lockAcquired) {
+        // Double-check that we still haven't been counted (race condition protection)
+        const doubleCheck = await c.env.KV_SNAPS.get(viewerKey);
+        if (doubleCheck) {
+          console.log(`🔍 Race condition detected for ${snapshotId}, skipping double count`);
+          return;
+        }
+        
+        // Store viewer record with 24-hour expiration to prevent immediate re-counting
+        await c.env.KV_SNAPS.put(viewerKey, JSON.stringify({
+          ip,
+          userAgent,
+          timestamp: now,
+          snapshotId
+        }), { expirationTtl: 86400 }); // 24 hours
+        
+        // Ensure analytics object exists and update it
+        if (!meta.analytics) {
+          meta.analytics = {
+            viewCount: 0,
+            uniqueViewers: 0,
+            commentCount: 0,
+            lastViewedAt: 0,
+            createdAt: meta.createdAt || Date.now(),
+            viewerCountries: []
+          };
+        }
+        
+        // Increment view count and unique viewers in analytics schema
+        meta.analytics.viewCount = (meta.analytics.viewCount || 0) + 1;
+        meta.analytics.uniqueViewers = (meta.analytics.uniqueViewers || 0) + 1;
+        meta.analytics.lastViewedAt = Date.now();
+        
+        await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(meta));
+        
+        // Release the lock
+        await c.env.KV_SNAPS.delete(lockKey);
+        
+        // Track analytics event for snapshot view
+        try {
+          const analytics = getAnalyticsManager(c);
+          await analytics.trackEvent('anonymous', 'snapshot_viewed', { 
+            snapshotId,
+            ip,
+            userAgent: userAgent.substring(0, 100), // Truncate for storage
+            isUniqueView: true
+          });
+        } catch (analyticsError) {
+          console.error('Failed to track snapshot view analytics:', analyticsError);
+          // Don't fail the request if analytics fail
+        }
+        
+        console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.analytics.viewCount})`);
+      } else {
+        console.log(`🔍 Lock not acquired for ${snapshotId}, skipping view count (likely concurrent request)`);
       }
-      meta.analytics.viewCount = (meta.analytics.viewCount || 0) + 1;
-      meta.analytics.lastViewedAt = Date.now();
-      
-      await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(meta));
-      
-      console.log(`👁️ New unique viewer for snapshot ${snapshotId}: ${ip} (total views: ${meta.analytics.viewCount})`);
     } else {
       console.log(`👁️ Returning viewer for snapshot ${snapshotId}: ${ip} (not counted)`);
     }

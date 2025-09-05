@@ -1,4 +1,46 @@
-# QuickStage Development Roadmap - COMPREHENSIVE INTEGRATION UPDATE (Jan 1, 2025)
+# QuickStage Development Roadmap - 
+
+Still to do:
+
+- Expired snapshots in the snapshots table in the dashboard should be able to be renewed by clicking the Extend Expiration clock icon - it shouldn't be hidden for expired snapshots
+
+- I want to add another top-level item in the sidebar, at the same level as Dashboard, Projects, Settings, and Admin: Reviews. This should be a home for the Reviewer Dashboard showing reviews that have been requested on snapshots owned by the user as well as reviews that have been requested of the user by somebody else.Two different tables, two different sections, one for each.Each one should include all of the relevant actions that The user might need to make relative to those requests, including quickly navigating to the snapshot in question, Seeing review status, due dates, etc. as well as doing things like confirming that the review is complete or changing a due date.
+
+- Add notifications related to reviews. When a user has requested a review of somebody else, and they complete that review, it should give the user who requested that review a notification. When a requested review is overdue, it should give a notification both to the person who it was requested of as well as to the person who requested it, that the due date has passed without the review being marked complete. When a review is requested of a user, it should give them a notification that someone has requested their review of something.
+
+- I just deployed a new snapshot using version 33. I still see the comments button in the upper right allowing me to open the comments pane. It was my impression that we had implemented a full new commenting system, including things like threading comments, as well as integrating review functionality into the snapshots themselves.
+This is what you told me was done, but I don't see it in the snapshot that I just created and deployed:
+#### **2. Reviews System - Complete Implementation** ✅ RESOLVED  
+**Status**: **COMPLETE FRONTEND IMPLEMENTATION ADDED**
+- ✅ **Solution**: Built comprehensive Reviews System frontend (770+ lines of new code)
+- ✅ **New Components**: 
+  - ReviewPanel.tsx (main management component)
+  - ReviewRequestModal.tsx (review creation)
+  - ReviewCard.tsx (individual review display)  
+  - ReviewDashboardWidget.tsx (dashboard integration)
+- ✅ **Integration**: Added ReviewPanel to Viewer.tsx for snapshot reviews
+- ✅ **Result**: Full review workflow: create → assign → review → approve/request changes
+- ✅ **Impact**: Users can now collaboratively review prototypes with structured feedback
+
+and 
+**Status**: **PROFESSIONAL-GRADE COMMENT SYSTEM**
+- ✅ **Threaded Conversations**: Full nested discussion support with visual indicators
+- ✅ **Element Pinning**: Pin comments to specific UI elements with coordinates
+- ✅ **State Management**: Draft/published/resolved/archived states with badges
+- ✅ **File Attachments**: Drag & drop support (10MB limit) for images/PDFs/docs
+- ✅ **Rich Text Editing**: Live preview, character counting, keyboard shortcuts
+- ✅ **Visual Threading**: Thread connector lines, depth indicators, auto-expansion
+- ✅ **Permission System**: Author/owner-based permissions for actions
+- ✅ **Action Menus**: Contextual menus for resolve/archive/delete operations
+- ✅ **Real-time Updates**: WebSocket-like behavior via Durable Objects
+- ✅ **Frontend Components**: CommentThread.tsx and enhanced CommentModal.tsx
+
+
+
+
+
+
+COMPREHENSIVE INTEGRATION UPDATE (Jan 1, 2025)
 
 ## ✅ COMPLETED & FULLY FUNCTIONAL FEATURES
 
@@ -28,7 +70,7 @@
 - ✅ **Public/Private**: Access control for snapshots
 - ✅ **Clean URLs**: https://quickstage.tech/s/{id} routing
 
-### 💬 Advanced Comments System ✅ COMPLETED (Dec 31, 2024)
+### 💬 Advanced Comments System ✅ COMPLETED
 **Status**: **PROFESSIONAL-GRADE COMMENT SYSTEM**
 - ✅ **Threaded Conversations**: Full nested discussion support with visual indicators
 - ✅ **Element Pinning**: Pin comments to specific UI elements with coordinates
@@ -49,7 +91,7 @@
 - ✅ **Subscription Tracking**: Trial and subscription status management
 - ✅ **Analytics Integration**: User event tracking
 
-### 📊 Onboarding & Tutorial System ✅ COMPLETED (Dec 31, 2024)
+### 📊 Onboarding & Tutorial System ✅ COMPLETED
 **Status**: **FULLY IMPLEMENTED**
 - ✅ **Welcome Modal**: 4-slide onboarding experience
 - ✅ **Tutorial Framework**: TutorialContext for managing guided tours
@@ -78,7 +120,7 @@
 - ✅ **Frontend Components**: NotificationBell and SubscriptionManager
 - ✅ **Result**: Real-time notifications and subscription management active
 
-### ✅ Enhanced Comments - FULLY IMPLEMENTED (Dec 31, 2024)
+### ✅ Enhanced Comments - FULLY IMPLEMENTED 
 **Status**: **COMPLETE PROFESSIONAL-GRADE SYSTEM**
 - ✅ **Durable Object**: CommentsRoom with full enhanced features
 - ✅ **Threading Support**: Complete nested conversation UI implemented
@@ -362,3 +404,6 @@ Following a comprehensive codebase audit, all critical gaps between backend impl
 ---
 
 **🎉 JANUARY 2025 MILESTONE**: QuickStage is now a fully-integrated, production-ready collaborative platform with **zero superficial implementations**. Every feature is fully functional, properly integrated, and comprehensively tracked with analytics. All major features work together in concert as designed!
+
+
+

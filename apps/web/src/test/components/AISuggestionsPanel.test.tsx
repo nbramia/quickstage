@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../utils/test-utils';
 import AISuggestionsPanel from '../../components/AISuggestionsPanel';
@@ -86,13 +87,13 @@ describe('AISuggestionsPanel Component', () => {
     it('renders nothing when isVisible is false', () => {
       render(<AISuggestionsPanel {...defaultProps} isVisible={false} />);
       
-      expect(screen.queryByText('AI Suggestions')).not.toBeInTheDocument();
+      expect(screen.queryByText('🤖 AI UX Assistant')).not.toBeInTheDocument();
     });
 
     it('renders panel when isVisible is true', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      expect(screen.getByText('AI Suggestions')).toBeInTheDocument();
+      expect(screen.getByText('🤖 AI UX Assistant')).toBeInTheDocument();
     });
   });
 
@@ -101,240 +102,163 @@ describe('AISuggestionsPanel Component', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
       await waitFor(() => {
-        expect(mockApi.api.get).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-suggestions');
+        expect(mockApi.api.get).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-chat');
       });
     });
 
-    it('shows loading state initially', () => {
+    it('shows welcome screen initially', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      expect(screen.getByRole('status', { name: /loading/i }) || screen.getByText(/loading/i)).toBeDefined();
+      expect(screen.getByText('🚀 Start AI Analysis')).toBeInTheDocument();
+      expect(screen.getByText('AI-Powered UX Analysis')).toBeInTheDocument();
     });
 
-    it('displays UX score when analysis is available', async () => {
+    it('shows AI UX Assistant title', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        expect(screen.getByText(/UX Score: 85\/100/)).toBeInTheDocument();
-      });
+      expect(screen.getByText('🤖 AI UX Assistant')).toBeInTheDocument();
+      expect(screen.getByText('Get expert UI/UX feedback and suggestions')).toBeInTheDocument();
     });
   });
 
-  describe('Generate Suggestions', () => {
-    beforeEach(() => {
-      vi.mocked(mockApi.api.get).mockResolvedValue({
-        success: true,
-        data: { suggestions: [], analysis: null }
-      });
-    });
-
-    it('shows generate button when no suggestions exist', async () => {
+  describe('Start Analysis', () => {
+    it('shows start analysis button initially', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        expect(screen.getByText('Generate AI Suggestions')).toBeInTheDocument();
-      });
+      expect(screen.getByText('🚀 Start AI Analysis')).toBeInTheDocument();
     });
 
-    it('calls generate API when generate button is clicked', async () => {
+    it('calls start API when start button is clicked', async () => {
+      vi.mocked(mockApi.api.post).mockResolvedValue({
+        data: { success: true, data: { messages: [] } }
+      });
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
+      const startButton = screen.getByText('🚀 Start AI Analysis');
+      fireEvent.click(startButton);
+      
+      // Wait for the API call to happen (component has a 100ms delay)
       await waitFor(() => {
-        expect(screen.getByText('Generate AI Suggestions')).toBeInTheDocument();
+        expect(mockApi.api.post).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-chat/start');
       });
-      
-      const generateButton = screen.getByText('Generate AI Suggestions');
-      fireEvent.click(generateButton);
-      
-      expect(mockApi.api.post).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-suggestions/generate');
     });
 
-    it('shows analyzing state during generation', async () => {
+    it('shows loading state during initialization', async () => {
       vi.mocked(mockApi.api.post).mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
       
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        expect(screen.getByText('Generate AI Suggestions')).toBeInTheDocument();
-      });
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
       
-      fireEvent.click(screen.getByText('Generate AI Suggestions'));
-      
-      expect(screen.getByText('Analyzing...')).toBeInTheDocument();
+      expect(screen.getByText('Analyzing your prototype...')).toBeInTheDocument();
     });
   });
 
-  describe('Suggestions Display', () => {
-    it('displays suggestions list', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Add Alt Text to Images')).toBeInTheDocument();
-        expect(screen.getByText('Ensure Adequate Button Size')).toBeInTheDocument();
+  describe('Chat Interface', () => {
+    beforeEach(() => {
+      vi.mocked(mockApi.api.post).mockResolvedValue({
+        data: { success: true, data: { messages: [{ role: 'assistant', content: 'Hello! I can help analyze your prototype.' }] } }
       });
     });
 
-    it('shows suggestion details', async () => {
+    it('shows chat interface after starting analysis', async () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
+      
       await waitFor(() => {
-        expect(screen.getByText('Images should have descriptive alt text for screen readers.')).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('Ask about accessibility, mobile design, user flow...')).toBeInTheDocument();
       });
     });
 
-    it('displays severity badges', async () => {
+    it('displays AI messages', async () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
+      
       await waitFor(() => {
-        expect(screen.getByText('medium')).toBeInTheDocument();
-        expect(screen.getByText('low')).toBeInTheDocument();
+        expect(screen.getByText('Hello! I can help analyze your prototype.')).toBeInTheDocument();
       });
     });
 
-    it('shows category icons', async () => {
+    it('allows sending messages', async () => {
+      vi.mocked(mockApi.api.post)
+        .mockResolvedValueOnce({ data: { success: true, data: { messages: [] } } })
+        .mockResolvedValueOnce({ data: { success: true, data: { response: 'AI response' } } });
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
+      
       await waitFor(() => {
-        expect(screen.getByText('♿')).toBeInTheDocument(); // accessibility
-        expect(screen.getByText('🎯')).toBeInTheDocument(); // usability
+        const textInput = screen.getByPlaceholderText('Ask about accessibility, mobile design, user flow...');
+        expect(textInput).toBeInTheDocument();
       });
-    });
-
-    it('displays action steps', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        expect(screen.getByText('Identify all img elements in your HTML')).toBeInTheDocument();
-        expect(screen.getByText('Add descriptive alt attributes to each image')).toBeInTheDocument();
-      });
-    });
-
-    it('shows confidence score', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
+      const textInput = screen.getByPlaceholderText('Ask about accessibility, mobile design, user flow...');
+      fireEvent.change(textInput, { target: { value: 'Test message' } });
       
-      await waitFor(() => {
-        expect(screen.getByText('Confidence: 90%')).toBeInTheDocument();
-        expect(screen.getByText('Confidence: 80%')).toBeInTheDocument();
+      const sendButton = screen.getByRole('button', { name: '' }); // Send button with SVG icon
+      fireEvent.click(sendButton);
+      
+      expect(mockApi.api.post).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-chat/message', {
+        message: 'Test message'
       });
     });
   });
 
-  describe('Filtering', () => {
-    it('shows filter dropdown', async () => {
+  describe('Features Display', () => {
+    it('shows AI analysis features in welcome screen', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        const filterSelect = screen.getByRole('combobox');
-        expect(filterSelect).toBeInTheDocument();
-      });
-    });
-
-    it('filters suggestions by category', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        const filterSelect = screen.getByRole('combobox');
-        fireEvent.change(filterSelect, { target: { value: 'accessibility' } });
-      });
-      
-      // Should show only accessibility suggestions
-      expect(screen.getByText('Add Alt Text to Images')).toBeInTheDocument();
-      expect(screen.queryByText('Ensure Adequate Button Size')).not.toBeInTheDocument();
-    });
-
-    it('filters by active status', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        const filterSelect = screen.getByRole('combobox');
-        fireEvent.change(filterSelect, { target: { value: 'active' } });
-      });
-      
-      // Should show only active suggestions
-      expect(screen.getByText('Add Alt Text to Images')).toBeInTheDocument();
-      expect(screen.queryByText('Ensure Adequate Button Size')).not.toBeInTheDocument();
+      expect(screen.getByText('Accessibility & WCAG compliance')).toBeInTheDocument();
+      expect(screen.getByText('Mobile responsiveness analysis')).toBeInTheDocument();
+      expect(screen.getByText('Visual hierarchy & typography')).toBeInTheDocument();
+      expect(screen.getByText('Interactive Q&A with AI expert')).toBeInTheDocument();
     });
   });
 
-  describe('Suggestion Actions', () => {
-    it('shows action buttons for active suggestions', async () => {
+  describe('Message Interaction', () => {
+    it('shows character count', async () => {
+      vi.mocked(mockApi.api.post).mockResolvedValue({ data: { success: true, data: { messages: [] } } });
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
+      
       await waitFor(() => {
-        expect(screen.getByText('Applied ✓')).toBeInTheDocument();
-        expect(screen.getByText('Dismiss')).toBeInTheDocument();
+        expect(screen.getByText('0/1000')).toBeInTheDocument();
       });
     });
 
-    it('calls API when suggestion is marked as applied', async () => {
+    it('shows keyboard shortcuts hint', async () => {
+      vi.mocked(mockApi.api.post).mockResolvedValue({ data: { success: true, data: { messages: [] } } });
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        const applyButton = screen.getByText('Applied ✓');
-        fireEvent.click(applyButton);
-      });
-      
-      expect(mockApi.api.put).toHaveBeenCalledWith(
-        '/api/snapshots/test-snapshot-123/ai-suggestions/suggestion-1',
-        { status: 'applied', feedback: 'helpful' }
-      );
-    });
-
-    it('calls API when suggestion is dismissed', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
+      fireEvent.click(screen.getByText('🚀 Start AI Analysis'));
       
       await waitFor(() => {
-        const dismissButton = screen.getByText('Dismiss');
-        fireEvent.click(dismissButton);
-      });
-      
-      expect(mockApi.api.put).toHaveBeenCalledWith(
-        '/api/snapshots/test-snapshot-123/ai-suggestions/suggestion-1',
-        { status: 'dismissed', feedback: 'not_helpful' }
-      );
-    });
-
-    it('shows status for completed suggestions', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('✓ Applied')).toBeInTheDocument();
+        expect(screen.getByText('Press Enter to send, Shift+Enter for new line')).toBeInTheDocument();
       });
     });
   });
 
-  describe('Analysis Summary', () => {
-    it('displays analysis summary when available', async () => {
+  describe('Loading Conversation', () => {
+    it('loads existing conversation when available', async () => {
+      vi.mocked(mockApi.api.get).mockResolvedValue({
+        data: { success: true, data: { exists: true, messages: [{ role: 'assistant', content: 'Previous message' }] } }
+      });
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
       await waitFor(() => {
-        expect(screen.getByText('Analysis Summary')).toBeInTheDocument();
-        expect(screen.getByText('Total: 2')).toBeInTheDocument();
-        expect(screen.getByText('Score: 85/100')).toBeInTheDocument();
+        expect(screen.getByText('Previous message')).toBeInTheDocument();
       });
     });
   });
 
-  describe('Regenerate Functionality', () => {
-    it('shows regenerate button when suggestions exist', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Regenerate Suggestions')).toBeInTheDocument();
-      });
-    });
-
-    it('calls generate API when regenerate is clicked', async () => {
-      render(<AISuggestionsPanel {...defaultProps} />);
-      
-      await waitFor(() => {
-        const regenerateButton = screen.getByText('Regenerate Suggestions');
-        fireEvent.click(regenerateButton);
-      });
-      
-      expect(mockApi.api.post).toHaveBeenCalledWith('/api/snapshots/test-snapshot-123/ai-suggestions/generate');
-    });
-  });
 
   describe('Close Functionality', () => {
     it('calls onClose when close button is clicked', () => {
@@ -347,21 +271,16 @@ describe('AISuggestionsPanel Component', () => {
     });
   });
 
-  describe('Empty State', () => {
-    beforeEach(() => {
+  describe('Welcome State', () => {
+    it('shows welcome state when no conversation exists', () => {
       vi.mocked(mockApi.api.get).mockResolvedValue({
-        success: true,
-        data: { suggestions: [], analysis: null }
+        data: { success: true, data: { exists: false } }
       });
-    });
-
-    it('shows empty state when no suggestions exist', async () => {
+      
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        expect(screen.getByText('No Suggestions Yet')).toBeInTheDocument();
-        expect(screen.getByText('🔍')).toBeInTheDocument();
-      });
+      expect(screen.getByText('🎨')).toBeInTheDocument();
+      expect(screen.getByText('AI-Powered UX Analysis')).toBeInTheDocument();
     });
   });
 
@@ -373,20 +292,18 @@ describe('AISuggestionsPanel Component', () => {
       
       await waitFor(() => {
         // Should not crash and should show empty state or error state
-        expect(screen.getByText('AI Suggestions')).toBeInTheDocument();
+        expect(screen.getByText('🤖 AI UX Assistant')).toBeInTheDocument();
       });
     });
   });
 
   describe('Accessibility', () => {
-    it('has accessible buttons', async () => {
+    it('has accessible buttons', () => {
       render(<AISuggestionsPanel {...defaultProps} />);
       
-      await waitFor(() => {
-        const buttons = screen.getAllByRole('button');
-        buttons.forEach(button => {
-          expect(button).toHaveAccessibleName();
-        });
+      const buttons = screen.getAllByRole('button');
+      buttons.forEach(button => {
+        expect(button).toHaveAccessibleName();
       });
     });
 
