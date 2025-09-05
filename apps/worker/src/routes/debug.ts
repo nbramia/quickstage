@@ -158,37 +158,63 @@ async function searchEventChunk(c: any, startTime: number, endTime: number) {
   const events = [];
   
   try {
-    // Use a broader list to find events, then filter by timestamp
-    const list = await c.env.KV_ANALYTICS.list({ 
-      prefix: 'event:evt_',
-      limit: 200 // Keep reasonable limit
-    });
+    // The issue is that KV.list() returns keys in alphabetical order, not chronological
+    // Recent events with high timestamps like 1757082192005 won't be in the first 200 keys
+    // We need to use a different approach - search through more keys or use cursor pagination
     
-    // Process all keys to find events in our time range
-    for (const key of list.keys) {
-      if (key.name.startsWith('event:evt_')) {
-        try {
-          // Extract timestamp from key name: event:evt_1757082192005_randomid
-          const keyParts = key.name.split('_');
-          if (keyParts.length >= 2) {
-            const keyTimestamp = parseInt(keyParts[1]);
-            
-            // Only fetch events that fall within our time range
-            if (keyTimestamp >= startTime && keyTimestamp <= endTime) {
-              const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
-              if (eventRaw) {
-                const event = JSON.parse(eventRaw);
-                events.push(event);
+    let cursor: string | undefined = undefined;
+    let totalKeysChecked = 0;
+    const maxKeysToCheck = 2000; // Check up to 2000 keys to find recent events
+    let found = 0;
+    
+    while (totalKeysChecked < maxKeysToCheck) {
+      const list: any = await c.env.KV_ANALYTICS.list({ 
+        prefix: 'event:evt_',
+        limit: 500, // Larger batch size
+        cursor: cursor
+      });
+      
+      console.log(`🔍 SMART RETRIEVAL: Checking batch of ${list.keys.length} keys (total checked: ${totalKeysChecked})`);
+      
+      // Process all keys to find events in our time range
+      for (const key of list.keys) {
+        if (key.name.startsWith('event:evt_')) {
+          try {
+            // Extract timestamp from key name: event:evt_1757082192005_randomid
+            const keyParts = key.name.split('_');
+            if (keyParts.length >= 2) {
+              const keyTimestamp = parseInt(keyParts[1]);
+              
+              // Only fetch events that fall within our time range
+              if (keyTimestamp >= startTime && keyTimestamp <= endTime) {
+                console.log(`🔍 SMART RETRIEVAL: Found matching key: ${key.name} (timestamp: ${keyTimestamp})`);
+                const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+                if (eventRaw) {
+                  const event = JSON.parse(eventRaw);
+                  events.push(event);
+                  found++;
+                }
               }
             }
+          } catch (e) {
+            // Skip malformed keys
+            continue;
           }
-        } catch (e) {
-          // Skip malformed keys
-          continue;
         }
       }
+      
+      totalKeysChecked += list.keys.length;
+      
+      // If we found some events or we've reached the end, stop
+      if (found > 0 || list.list_complete || !list.cursor) {
+        console.log(`🔍 SMART RETRIEVAL: Stopping search - found ${found} events after checking ${totalKeysChecked} keys`);
+        break;
+      }
+      
+      cursor = list.cursor;
     }
     
+    console.log(`🔍 SMART RETRIEVAL: Final result for time range ${startTime}-${endTime}: ${events.length} events`);
     return events;
     
   } catch (error) {
