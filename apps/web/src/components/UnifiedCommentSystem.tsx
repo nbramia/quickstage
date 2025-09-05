@@ -43,6 +43,9 @@ function CommentItem({
   const [submitting, setSubmitting] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   
+  // Don't allow replies to replies (depth > 0)
+  const canReply = depth < 1;
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
@@ -366,6 +369,19 @@ function CommentItem({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline flex-1 truncate"
+                    onClick={(e) => {
+                      // Force download for non-image files
+                      if (!attachment.mimeType.startsWith('image/')) {
+                        e.preventDefault();
+                        const link = document.createElement('a');
+                        link.href = attachment.url;
+                        link.download = attachment.filename;
+                        link.target = '_blank';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }
+                    }}
                   >
                     {attachment.filename}
                   </a>
@@ -381,7 +397,7 @@ function CommentItem({
         {/* Actions bar */}
         <div className="flex items-center justify-between border-t border-gray-100 pt-2">
           <div className="flex items-center space-x-4">
-            {!isReplying && commentState !== 'archived' && (
+            {!isReplying && commentState !== 'archived' && canReply && (
               <button
                 onClick={() => setIsReplying(true)}
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
@@ -414,7 +430,7 @@ function CommentItem({
 
           {/* Depth and ID info */}
           <div className="text-xs text-gray-400">
-            {depth > 0 && <span>Level {depth + 1}</span>}
+            {/* Removed level indicator */}
           </div>
         </div>
 
@@ -714,6 +730,13 @@ export default function UnifiedCommentSystem({
       'application/x-rar-compressed'
     ];
 
+    const supportedTypes = [
+      'Images: PNG, JPG, GIF, WebP',
+      'Documents: PDF, TXT, MD, CSV',
+      'Office: DOC, DOCX, XLS, XLSX',
+      'Archives: ZIP, RAR'
+    ].join('\n');
+
     const validFiles: File[] = [];
     const errors: string[] = [];
 
@@ -721,7 +744,7 @@ export default function UnifiedCommentSystem({
       if (file.size > maxSize) {
         errors.push(`${file.name} is too large (max 10MB)`);
       } else if (!allowedTypes.includes(file.type)) {
-        errors.push(`${file.name} has an unsupported file type`);
+        errors.push(`${file.name} has an unsupported file type.\n\nSupported file types:\n${supportedTypes}`);
       } else {
         validFiles.push(file);
       }
