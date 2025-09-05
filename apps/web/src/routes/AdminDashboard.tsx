@@ -80,6 +80,7 @@ export default function AdminDashboard() {
   const [systemAnalytics, setSystemAnalytics] = useState<any>(null);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('24h');
+  const [refreshEventsLoading, setRefreshEventsLoading] = useState(false);
   
   // Sorting state for user table
   const [sortField, setSortField] = useState<string | null>(null);
@@ -291,15 +292,15 @@ export default function AdminDashboard() {
           startTime = now - (30 * 24 * 60 * 60 * 1000);
           break;
         default:
-          startTime = now - (7 * 24 * 60 * 60 * 1000); // Default to 7 days
+          // Adaptive window: try recent periods until we find events
+          startTime = now - (2 * 60 * 60 * 1000); // Start with 2 hours
       }
       
-      // Load comprehensive analytics data with timeframe
-      const [statsResponse, usersResponse, snapshotsResponse, eventsResponse] = await Promise.all([
+      // Load basic analytics data
+      const [statsResponse, usersResponse, snapshotsResponse] = await Promise.all([
         api.get('/debug/stats'),
         api.get('/debug/users'),
-        api.get('/debug/snapshots'),
-        api.get(`/debug/analytics/events?limit=500&startTime=${startTime}`)
+        api.get('/debug/snapshots')
       ]);
       
       setAnalytics(statsResponse);
@@ -307,10 +308,41 @@ export default function AdminDashboard() {
       setSnapshotAnalytics(snapshotsResponse);
       setSystemAnalytics(statsResponse);
       
-      // Process recent events from analytics events endpoint
-      if (eventsResponse.events) {
-        setRecentEvents(eventsResponse.events);
+      // Adaptive event loading: try progressively wider time windows for 24h default view
+      const useAdaptiveWindows = analyticsTimeframe === '24h'; // Use adaptive for default 24h view
+      const timeWindows = useAdaptiveWindows 
+        ? [
+            { name: '2h', ms: 2 * 60 * 60 * 1000 },
+            { name: '24h', ms: 24 * 60 * 60 * 1000 },
+            { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
+            { name: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
+          ]
+        : [
+            { 
+              name: analyticsTimeframe, 
+              ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                  analyticsTimeframe === '30d' ? 30 * 24 * 60 * 60 * 1000 :
+                  24 * 60 * 60 * 1000 // 24h fallback
+            }
+          ];
+      
+      let foundEvents = [];
+      for (const window of timeWindows) {
+        const windowStartTime = now - window.ms;
+        console.log(`Trying ${window.name} window (fast mode), startTime: ${windowStartTime} (${new Date(windowStartTime).toISOString()})`);
+        
+        const eventsResponse = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}`);
+        
+        if (eventsResponse.events && eventsResponse.events.length > 0) {
+          foundEvents = eventsResponse.events;
+          console.log(`Found ${foundEvents.length} events in ${window.name} window`);
+          break;
+        } else {
+          console.log(`No events found in ${window.name} window`);
+        }
       }
+      
+      setRecentEvents(foundEvents);
       
     } catch (error: any) {
       console.error('Failed to load analytics:', error);
@@ -1355,11 +1387,6 @@ export default function AdminDashboard() {
                   showExtensionSection={false}
                   user={user}
                   title="All Snapshots"
-                  subtitle={
-                    selectedUserFilter === 'all' 
-                      ? `${adminSnapshots.length} snapshots from all users`
-                      : `${filteredSnapshots.length} snapshots from ${usersWithSnapshots.find(u => u.uid === selectedUserFilter)?.name || 'selected user'}`
-                  }
                 />
               </>
             )}
@@ -1582,23 +1609,37 @@ export default function AdminDashboard() {
                       try {
                         setLoading(true);
                         const now = Date.now();
-                        let startTime;
-                        switch (analyticsTimeframe) {
-                          case '24h':
-                            startTime = now - (24 * 60 * 60 * 1000);
+                        
+                        // Use adaptive time windows for fullRetrieval as well (for default 24h view)
+                        const useAdaptiveWindows = analyticsTimeframe === '24h'; // Use adaptive for default 24h view
+                        const timeWindows = useAdaptiveWindows 
+                          ? [
+                              { name: '2h', ms: 2 * 60 * 60 * 1000 },
+                              { name: '24h', ms: 24 * 60 * 60 * 1000 },
+                              { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 }
+                            ]
+                          : [
+                              { 
+                                name: analyticsTimeframe, 
+                                ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                                    30 * 24 * 60 * 60 * 1000 // 30d fallback
+                              }
+                            ];
+                        
+                        let foundEvents = [];
+                        for (const window of timeWindows) {
+                          const windowStartTime = now - window.ms;
+                          const response = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}&fullRetrieval=true`);
+                          const events = response?.events || [];
+                          
+                          if (events.length > 0) {
+                            foundEvents = events;
+                            console.log(`Full retrieval found ${foundEvents.length} events in ${window.name} window`);
                             break;
-                          case '7d':
-                            startTime = now - (7 * 24 * 60 * 60 * 1000);
-                            break;
-                          case '30d':
-                            startTime = now - (30 * 24 * 60 * 60 * 1000);
-                            break;
-                          default:
-                            startTime = now - (24 * 60 * 60 * 1000); // Default to 24h
+                          }
                         }
-                        const response = await api.get(`/debug/analytics/events?limit=500&startTime=${startTime}&fullRetrieval=true`);
-                        const events = response?.events || [];
-                        setRecentEvents(events);
+                        
+                        setRecentEvents(foundEvents);
                       } catch (error) {
                         console.error('Failed to refresh activity feed:', error);
                       } finally {
@@ -1760,10 +1801,65 @@ export default function AdminDashboard() {
                       {recentEvents.length === 0 ? 'No recent events available' : 'No events match the current filters'}
                     </p>
                     <button
-                      onClick={loadAnalytics}
-                      className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                      onClick={async () => {
+                        if (refreshEventsLoading) return; // Prevent duplicate requests
+                        
+                        try {
+                          setRefreshEventsLoading(true);
+                          const now = Date.now();
+                          
+                          // Use adaptive time windows for fullRetrieval
+                          const useAdaptiveWindows = analyticsTimeframe === '24h';
+                          const timeWindows = useAdaptiveWindows 
+                            ? [
+                                { name: '2h', ms: 2 * 60 * 60 * 1000 },
+                                { name: '24h', ms: 24 * 60 * 60 * 1000 },
+                                { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
+                                { name: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
+                              ]
+                            : [
+                                { 
+                                  name: analyticsTimeframe, 
+                                  ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
+                                      30 * 24 * 60 * 60 * 1000 // 30d fallback
+                                }
+                              ];
+                          
+                          let foundEvents = [];
+                          for (const window of timeWindows) {
+                            const windowStartTime = now - window.ms;
+                            console.log(`Trying ${window.name} window with fullRetrieval, startTime: ${windowStartTime} (${new Date(windowStartTime).toISOString()})`);
+                            
+                            const response = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}&fullRetrieval=true`);
+                            const events = response?.events || [];
+                            
+                            if (events.length > 0) {
+                              foundEvents = events;
+                              console.log(`Full retrieval found ${foundEvents.length} events in ${window.name} window`);
+                              break;
+                            } else {
+                              console.log(`No events found in ${window.name} window`);
+                            }
+                          }
+                          
+                          setRecentEvents(foundEvents);
+                        } catch (error) {
+                          console.error('Failed to refresh events:', error);
+                        } finally {
+                          setRefreshEventsLoading(false);
+                        }
+                      }}
+                      disabled={refreshEventsLoading}
+                      className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                     >
-                      Refresh Events
+                      {refreshEventsLoading ? (
+                        <>
+                          <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                          Refreshing...
+                        </>
+                      ) : (
+                        'Refresh Events'
+                      )}
                     </button>
                   </div>
                 )}

@@ -1,15 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { Comment } from '../types/dashboard';
 
-interface CommentThreadProps {
+interface UnifiedCommentSystemProps {
   snapshotId: string;
-  commentId?: string;
-  onClose: () => void;
   isOwner?: boolean;
-  comments?: Comment[];
-  onCommentsUpdate?: (comments: Comment[]) => void;
+  className?: string;
 }
 
 interface CommentItemProps {
@@ -18,13 +15,11 @@ interface CommentItemProps {
   depth: number;
   onReply: (parentId: string, text: string, attachments?: File[]) => Promise<void>;
   onResolve: (commentId: string) => Promise<void>;
-  onArchive: (commentId: string) => Promise<void>;
   onDelete: (commentId: string) => Promise<void>;
   onUpdate: (commentId: string, text: string) => Promise<void>;
-  showActions?: boolean;
-  maxDepth?: number;
   isOwner: boolean;
   currentUserId?: string;
+  maxDepth?: number;
 }
 
 function CommentItem({ 
@@ -33,13 +28,11 @@ function CommentItem({
   depth, 
   onReply, 
   onResolve, 
-  onArchive, 
   onDelete, 
   onUpdate,
-  showActions = true,
-  maxDepth = 5,
   isOwner,
-  currentUserId
+  currentUserId,
+  maxDepth = 5
 }: CommentItemProps) {
   const [isReplying, setIsReplying] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -223,7 +216,7 @@ function CommentItem({
           </div>
 
           {/* Action menu button */}
-          {showActions && (canEdit || canModerate) && (
+          {(canEdit || canModerate) && (
             <div className="relative" ref={actionMenuRef}>
               <button
                 onClick={() => setShowActionMenu(!showActionMenu)}
@@ -286,7 +279,7 @@ function CommentItem({
                   {commentState !== 'archived' && canModerate && (
                     <button
                       onClick={() => {
-                        onArchive(comment.id);
+                        onUpdate(comment.id, commentText); // Archive by updating state
                         setShowActionMenu(false);
                       }}
                       className="w-full text-left px-3 py-2 text-sm text-yellow-700 hover:bg-yellow-50 flex items-center space-x-2"
@@ -524,13 +517,11 @@ function CommentItem({
               depth={depth + 1}
               onReply={onReply}
               onResolve={onResolve}
-              onArchive={onArchive}
               onDelete={onDelete}
               onUpdate={onUpdate}
-              showActions={showActions}
-              maxDepth={maxDepth}
               isOwner={isOwner}
               currentUserId={currentUserId}
+              maxDepth={maxDepth}
             />
           ))}
         </div>
@@ -551,34 +542,36 @@ function CommentItem({
   );
 }
 
-export default function CommentThread({ 
+export default function UnifiedCommentSystem({ 
   snapshotId, 
-  commentId, 
-  onClose, 
-  isOwner = false,
-  comments: externalComments,
-  onCommentsUpdate
-}: CommentThreadProps) {
+  isOwner = false, 
+  className = '' 
+}: UnifiedCommentSystemProps) {
   const { user } = useAuth();
-  const [comments, setComments] = useState<Comment[]>(externalComments || []);
-  const [loading, setLoading] = useState(!externalComments);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [newCommentAttachments, setNewCommentAttachments] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [showAddComment, setShowAddComment] = useState(false);
+  
+  const newCommentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const newCommentFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (newCommentTextareaRef.current) {
+      newCommentTextareaRef.current.style.height = 'auto';
+      newCommentTextareaRef.current.style.height = Math.min(newCommentTextareaRef.current.scrollHeight, 200) + 'px';
+    }
+  }, [newCommentText]);
 
   const loadComments = async () => {
-    if (externalComments) return; // Use external comments if provided
-    
     try {
       setLoading(true);
-      let url = `/api/snapshots/${snapshotId}/comments`;
-      if (commentId) {
-        url += `/${commentId}/thread`;
-      }
-      
-      const response = await api.get(url);
+      const response = await api.get(`/api/snapshots/${snapshotId}/comments`);
       const loadedComments = response.comments || response.data?.comments || [];
       setComments(loadedComments);
-      if (onCommentsUpdate) {
-        onCommentsUpdate(loadedComments);
-      }
     } catch (error) {
       console.error('Failed to load comments:', error);
     } finally {
@@ -587,12 +580,178 @@ export default function CommentThread({
   };
 
   useEffect(() => {
-    if (externalComments) {
-      setComments(externalComments);
-    } else {
-      loadComments();
+    loadComments();
+  }, [snapshotId]);
+
+  const handleAddComment = async () => {
+    const trimmedText = newCommentText.trim();
+    console.log('Adding comment with text:', trimmedText);
+    
+    if (!trimmedText || submitting) {
+      console.log('Skipping comment submission - no text or already submitting');
+      return;
     }
-  }, [snapshotId, commentId, externalComments]);
+    
+    setSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append('text', trimmedText);
+      formData.append('state', 'published');
+      
+      if (newCommentAttachments.length > 0) {
+        newCommentAttachments.forEach(file => {
+          formData.append('attachments', file);
+        });
+      }
+
+      // Debug FormData contents
+      console.log('FormData contents:');
+      console.log('text:', formData.get('text'));
+      console.log('state:', formData.get('state'));
+      console.log('attachments count:', newCommentAttachments.length);
+      
+      // Additional debugging
+      console.log('FormData keys:');
+      try {
+        for (const key of (formData as any).keys()) {
+          console.log('Key:', key, 'Value:', formData.get(key));
+        }
+      } catch (e) {
+        console.log('Could not iterate FormData keys');
+      }
+
+      console.log('Submitting comment to API...');
+      await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
+      
+      // Reload comments to show the new comment
+      await loadComments();
+      
+      // Reset form
+      setNewCommentText('');
+      setNewCommentAttachments([]);
+      setShowAddComment(false);
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+      alert('Failed to add comment. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReply = async (parentId: string, text: string, attachments?: File[]) => {
+    try {
+      const formData = new FormData();
+      formData.append('text', text);
+      formData.append('parentId', parentId);
+      formData.append('state', 'published');
+      
+      if (attachments && attachments.length > 0) {
+        attachments.forEach(file => {
+          formData.append('attachments', file);
+        });
+      }
+
+      await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
+      
+      // Reload comments to show the new reply
+      await loadComments();
+    } catch (error) {
+      console.error('Failed to post reply:', error);
+      throw error;
+    }
+  };
+
+  const handleResolve = async (commentId: string) => {
+    try {
+      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
+        state: 'resolved'
+      });
+      await loadComments();
+    } catch (error) {
+      console.error('Failed to resolve comment:', error);
+      throw error;
+    }
+  };
+
+  const handleDelete = async (commentId: string) => {
+    try {
+      await api.delete(`/api/snapshots/${snapshotId}/comments/${commentId}`);
+      await loadComments();
+    } catch (error) {
+      console.error('Failed to delete comment:', error);
+      throw error;
+    }
+  };
+
+  const handleUpdate = async (commentId: string, text: string) => {
+    try {
+      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
+        text
+      });
+      await loadComments();
+    } catch (error) {
+      console.error('Failed to update comment:', error);
+      throw error;
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    addFiles(files);
+  };
+
+  const addFiles = (files: File[]) => {
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+      'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp',
+      'text/plain', 'text/markdown', 'text/csv',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/zip',
+      'application/x-rar-compressed'
+    ];
+
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    files.forEach(file => {
+      if (file.size > maxSize) {
+        errors.push(`${file.name} is too large (max 10MB)`);
+      } else if (!allowedTypes.includes(file.type)) {
+        errors.push(`${file.name} has an unsupported file type`);
+      } else {
+        validFiles.push(file);
+      }
+    });
+
+    if (errors.length > 0) {
+      alert(errors.join('\n'));
+    }
+
+    if (validFiles.length > 0) {
+      setNewCommentAttachments(prev => [...prev, ...validFiles]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+  };
+
+  const removeAttachment = (index: number) => {
+    setNewCommentAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
   // Build comment tree structure
   const buildCommentTree = (comments: Comment[]) => {
@@ -634,134 +793,12 @@ export default function CommentThread({
     return rootComments;
   };
 
-  const handleReply = async (parentId: string, text: string, attachments?: File[]) => {
-    try {
-      const formData = new FormData();
-      formData.append('text', text);
-      formData.append('parentId', parentId);
-      formData.append('state', 'published');
-      
-      if (attachments && attachments.length > 0) {
-        attachments.forEach(file => {
-          formData.append('attachments', file);
-        });
-      }
-
-      const response = await api.post(`/api/snapshots/${snapshotId}/comments`, formData);
-      
-      // Reload comments to show the new reply
-      await loadComments();
-    } catch (error) {
-      console.error('Failed to post reply:', error);
-      throw error;
-    }
-  };
-
-  const handleResolve = async (commentId: string) => {
-    try {
-      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
-        state: 'resolved'
-      });
-      await loadComments();
-      
-      // Track analytics for comment resolution
-      try {
-        await api.post('/analytics/track', {
-          eventType: 'comment_resolved',
-          eventData: {
-            snapshotId,
-            commentId
-          }
-        });
-      } catch (error) {
-        console.error('Failed to track comment resolution analytics:', error);
-      }
-    } catch (error) {
-      console.error('Failed to resolve comment:', error);
-      throw error;
-    }
-  };
-
-  const handleArchive = async (commentId: string) => {
-    try {
-      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
-        state: 'archived'
-      });
-      await loadComments();
-      
-      // Track analytics for comment archival
-      try {
-        await api.post('/analytics/track', {
-          eventType: 'comment_archived',
-          eventData: {
-            snapshotId,
-            commentId
-          }
-        });
-      } catch (error) {
-        console.error('Failed to track comment archival analytics:', error);
-      }
-    } catch (error) {
-      console.error('Failed to archive comment:', error);
-      throw error;
-    }
-  };
-
-  const handleDelete = async (commentId: string) => {
-    try {
-      await api.delete(`/api/snapshots/${snapshotId}/comments/${commentId}`);
-      await loadComments();
-      
-      // Track analytics for comment deletion
-      try {
-        await api.post('/analytics/track', {
-          eventType: 'comment_deleted',
-          eventData: {
-            snapshotId,
-            commentId
-          }
-        });
-      } catch (error) {
-        console.error('Failed to track comment deletion analytics:', error);
-      }
-    } catch (error) {
-      console.error('Failed to delete comment:', error);
-      throw error;
-    }
-  };
-
-  const handleUpdate = async (commentId: string, text: string) => {
-    try {
-      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
-        text
-      });
-      await loadComments();
-      
-      // Track analytics for comment update
-      try {
-        await api.post('/analytics/track', {
-          eventType: 'comment_edited',
-          eventData: {
-            snapshotId,
-            commentId,
-            newContentLength: text.length
-          }
-        });
-      } catch (error) {
-        console.error('Failed to track comment edit analytics:', error);
-      }
-    } catch (error) {
-      console.error('Failed to update comment:', error);
-      throw error;
-    }
-  };
-
   if (loading) {
     return (
-      <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-xl z-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-500 mt-2">Loading comments...</p>
+      <div className={`bg-white rounded-lg shadow ${className}`}>
+        <div className="p-6 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-500">Loading comments...</span>
         </div>
       </div>
     );
@@ -770,7 +807,7 @@ export default function CommentThread({
   const commentTree = buildCommentTree(comments);
 
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-xl z-50 flex flex-col">
+    <div className={`bg-white rounded-lg shadow ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center space-x-2">
@@ -782,24 +819,150 @@ export default function CommentThread({
           </h3>
         </div>
         <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
+          onClick={() => setShowAddComment(!showAddComment)}
+          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          {showAddComment ? 'Cancel' : 'Add Comment'}
         </button>
       </div>
 
+      {/* Add Comment Form */}
+      {showAddComment && (
+        <div 
+          className="p-4 border-b border-gray-200 bg-gray-50"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              console.log('Form submitted, text:', newCommentText);
+              handleAddComment();
+            }}
+            className="space-y-3"
+          >
+            <textarea
+              ref={newCommentTextareaRef}
+              value={newCommentText}
+              onChange={(e) => setNewCommentText(e.target.value)}
+              placeholder="Write your comment..."
+              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
+              maxLength={5000}
+            />
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <input
+                  ref={newCommentFileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  accept=".png,.jpg,.jpeg,.txt,.md,.pdf,.doc,.docx"
+                />
+                
+                <button
+                  onClick={() => newCommentFileInputRef.current?.click()}
+                  className="text-sm text-gray-600 hover:text-gray-800 flex items-center space-x-1"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
+                  </svg>
+                  <span>Attach Files</span>
+                </button>
+
+                {newCommentAttachments.length > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {newCommentAttachments.length} file{newCommentAttachments.length !== 1 ? 's' : ''} attached
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => {
+                    setShowAddComment(false);
+                    setNewCommentText('');
+                    setNewCommentAttachments([]);
+                  }}
+                  className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log('Comment button clicked, text:', newCommentText);
+                    handleAddComment();
+                  }}
+                  disabled={!newCommentText.trim() || submitting}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Posting...' : 'Post Comment'}
+                </button>
+              </div>
+            </div>
+
+            {/* Attached files preview */}
+            {newCommentAttachments.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-700 uppercase tracking-wide">Attachments:</div>
+                {newCommentAttachments.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 text-sm">
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      <div className="flex-shrink-0">
+                        {file.type.startsWith('image/') ? (
+                          <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                          </svg>
+                        ) : file.type === 'application/pdf' ? (
+                          <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          <svg className="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 truncate">{file.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {(file.size / 1024 / 1024).toFixed(1)} MB • {file.type.split('/')[1]?.toUpperCase() || 'FILE'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeAttachment(index)}
+                      className="ml-2 text-red-500 hover:text-red-700 font-bold text-lg leading-none"
+                      title="Remove attachment"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </form>
+        </div>
+      )}
+
       {/* Comment List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="max-h-96 overflow-y-auto">
         {commentTree.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center p-8">
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <svg className="w-16 h-16 text-gray-300 mb-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2 font-inconsolata">No comments yet</h3>
             <p className="text-gray-500 text-sm mb-4">Start the conversation by adding the first comment!</p>
+            <button
+              onClick={() => setShowAddComment(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Add First Comment
+            </button>
           </div>
         ) : (
           <div className="p-4 space-y-4">
@@ -811,13 +974,11 @@ export default function CommentThread({
                 depth={0}
                 onReply={handleReply}
                 onResolve={handleResolve}
-                onArchive={handleArchive}
                 onDelete={handleDelete}
                 onUpdate={handleUpdate}
-                showActions={true}
-                maxDepth={5}
                 isOwner={isOwner}
                 currentUserId={user?.uid}
+                maxDepth={5}
               />
             ))}
           </div>

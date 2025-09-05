@@ -3,10 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import AISuggestionsPanel from '../components/AISuggestionsPanel';
 import { ReviewPanel } from '../components/ReviewPanel';
-import CommentThread from '../components/CommentThread';
-import CommentModal from '../components/CommentModal';
+import UnifiedCommentSystem from '../components/UnifiedCommentSystem';
 import { useAuth } from '../contexts/AuthContext';
-import { Comment } from '../types/dashboard';
 import '../fonts.css';
 
 type Snapshot = {
@@ -28,15 +26,12 @@ export function Viewer() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [showAISuggestions, setShowAISuggestions] = useState(false);
-  const [showCommentModal, setShowCommentModal] = useState(false);
-  const [commentPosition, setCommentPosition] = useState<{ x: number; y: number } | undefined>();
 
   const { id: snapshotId } = useParams();
 
@@ -55,17 +50,12 @@ export function Viewer() {
     fetchSnapshot();
   }, [snapshotId]);
 
-  useEffect(() => {
-    if (snapshot && !snapshot.password) {
-      fetchComments();
-    }
-  }, [snapshot]);
 
   // Auto-open sections when in iframe mode
   useEffect(() => {
     if (isInIframe && iframeSection && snapshot) {
       if (iframeSection === 'comments') {
-        // Comments are always shown via CommentThread now
+        // Comments are always shown via UnifiedCommentSystem now
       } else if (iframeSection === 'reviews') {
         // Reviews are shown by default in the component
       } else if (iframeSection === 'ai') {
@@ -123,14 +113,6 @@ export function Viewer() {
     }
   };
 
-  const fetchComments = async () => {
-    try {
-      const response = await api.get(`/api/snapshots/${snapshotId}/comments`);
-      setComments(response.comments || []);
-    } catch (error) {
-      console.error('Failed to fetch comments:', error);
-    }
-  };
 
   const handlePasswordSubmit = async () => {
     try {
@@ -144,9 +126,8 @@ export function Viewer() {
       });
       if (!res.ok) throw new Error(res.status.toString());
       setShowPasswordForm(false);
-      // Refresh snapshot details (now accessible) and comments
+      // Refresh snapshot details (now accessible)
       await fetchSnapshot();
-      fetchComments();
 
     } catch (error: any) {
       console.error('Password verification failed:', error);
@@ -166,9 +147,8 @@ export function Viewer() {
       });
       if (!res.ok) throw new Error(res.status.toString());
       setShowPasswordForm(false);
-      // Refresh snapshot details (now accessible) and comments
+      // Refresh snapshot details (now accessible)
       await fetchSnapshot();
-      fetchComments();
 
     } catch (error: any) {
       console.error('Password verification failed:', error);
@@ -176,53 +156,6 @@ export function Viewer() {
     }
   };
 
-  const handleCommentSubmit = async (data: { 
-    text: string; 
-    attachments?: File[]; 
-    subscribe?: boolean; 
-    state?: string; 
-    parentId?: string 
-  }) => {
-    try {
-      setError(null);
-      
-      // Create FormData for file upload support
-      const formData = new FormData();
-      formData.append('text', data.text);
-      if (data.state) formData.append('state', data.state);
-      if (data.parentId) formData.append('parentId', data.parentId);
-      if (data.subscribe !== undefined) formData.append('subscribe', String(data.subscribe));
-      
-      if (data.attachments) {
-        data.attachments.forEach(file => {
-          formData.append('attachments', file);
-        });
-      }
-
-      // For file uploads, we need to use fetch directly  
-      const response = await fetch(`/api/snapshots/${snapshotId}/comments`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to post comment');
-      }
-
-      // Fetch updated comments
-      await fetchComments();
-      setShowCommentModal(false);
-    } catch (error: any) {
-      console.error('Failed to post comment:', error);
-      setError(error.message || 'Failed to post comment');
-    }
-  };
-
-  const handleAddComment = (position?: { x: number; y: number }) => {
-    setCommentPosition(position);
-    setShowCommentModal(true);
-  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -329,12 +262,9 @@ export function Viewer() {
     return (
       <div className="min-h-screen bg-white font-poppins">
         {iframeSection === 'comments' && snapshotId && (
-          <CommentThread
+          <UnifiedCommentSystem
             snapshotId={snapshotId}
-            comments={comments}
-            onClose={() => {}} // No close needed in iframe
             isOwner={!!user}
-            onCommentsUpdate={(updatedComments) => setComments(updatedComments)}
           />
         )}
         
@@ -448,16 +378,10 @@ export function Viewer() {
 
           {/* Comments Panel */}
           <div className="lg:col-span-3">
-            <div className="bg-white rounded-lg shadow">
-              {/* Always show the sophisticated CommentThread - unified experience */}
-              <CommentThread
-                snapshotId={snapshotId || ''}
-                comments={comments}
-                onClose={() => {}} // No close needed - this is the main comments panel
-                isOwner={!!user}
-                onCommentsUpdate={(updatedComments) => setComments(updatedComments)}
-              />
-            </div>
+            <UnifiedCommentSystem
+              snapshotId={snapshotId || ''}
+              isOwner={!!user}
+            />
             
             {/* Reviews Panel */}
             <div className="mt-6">
@@ -479,19 +403,6 @@ export function Viewer() {
         />
       )}
 
-      {/* Comment Modal */}
-      {snapshotId && (
-        <CommentModal
-          isOpen={showCommentModal}
-          onClose={() => setShowCommentModal(false)}
-          onSubmit={handleCommentSubmit}
-          snapshotId={snapshotId}
-          position={commentPosition}
-          existingComments={comments}
-          showThread={false}
-          isOwner={!!user}
-        />
-      )}
 
     </div>
   );

@@ -62,13 +62,6 @@ export default function SnapshotDashboard({
     setSelectedSnapshots(new Set());
   };
 
-  // Generate subtitle if not provided
-  const generatedSubtitle = subtitle || `${filteredSnapshots.length} snapshot${filteredSnapshots.length !== 1 ? 's' : ''}${
-    selectedProjectId && projects.find(p => p.id === selectedProjectId)?.description && (
-      <span> • {projects.find(p => p.id === selectedProjectId)?.description}</span>
-    )
-  }`;
-
   return (
     <>
       {/* Page Header */}
@@ -80,9 +73,11 @@ export default function SnapshotDashboard({
               : title
             }
           </h1>
-          <p className="text-gray-600">
-            {generatedSubtitle}
-          </p>
+          {subtitle && (
+            <p className="text-gray-600">
+              {subtitle}
+            </p>
+          )}
         </div>
       </div>
 

@@ -65,14 +65,28 @@ export const api = {
   },
 
   async post(endpoint: string, data?: any) {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
     
     // Add Authorization header for cross-origin requests
     const token = getSessionToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // Handle FormData vs JSON data
+    let body: string | FormData | undefined;
+    if (data) {
+      if (data instanceof FormData) {
+        // Don't set Content-Type for FormData - let browser set it with boundary
+        console.log('API: Sending FormData');
+        console.log('FormData text:', data.get('text'));
+        console.log('FormData state:', data.get('state'));
+        body = data;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify(data);
+        console.log('API: Sending JSON data:', body);
+      }
     }
     
     const fullUrl = `${BASE_URL}${endpoint}`;
@@ -81,7 +95,7 @@ export const api = {
       method: 'POST',
       credentials: 'include',
       headers,
-      body: data ? JSON.stringify(data) : undefined,
+      body,
     });
     
     if (!response.ok) {
