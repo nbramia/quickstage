@@ -104,6 +104,7 @@ export interface Comment {
   text: string; // Supports markdown
   author: string;
   authorName?: string;
+  isAnonymous?: boolean;
   createdAt?: number;
   updatedAt?: number;
   

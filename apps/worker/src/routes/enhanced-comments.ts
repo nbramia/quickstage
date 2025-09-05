@@ -17,9 +17,7 @@ function generateAttachmentId(): string {
 export async function handleCreateComment(c: any) {
   try {
     const uid = await getUidFromSession(c);
-    if (!uid) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
+    const isAuthenticated = !!uid;
 
     const snapshotId = c.req.param('snapshotId');
     
@@ -39,7 +37,8 @@ export async function handleCreateComment(c: any) {
         pageUrl: formData.get('pageUrl'),
         parentId: formData.get('parentId'),
         state: formData.get('state') || 'published',
-        subscribe: formData.get('subscribe') === 'true'
+        subscribe: formData.get('subscribe') === 'true',
+        authorName: formData.get('authorName') // For anonymous users
       };
       
       // Extract file attachments
@@ -56,7 +55,8 @@ export async function handleCreateComment(c: any) {
       pageUrl,
       parentId,
       state = 'published',
-      subscribe = false
+      subscribe = false,
+      authorName
     } = body;
 
     if (!text || text.trim().length === 0) {
@@ -64,9 +64,18 @@ export async function handleCreateComment(c: any) {
     }
 
     // Get user info
-    const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-    const user = userRaw ? JSON.parse(userRaw) : null;
-    const authorName = user?.name || `User-${uid.slice(0, 8)}`;
+    let displayName: string;
+    let isAnonymous = false;
+    
+    if (isAuthenticated) {
+      const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+      const user = userRaw ? JSON.parse(userRaw) : null;
+      displayName = user?.name || `User-${uid.slice(0, 8)}`;
+    } else {
+      // Anonymous user - use provided name or default to "Anonymous"
+      displayName = authorName?.trim() || 'Anonymous';
+      isAnonymous = true;
+    }
 
     const commentId = generateCommentId();
     const now = Date.now();
@@ -108,8 +117,9 @@ export async function handleCreateComment(c: any) {
       id: commentId,
       snapshotId,
       text: text.trim(),
-      author: uid,
-      authorName,
+      author: uid || 'anonymous',
+      authorName: displayName,
+      isAnonymous,
       createdAt: now,
       elementSelector,
       elementCoordinates,
@@ -152,21 +162,23 @@ export async function handleCreateComment(c: any) {
       await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
     }
 
-    // Track analytics
-    const analytics = getAnalyticsManager(c);
-    await analytics.trackEvent(uid, 'comment_posted', {
-      snapshotId,
-      commentId,
-      hasElementSelector: !!elementSelector,
-      hasCoordinates: !!elementCoordinates,
-      isReply: !!parentId,
-      textLength: text.length
-    });
+    // Track analytics (only for authenticated users)
+    if (isAuthenticated && uid) {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(uid, 'comment_posted', {
+        snapshotId,
+        commentId,
+        hasElementSelector: !!elementSelector,
+        hasCoordinates: !!elementCoordinates,
+        isReply: !!parentId,
+        textLength: text.length
+      });
+    }
 
     // Create notifications for subscribers
     const notificationType = parentId ? 'comment_reply' : 'comment_new';
     const notificationTitle = parentId ? 'New reply to conversation' : 'New comment on snapshot';
-    const notificationMessage = `${authorName}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
+    const notificationMessage = `${displayName}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
     const actionUrl = `${c.env.PUBLIC_BASE_URL}/view/${snapshotId}`;
     
     await createNotificationForSubscribers(
@@ -210,9 +222,7 @@ export async function handleGetComments(c: any) {
 export async function handleUpdateComment(c: any) {
   try {
     const uid = await getUidFromSession(c);
-    if (!uid) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
+    const isAuthenticated = !!uid;
 
     const snapshotId = c.req.param('snapshotId');
     const commentId = c.req.param('commentId');
@@ -228,8 +238,9 @@ export async function handleUpdateComment(c: any) {
 
     const existingComment = await getResponse.json();
     
-    // Check ownership
-    if (existingComment.author !== uid) {
+    // Check ownership - only allow editing by author, but anyone can resolve
+    const isResolveAction = body.state === 'resolved';
+    if (!isResolveAction && existingComment.author !== (uid || 'anonymous')) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 
@@ -249,12 +260,14 @@ export async function handleUpdateComment(c: any) {
 
     const updatedComment = await updateResponse.json();
 
-    // Track analytics
-    const analytics = getAnalyticsManager(c);
-    await analytics.trackEvent(uid, 'comment_updated', {
-      snapshotId,
-      commentId
-    });
+    // Track analytics (only for authenticated users)
+    if (isAuthenticated && uid) {
+      const analytics = getAnalyticsManager(c);
+      await analytics.trackEvent(uid as string, 'comment_updated', {
+        snapshotId,
+        commentId
+      });
+    }
 
     return c.json({ success: true, comment: updatedComment });
   } catch (error: any) {

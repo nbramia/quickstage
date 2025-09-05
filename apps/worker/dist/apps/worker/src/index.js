@@ -1229,6 +1229,31 @@ app.get('/debug/analytics/events', async (c) => {
     const { handleDebugAnalyticsEvents } = await import('./routes/debug');
     return handleDebugAnalyticsEvents(c);
 });
+// Analytics Migration Routes (superadmin only)
+app.get('/debug/analytics/migrate/status', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    console.log('🔍 Migration status check requested');
+    const { handleMigrationStatus } = await import('./routes/debug');
+    return handleMigrationStatus(c);
+});
+app.get('/debug/analytics/migrate/test', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    console.log('🧪 Test migration requested');
+    const { handleMigrateAnalyticsEventsTest } = await import('./routes/debug');
+    return handleMigrateAnalyticsEventsTest(c);
+});
+app.post('/debug/analytics/migrate/full', async (c) => {
+    if (!(await isSuperadmin(c))) {
+        return c.json({ error: 'Superadmin access required' }, 403);
+    }
+    console.log('🚀 Full migration requested');
+    const { handleMigrateAnalyticsEventsFull } = await import('./routes/debug');
+    return handleMigrateAnalyticsEventsFull(c);
+});
 // Migration system endpoints (superadmin only)
 app.get('/debug/migration/stats', async (c) => {
     if (!(await isSuperadmin(c))) {

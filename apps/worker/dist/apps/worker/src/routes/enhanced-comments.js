@@ -13,9 +13,7 @@ function generateAttachmentId() {
 export async function handleCreateComment(c) {
     try {
         const uid = await getUidFromSession(c);
-        if (!uid) {
-            return c.json({ error: 'Unauthorized' }, 401);
-        }
+        const isAuthenticated = !!uid;
         const snapshotId = c.req.param('snapshotId');
         // Handle both JSON and FormData requests
         let body;
@@ -31,7 +29,8 @@ export async function handleCreateComment(c) {
                 pageUrl: formData.get('pageUrl'),
                 parentId: formData.get('parentId'),
                 state: formData.get('state') || 'published',
-                subscribe: formData.get('subscribe') === 'true'
+                subscribe: formData.get('subscribe') === 'true',
+                authorName: formData.get('authorName') // For anonymous users
             };
             // Extract file attachments
             const files = formData.getAll('attachments');
@@ -40,14 +39,23 @@ export async function handleCreateComment(c) {
         else {
             body = await c.req.json();
         }
-        const { text, elementSelector, elementCoordinates, pageUrl, parentId, state = 'published', subscribe = false } = body;
+        const { text, elementSelector, elementCoordinates, pageUrl, parentId, state = 'published', subscribe = false, authorName } = body;
         if (!text || text.trim().length === 0) {
             return c.json({ error: 'Comment text is required' }, 400);
         }
         // Get user info
-        const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
-        const user = userRaw ? JSON.parse(userRaw) : null;
-        const authorName = user?.name || `User-${uid.slice(0, 8)}`;
+        let displayName;
+        let isAnonymous = false;
+        if (isAuthenticated) {
+            const userRaw = await c.env.KV_USERS.get(`user:${uid}`);
+            const user = userRaw ? JSON.parse(userRaw) : null;
+            displayName = user?.name || `User-${uid.slice(0, 8)}`;
+        }
+        else {
+            // Anonymous user - use provided name or default to "Anonymous"
+            displayName = authorName?.trim() || 'Anonymous';
+            isAnonymous = true;
+        }
         const commentId = generateCommentId();
         const now = Date.now();
         // Upload attachments to R2 if any
@@ -82,8 +90,9 @@ export async function handleCreateComment(c) {
             id: commentId,
             snapshotId,
             text: text.trim(),
-            author: uid,
-            authorName,
+            author: uid || 'anonymous',
+            authorName: displayName,
+            isAnonymous,
             createdAt: now,
             elementSelector,
             elementCoordinates,
@@ -118,20 +127,22 @@ export async function handleCreateComment(c) {
             snapshot.commentsCount = (snapshot.commentsCount || 0) + 1;
             await c.env.KV_SNAPS.put(`snap:${snapshotId}`, JSON.stringify(snapshot));
         }
-        // Track analytics
-        const analytics = getAnalyticsManager(c);
-        await analytics.trackEvent(uid, 'comment_posted', {
-            snapshotId,
-            commentId,
-            hasElementSelector: !!elementSelector,
-            hasCoordinates: !!elementCoordinates,
-            isReply: !!parentId,
-            textLength: text.length
-        });
+        // Track analytics (only for authenticated users)
+        if (isAuthenticated && uid) {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'comment_posted', {
+                snapshotId,
+                commentId,
+                hasElementSelector: !!elementSelector,
+                hasCoordinates: !!elementCoordinates,
+                isReply: !!parentId,
+                textLength: text.length
+            });
+        }
         // Create notifications for subscribers
         const notificationType = parentId ? 'comment_reply' : 'comment_new';
         const notificationTitle = parentId ? 'New reply to conversation' : 'New comment on snapshot';
-        const notificationMessage = `${authorName}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
+        const notificationMessage = `${displayName}: ${text.slice(0, 100)}${text.length > 100 ? '...' : ''}`;
         const actionUrl = `${c.env.PUBLIC_BASE_URL}/view/${snapshotId}`;
         await createNotificationForSubscribers(c.env, snapshotId, parentId || commentId, notificationType, notificationTitle, notificationMessage, actionUrl);
         return c.json({ success: true, comment });
@@ -162,9 +173,7 @@ export async function handleGetComments(c) {
 export async function handleUpdateComment(c) {
     try {
         const uid = await getUidFromSession(c);
-        if (!uid) {
-            return c.json({ error: 'Unauthorized' }, 401);
-        }
+        const isAuthenticated = !!uid;
         const snapshotId = c.req.param('snapshotId');
         const commentId = c.req.param('commentId');
         const body = await c.req.json();
@@ -175,8 +184,9 @@ export async function handleUpdateComment(c) {
             return c.json({ error: 'Comment not found' }, 404);
         }
         const existingComment = await getResponse.json();
-        // Check ownership
-        if (existingComment.author !== uid) {
+        // Check ownership - only allow editing by author, but anyone can resolve
+        const isResolveAction = body.state === 'resolved';
+        if (!isResolveAction && existingComment.author !== (uid || 'anonymous')) {
             return c.json({ error: 'Unauthorized' }, 403);
         }
         // Update comment
@@ -192,12 +202,14 @@ export async function handleUpdateComment(c) {
             return c.json({ error: 'Failed to update comment' }, 500);
         }
         const updatedComment = await updateResponse.json();
-        // Track analytics
-        const analytics = getAnalyticsManager(c);
-        await analytics.trackEvent(uid, 'comment_updated', {
-            snapshotId,
-            commentId
-        });
+        // Track analytics (only for authenticated users)
+        if (isAuthenticated && uid) {
+            const analytics = getAnalyticsManager(c);
+            await analytics.trackEvent(uid, 'comment_updated', {
+                snapshotId,
+                commentId
+            });
+        }
         return c.json({ success: true, comment: updatedComment });
     }
     catch (error) {

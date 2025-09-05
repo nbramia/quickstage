@@ -1101,3 +1101,131 @@ export async function handleDebugHealth(c: any) {
     }, 500);
   }
 }
+
+// Analytics Event Migration Endpoints
+export async function handleMigrateAnalyticsEventsTest(c: any) {
+  try {
+    console.log('🧪 Starting analytics events migration test...');
+    
+    // Import the migration class
+    const { AnalyticsEventMigration } = await import('../migration/analytics-reverse-timestamp');
+    
+    // Create migration instance
+    const migration = new AnalyticsEventMigration(c.env);
+    
+    // Run test migration (1 batch only)
+    const stats = await migration.testMigration();
+    
+    return c.json({
+      success: true,
+      message: 'Test migration completed successfully',
+      stats,
+      recommendation: stats.migratedEvents > 0 ? 'Test successful - ready for full migration' : 'No old-format events found to migrate'
+    });
+    
+  } catch (error: any) {
+    console.error('Migration test error:', error);
+    
+    return c.json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
+}
+
+export async function handleMigrateAnalyticsEventsFull(c: any) {
+  try {
+    console.log('🚀 Starting full analytics events migration...');
+    
+    // Import the migration class
+    const { AnalyticsEventMigration } = await import('../migration/analytics-reverse-timestamp');
+    
+    // Create migration instance
+    const migration = new AnalyticsEventMigration(c.env);
+    
+    // Run full migration
+    const stats = await migration.executeMigration();
+    
+    return c.json({
+      success: true,
+      message: 'Full migration completed successfully',
+      stats,
+      next_steps: [
+        'Verify analytics dashboard shows recent events',
+        'Check that fast retrieval mode works correctly',
+        'Monitor performance improvements'
+      ]
+    });
+    
+  } catch (error: any) {
+    console.error('Full migration error:', error);
+    
+    return c.json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+      recovery_action: 'Migration may be partially complete - check logs for details'
+    }, 500);
+  }
+}
+
+export async function handleMigrationStatus(c: any) {
+  try {
+    console.log('📊 Checking migration status...');
+    
+    // Count events by format type
+    const list = await c.env.KV_ANALYTICS.list({
+      prefix: 'event:evt_',
+      limit: 1000  // Sample size
+    });
+    
+    const MAX_TS = 10000000000000;
+    let oldFormatCount = 0;
+    let newFormatCount = 0;
+    
+    for (const key of list.keys) {
+      const keyParts = key.name.replace('event:', '').split('_');
+      if (keyParts.length >= 2 && keyParts[0] === 'evt') {
+        const timestamp = parseInt(keyParts[1]);
+        const currentTime = Date.now();
+        
+        if (timestamp > currentTime * 2) {
+          newFormatCount++; // Reverse timestamp format
+        } else {
+          oldFormatCount++; // Original format
+        }
+      }
+    }
+    
+    const totalSampled = oldFormatCount + newFormatCount;
+    const migrationProgress = totalSampled > 0 ? (newFormatCount / totalSampled) * 100 : 0;
+    
+    return c.json({
+      migration_status: {
+        sample_size: totalSampled,
+        old_format_events: oldFormatCount,
+        new_format_events: newFormatCount,
+        migration_progress_percent: Math.round(migrationProgress * 100) / 100,
+        migration_complete: oldFormatCount === 0 && newFormatCount > 0,
+        needs_migration: oldFormatCount > 0
+      },
+      recommendations: oldFormatCount > 0 ? [
+        'Run test migration first: GET /debug/analytics/migrate/test',
+        'Then run full migration: POST /debug/analytics/migrate/full'
+      ] : [
+        'Migration is complete!',
+        'Verify analytics dashboard performance'
+      ]
+    });
+    
+  } catch (error: any) {
+    console.error('Migration status error:', error);
+    
+    return c.json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
+}
