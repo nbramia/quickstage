@@ -64,18 +64,37 @@ else
     exit 1
 fi
 
-# Step 5: Deploy to Cloudflare
-print_status "Deploying to Cloudflare..."
+# Step 5: Deploy Worker to Cloudflare
+print_status "Deploying Worker to Cloudflare..."
 cd ../../infra
 if npx wrangler deploy; then
-    print_status "Deployment successful! 🎉"
+    print_status "Worker deployment successful! 🎉"
 else
-    print_error "Deployment failed!"
+    print_error "Worker deployment failed!"
     exit 1
 fi
 cd ../apps/worker
 
-# Step 6: Verify deployment
+# Step 6: Build and Deploy Web App
+print_status "Building web app..."
+cd ../web
+if npm run build; then
+    print_status "Web app build successful!"
+else
+    print_error "Web app build failed!"
+    exit 1
+fi
+
+print_status "Deploying web app to Cloudflare Pages..."
+if npx wrangler pages deploy dist --project-name=quickstage; then
+    print_status "Web app deployment successful! 🎉"
+else
+    print_error "Web app deployment failed!"
+    exit 1
+fi
+cd ../worker
+
+# Step 7: Verify deployment
 print_status "Verifying deployment..."
 sleep 5  # Wait for deployment to propagate
 
@@ -89,10 +108,11 @@ else
 fi
 
 echo ""
-print_status "Deployment completed successfully!"
+print_status "Deployment completed successfully! 🎉"
 echo "Worker URL: https://quickstage-worker.nbramia.workers.dev"
+echo "Web App URL: https://quickstage.tech"
 echo ""
 echo "Next steps:"
-echo "1. Test the web app deployment"
+echo "1. Test the web app at https://quickstage.tech"
 echo "2. Verify all endpoints are working"
 echo "3. Check analytics and monitoring"

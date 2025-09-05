@@ -2,9 +2,36 @@ import { isSuperadmin } from '../auth';
 import { getAnalyticsManager } from '../worker-utils';
 import { canAccessProFeatures, getSubscriptionDisplayStatus } from '../user';
 
-// Smart retrieval for recent events that can find recent events efficiently
+// Constants for reverse timestamp strategy
+const MAX_TS = 10000000000000; // Same constant used in analytics.ts
+
+// Helper function to extract original timestamp from inverted event key
+function extractTimestampFromKey(eventKey: string): number | null {
+  try {
+    // Handle both old (evt_timestamp_id) and new (evt_inverted_id) formats
+    const keyParts = eventKey.replace('event:', '').split('_');
+    if (keyParts.length >= 2 && keyParts[0] === 'evt' && keyParts[1]) {
+      const timestampPart = parseInt(keyParts[1]);
+      
+      // Detect if this is an inverted timestamp (much larger than current time)
+      const currentTime = Date.now();
+      if (timestampPart > currentTime * 2) {
+        // This is an inverted timestamp - convert back to original
+        return MAX_TS - timestampPart;
+      } else {
+        // This is a regular timestamp from old format
+        return timestampPart;
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Smart retrieval for recent events - now simplified with inverted timestamps
 async function handleSmartRecentEventsRetrieval(c: any, requestedLimit: number, startTime?: number) {
-  console.log(`🔍 SMART RETRIEVAL: Starting smart recent events retrieval...`);
+  console.log(`🔍 SMART RETRIEVAL: Starting smart recent events retrieval with inverted timestamps...`);
   
   const allEvents = [];
   const userCache = new Map();
@@ -13,88 +40,104 @@ async function handleSmartRecentEventsRetrieval(c: any, requestedLimit: number, 
   const startExecutionTime = Date.now();
   
   try {
-    // Strategy 1: Look for recent events by searching backwards from current time
-    const now = Date.now();
-    const timeRanges = [
-      { name: '1h', start: now - (60 * 60 * 1000), end: now },
-      { name: '6h', start: now - (6 * 60 * 60 * 1000), end: now - (60 * 60 * 1000) },
-      { name: '24h', start: now - (24 * 60 * 60 * 1000), end: now - (6 * 60 * 60 * 1000) },
-      { name: '7d', start: now - (7 * 24 * 60 * 60 * 1000), end: now - (24 * 60 * 60 * 1000) }
-    ];
+    // With inverted timestamps, the first results from KV.list() are the newest events!
+    // No need for complex time-range searching - just paginate until we have enough
+    let cursor: string | undefined = undefined;
+    let totalKeysChecked = 0;
+    const maxKeysToCheck = 2000; // Reasonable limit to prevent timeout
     
-    for (const range of timeRanges) {
-      if (allEvents.length >= requestedLimit) break;
+    while (totalKeysChecked < maxKeysToCheck && allEvents.length < requestedLimit) {
+      const list: any = await c.env.KV_ANALYTICS.list({ 
+        prefix: 'event:evt_',
+        limit: 500,
+        cursor: cursor
+      });
       
-      console.log(`🔍 SMART RETRIEVAL: Searching ${range.name} range: ${new Date(range.start).toISOString()} to ${new Date(range.end).toISOString()}`);
+      console.log(`🔍 SMART RETRIEVAL: Checking batch of ${list.keys.length} keys (total checked: ${totalKeysChecked})`);
+      totalKeysChecked += list.keys.length;
       
-      // Strategy: Look for event keys that would be created in this time range
-      // Event keys follow pattern: event:evt_{timestamp}_{random}
-      const rangeEvents = await searchEventsByTimestampRange(c, range.start, range.end);
-      console.log(`🔍 SMART RETRIEVAL: Found ${rangeEvents.length} events in ${range.name} range`);
-      
-      for (const event of rangeEvents) {
-        if (startTime && event.timestamp < startTime) {
-          skippedByTime++;
-          continue;
-        }
-        
-        processedCount++;
-        
-        // Normalize event fields for frontend compatibility
-        const normalizedEvent = {
-          ...event,
-          type: event.eventType || event.type || 'unknown',
-          page: event.eventData?.page || event.page,
-          metadata: event.eventData || event.metadata || {}
-        };
-        
-        // Enhance event with user details
-        if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
-          if (userCache.has(normalizedEvent.userId)) {
-            const cachedUser = userCache.get(normalizedEvent.userId);
-            normalizedEvent.userName = cachedUser.name;
-            normalizedEvent.userEmail = cachedUser.email;
-          } else {
-            try {
-              const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
-              if (userRaw) {
-                const user = JSON.parse(userRaw);
-                const userData = {
-                  name: user.name || 'Unknown',
-                  email: user.email || 'No email'
-                };
-                userCache.set(normalizedEvent.userId, userData);
-                normalizedEvent.userName = userData.name;
-                normalizedEvent.userEmail = userData.email;
-              } else {
-                userCache.set(normalizedEvent.userId, { name: 'User Not Found', email: 'No email' });
-                normalizedEvent.userName = 'User Not Found';
-                normalizedEvent.userEmail = 'No email';
+      // Process keys in order (newest first due to inverted timestamps)
+      for (const key of list.keys) {
+        if (key.name.startsWith('event:evt_')) {
+          // Extract original timestamp from key
+          const originalTimestamp = extractTimestampFromKey(key.name);
+          
+          if (originalTimestamp) {
+            // Check if this event falls within our time window
+            if (startTime && originalTimestamp < startTime) {
+              skippedByTime++;
+              continue;
+            }
+            
+            // Fetch and process the event
+            const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+            if (eventRaw) {
+              const event = JSON.parse(eventRaw);
+              processedCount++;
+              
+              console.log(`🔍 SMART RETRIEVAL: Processing event ${event.id} with timestamp ${originalTimestamp}`);
+              
+              // Normalize event fields for frontend compatibility
+              const normalizedEvent = {
+                ...event,
+                type: event.eventType || event.type || 'unknown',
+                page: event.eventData?.page || event.page,
+                metadata: event.eventData || event.metadata || {}
+              };
+              
+              // Enhance event with user details
+              if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
+                if (userCache.has(normalizedEvent.userId)) {
+                  const cachedUser = userCache.get(normalizedEvent.userId);
+                  normalizedEvent.userName = cachedUser.name;
+                  normalizedEvent.userEmail = cachedUser.email;
+                } else {
+                  try {
+                    const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
+                    if (userRaw) {
+                      const user = JSON.parse(userRaw);
+                      const userData = {
+                        name: user.name || 'Unknown',
+                        email: user.email || 'No email'
+                      };
+                      userCache.set(normalizedEvent.userId, userData);
+                      normalizedEvent.userName = userData.name;
+                      normalizedEvent.userEmail = userData.email;
+                    } else {
+                      userCache.set(normalizedEvent.userId, { name: 'User Not Found', email: 'No email' });
+                      normalizedEvent.userName = 'User Not Found';
+                      normalizedEvent.userEmail = 'No email';
+                    }
+                  } catch (userError) {
+                    console.error('Failed to fetch user details for event:', userError);
+                    const errorData = { name: 'Error loading user', email: 'Error loading email' };
+                    userCache.set(normalizedEvent.userId, errorData);
+                    normalizedEvent.userName = errorData.name;
+                    normalizedEvent.userEmail = errorData.email;
+                  }
+                }
               }
-            } catch (userError) {
-              console.error('Failed to fetch user details for event:', userError);
-              const errorData = { name: 'Error loading user', email: 'Error loading email' };
-              userCache.set(normalizedEvent.userId, errorData);
-              normalizedEvent.userName = errorData.name;
-              normalizedEvent.userEmail = errorData.email;
+              
+              allEvents.push(normalizedEvent);
+              
+              // Break if we have enough events
+              if (allEvents.length >= requestedLimit) break;
             }
           }
         }
-        
-        allEvents.push(normalizedEvent);
       }
       
-      // If we found enough events, break early
-      if (allEvents.length >= requestedLimit) {
-        console.log(`🔍 SMART RETRIEVAL: Found enough events (${allEvents.length}), stopping search`);
+      // Check if we should continue or stop
+      if (list.list_complete || !list.cursor || allEvents.length >= requestedLimit) {
+        console.log(`🔍 SMART RETRIEVAL: Stopping - complete: ${list.list_complete}, cursor: ${!!list.cursor}, events: ${allEvents.length}`);
         break;
       }
+      
+      cursor = list.cursor;
     }
     
-    // Sort ALL events by timestamp descending (newest first)
-    allEvents.sort((a, b) => b.timestamp - a.timestamp);
-    
-    // Apply the requested limit AFTER sorting chronologically
+    // Events are already in chronological order (newest first) due to inverted timestamps
+    // Just apply the requested limit
     const events = allEvents.slice(0, requestedLimit);
     
     console.log(`🔍 SMART RETRIEVAL: Final result: ${events.length} events (processed ${processedCount} total)`);
@@ -110,10 +153,11 @@ async function handleSmartRecentEventsRetrieval(c: any, requestedLimit: number, 
       total: events.length,
       debug: {
         totalEventsFound: allEvents.length,
+        totalKeysChecked: totalKeysChecked,
         processedEvents: processedCount,
         skippedByTimeFilter: skippedByTime,
         finalEventCount: events.length,
-        smartRetrieval: true,
+        smartRetrievalWithInvertedTimestamps: true,
         startTimeFilter: startTime ? new Date(startTime).toISOString() : null,
         executionTimeMs: Date.now() - startExecutionTime,
         userCacheSize: userCache.size
@@ -242,12 +286,12 @@ export async function handleDebugAnalyticsEvents(c: any) {
       // Use the new smart retrieval strategy for full retrieval mode
       return await handleSmartRecentEventsRetrieval(c, requestedLimit, startTime);
     } else {
-      // Fast path: Limited KV.list() for regular dashboard loads
-      console.log(`🔍 DEBUG ANALYTICS EVENTS: Using fast retrieval (limited to ${requestedLimit} events)`);
+      // Fast path: Now optimized with inverted timestamps - first results are newest!
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Using fast retrieval with inverted timestamps (limited to ${requestedLimit} events)`);
       
       const list = await c.env.KV_ANALYTICS.list({ 
-        prefix: 'event:', 
-        limit: Math.min(requestedLimit, 500) // Reduced limit to avoid API limits
+        prefix: 'event:evt_', // More specific prefix for efficiency
+        limit: Math.min(requestedLimit, 500)
       });
       
       console.log(`🔍 DEBUG ANALYTICS EVENTS: Found ${list.keys.length} keys in KV (fast mode)`);
@@ -255,88 +299,94 @@ export async function handleDebugAnalyticsEvents(c: any) {
       const events = [];
       let processedCount = 0;
       let skippedByTime = 0;
-      const userCache = new Map(); // Add user cache to fast path too
+      const userCache = new Map();
       
+      // Process keys in order - they're already newest-first due to inverted timestamps
       for (const key of list.keys) {
-        if (key.name.startsWith('event:')) {
-          const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
-          if (eventRaw) {
-            const event = JSON.parse(eventRaw);
-            processedCount++;
-            
-            // FIXED: Filter by startTime if provided - show events NEWER than startTime
-            if (startTime && event.timestamp < startTime) {
+        if (key.name.startsWith('event:evt_')) {
+          // Extract original timestamp from key for filtering
+          const originalTimestamp = extractTimestampFromKey(key.name);
+          
+          if (originalTimestamp) {
+            // Filter by time window if provided
+            if (startTime && originalTimestamp < startTime) {
               skippedByTime++;
               continue; // Skip events older than startTime
             }
             
-            // Normalize event fields for frontend compatibility
-            const normalizedEvent = {
-              ...event,
-              type: event.eventType || event.type || 'unknown', // Map eventType to type
-              page: event.eventData?.page || event.page, // Extract page from eventData
-              metadata: event.eventData || event.metadata || {} // Extract metadata from eventData
-            };
-            
-            // Enhance event with user details if userId is not 'system' or 'anonymous'
-            // Use cache to avoid repeated KV calls (same as fullRetrieval path)
-            if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
-              if (userCache.has(normalizedEvent.userId)) {
-                const cachedUser = userCache.get(normalizedEvent.userId);
-                normalizedEvent.userName = cachedUser.name;
-                normalizedEvent.userEmail = cachedUser.email;
-              } else {
-                try {
-                  const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
-                  if (userRaw) {
-                    const user = JSON.parse(userRaw);
-                    const userData = {
-                      name: user.name || 'Unknown',
-                      email: user.email || 'No email'
-                    };
-                    userCache.set(normalizedEvent.userId, userData);
-                    normalizedEvent.userName = userData.name;
-                    normalizedEvent.userEmail = userData.email;
-                  } else {
-                    userCache.set(normalizedEvent.userId, { name: 'User Not Found', email: 'No email' });
-                    normalizedEvent.userName = 'User Not Found';
-                    normalizedEvent.userEmail = 'No email';
+            const eventRaw = await c.env.KV_ANALYTICS.get(key.name);
+            if (eventRaw) {
+              const event = JSON.parse(eventRaw);
+              processedCount++;
+              
+              // Normalize event fields for frontend compatibility
+              const normalizedEvent = {
+                ...event,
+                type: event.eventType || event.type || 'unknown',
+                page: event.eventData?.page || event.page,
+                metadata: event.eventData || event.metadata || {}
+              };
+              
+              // Enhance event with user details
+              if (normalizedEvent.userId && normalizedEvent.userId !== 'system' && normalizedEvent.userId !== 'anonymous') {
+                if (userCache.has(normalizedEvent.userId)) {
+                  const cachedUser = userCache.get(normalizedEvent.userId);
+                  normalizedEvent.userName = cachedUser.name;
+                  normalizedEvent.userEmail = cachedUser.email;
+                } else {
+                  try {
+                    const userRaw = await c.env.KV_USERS.get(`user:${normalizedEvent.userId}`);
+                    if (userRaw) {
+                      const user = JSON.parse(userRaw);
+                      const userData = {
+                        name: user.name || 'Unknown',
+                        email: user.email || 'No email'
+                      };
+                      userCache.set(normalizedEvent.userId, userData);
+                      normalizedEvent.userName = userData.name;
+                      normalizedEvent.userEmail = userData.email;
+                    } else {
+                      userCache.set(normalizedEvent.userId, { name: 'User Not Found', email: 'No email' });
+                      normalizedEvent.userName = 'User Not Found';
+                      normalizedEvent.userEmail = 'No email';
+                    }
+                  } catch (userError) {
+                    console.error('Failed to fetch user details for event:', userError);
+                    const errorData = { name: 'Error loading user', email: 'Error loading email' };
+                    userCache.set(normalizedEvent.userId, errorData);
+                    normalizedEvent.userName = errorData.name;
+                    normalizedEvent.userEmail = errorData.email;
                   }
-                } catch (userError) {
-                  console.error('Failed to fetch user details for event:', userError);
-                  const errorData = { name: 'Error loading user', email: 'Error loading email' };
-                  userCache.set(normalizedEvent.userId, errorData);
-                  normalizedEvent.userName = errorData.name;
-                  normalizedEvent.userEmail = errorData.email;
                 }
               }
+              
+              events.push(normalizedEvent);
             }
-            
-            events.push(normalizedEvent);
           }
         }
       }
       
-      // Sort by timestamp descending (newest first)
-      events.sort((a, b) => b.timestamp - a.timestamp);
+      // Events are already in correct order (newest first) due to inverted timestamps
+      // No need to sort - just limit if needed
+      const finalEvents = events.slice(0, requestedLimit);
       
-      console.log(`🔍 DEBUG ANALYTICS EVENTS: Fast mode result: ${events.length} events`);
-      if (events.length > 0) {
-        console.log(`🔍 DEBUG ANALYTICS EVENTS: Newest event: ${events[0].id} at ${new Date(events[0].timestamp).toISOString()}`);
-        console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest returned event: ${events[events.length-1].id} at ${new Date(events[events.length-1].timestamp).toISOString()}`);
+      console.log(`🔍 DEBUG ANALYTICS EVENTS: Fast mode result: ${finalEvents.length} events`);
+      if (finalEvents.length > 0) {
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Newest event: ${finalEvents[0].id} at ${new Date(finalEvents[0].timestamp).toISOString()}`);
+        console.log(`🔍 DEBUG ANALYTICS EVENTS: Oldest returned event: ${finalEvents[finalEvents.length-1].id} at ${new Date(finalEvents[finalEvents.length-1].timestamp).toISOString()}`);
       }
       
       return c.json({
-        events,
+        events: finalEvents,
         cursor: list.cursor,
         truncated: list.list_complete === false,
-        total: events.length,
+        total: finalEvents.length,
         debug: {
           totalKeysFound: list.keys.length,
           processedEvents: processedCount,
           skippedByTimeFilter: skippedByTime,
-          finalEventCount: events.length,
-          chronologicalRetrieval: false,
+          finalEventCount: finalEvents.length,
+          fastModeWithInvertedTimestamps: true,
           startTimeFilter: startTime ? new Date(startTime).toISOString() : null,
           userCacheSize: userCache.size
         }

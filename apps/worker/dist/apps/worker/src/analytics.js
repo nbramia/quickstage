@@ -5,9 +5,14 @@ export class AnalyticsManager {
     constructor(env) {
         this.env = env;
     }
-    // Generate unique analytics event ID
+    // Generate unique analytics event ID with reverse timestamp for chronological ordering
     generateEventId() {
-        return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Use inverted timestamp so newest events sort first lexicographically in KV
+        const MAX_TS = 10000000000000; // Fixed constant for consistent 13-digit inverted timestamps
+        const invertedTimestamp = MAX_TS - Date.now();
+        const randomId = Math.random().toString(36).substr(2, 9);
+        console.log(`🔢 Generated inverted timestamp: ${invertedTimestamp} (original: ${Date.now()})`);
+        return `evt_${invertedTimestamp}_${randomId}`;
     }
     // Generate session ID
     generateSessionId() {
