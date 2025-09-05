@@ -15,6 +15,8 @@ export interface Snapshot {
   id: string;
   name?: string;
   ownerUid?: string; // Owner user ID for authorization checks
+  ownerName?: string; // Owner name (admin context only)
+  ownerEmail?: string; // Owner email (admin context only)
   projectId?: string;
   createdAt: string | number;
   updatedAt?: string | number;

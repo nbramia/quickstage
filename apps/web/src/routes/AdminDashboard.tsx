@@ -71,6 +71,8 @@ export default function AdminDashboard() {
   const [adminSnapshots, setAdminSnapshots] = useState<Snapshot[]>([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
   const [snapshotsError, setSnapshotsError] = useState<string | null>(null);
+  const [selectedUserFilter, setSelectedUserFilter] = useState<string>('all');
+  const [isUserFilterOpen, setIsUserFilterOpen] = useState(false);
   
   // Additional analytics data
   const [userAnalytics, setUserAnalytics] = useState<any>(null);
@@ -179,7 +181,6 @@ export default function AdminDashboard() {
   
   // Dropdown open states
   const [isEventTypeOpen, setIsEventTypeOpen] = useState(false);
-  const [isUserFilterOpen, setIsUserFilterOpen] = useState(false);
   const [isPageFilterOpen, setIsPageFilterOpen] = useState(false);
   const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
   
@@ -810,6 +811,29 @@ export default function AdminDashboard() {
   
   const eventPages = getAllPages();
 
+  // Filter snapshots by selected user
+  const filteredSnapshots = React.useMemo(() => {
+    if (selectedUserFilter === 'all') {
+      return adminSnapshots;
+    }
+    return adminSnapshots.filter(snapshot => snapshot.ownerUid === selectedUserFilter);
+  }, [adminSnapshots, selectedUserFilter]);
+
+  // Get unique users who have snapshots for the filter dropdown
+  const usersWithSnapshots = React.useMemo(() => {
+    const userMap = new Map();
+    adminSnapshots.forEach(snapshot => {
+      if (snapshot.ownerUid && snapshot.ownerName) {
+        userMap.set(snapshot.ownerUid, {
+          uid: snapshot.ownerUid,
+          name: snapshot.ownerName,
+          email: snapshot.ownerEmail || 'Unknown Email'
+        });
+      }
+    });
+    return Array.from(userMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [adminSnapshots]);
+
   const loadMigrationStats = async () => {
     try {
       const response = await api.get('/debug/migration/stats');
@@ -1220,27 +1244,124 @@ export default function AdminDashboard() {
                 </button>
               </div>
             ) : (
-              <SnapshotDashboard
-                snapshots={adminSnapshots}
-                projects={projects}
-                onRefresh={loadSnapshots}
-                onExtendSnapshot={async (snapshotId: string) => {
-                  try {
-                    await api.post(`/api/snapshots/${snapshotId}/extend`);
-                    loadSnapshots(); // Refresh data
-                    setShowSuccess('Snapshot extended successfully');
-                  } catch (error) {
-                    setError('Failed to extend snapshot');
+              <>
+                {/* User Filter Dropdown - Only for superadmin */}
+                {user?.role === 'superadmin' && (
+                  <div className="bg-white shadow rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium text-gray-900 font-inconsolata">Filter by User</h3>
+                      <span className="text-sm text-gray-500">
+                        Showing {filteredSnapshots.length} of {adminSnapshots.length} snapshots
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-4">
+                      <div className="relative custom-dropdown">
+                        <button
+                          type="button"
+                          onClick={() => setIsUserFilterOpen(!isUserFilterOpen)}
+                          className="inline-flex items-center justify-between w-full px-4 py-2 text-sm font-medium bg-white border border-gray-300 rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-w-[300px]"
+                        >
+                          <span className="text-gray-700">
+                            {selectedUserFilter === 'all' 
+                              ? 'All Users' 
+                              : usersWithSnapshots.find(u => u.uid === selectedUserFilter)?.name || 'Unknown User'
+                            }
+                          </span>
+                          <svg 
+                            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isUserFilterOpen ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        
+                        {isUserFilterOpen && (
+                          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5">
+                            <div className="py-1 max-h-60 overflow-auto">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserFilter('all');
+                                  setIsUserFilterOpen(false);
+                                }}
+                                className={`w-full px-4 py-2 text-sm text-left hover:bg-gray-50 transition-colors duration-150 first:rounded-t-lg ${
+                                  selectedUserFilter === 'all' 
+                                    ? 'bg-blue-50 text-blue-700 font-medium' 
+                                    : 'text-gray-700'
+                                }`}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">All Users</span>
+                                  <span className="text-xs text-gray-500">Show all snapshots</span>
+                                </div>
+                              </button>
+                              
+                              {usersWithSnapshots.map((user) => (
+                                <button
+                                  key={user.uid}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedUserFilter(user.uid);
+                                    setIsUserFilterOpen(false);
+                                  }}
+                                  className={`w-full px-4 py-2 text-sm text-left hover:bg-gray-50 transition-colors duration-150 last:rounded-b-lg ${
+                                    selectedUserFilter === user.uid 
+                                      ? 'bg-blue-50 text-blue-700 font-medium' 
+                                      : 'text-gray-700'
+                                  }`}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{user.name}</span>
+                                    <span className="text-xs text-gray-500">{user.email}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {selectedUserFilter !== 'all' && (
+                        <button
+                          onClick={() => setSelectedUserFilter('all')}
+                          className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+                        >
+                          Clear Filter
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <SnapshotDashboard
+                  snapshots={filteredSnapshots}
+                  projects={projects}
+                  onRefresh={loadSnapshots}
+                  onExtendSnapshot={async (snapshotId: string) => {
+                    try {
+                      await api.post(`/api/snapshots/${snapshotId}/extend`);
+                      loadSnapshots(); // Refresh data
+                      setShowSuccess('Snapshot extended successfully');
+                    } catch (error) {
+                      setError('Failed to extend snapshot');
+                    }
+                  }}
+                  selectedProjectId={selectedProjectId}
+                  onSelectProject={handleSelectProject}
+                  showWidgets={true}
+                  showExtensionSection={false}
+                  user={user}
+                  title="All Snapshots"
+                  subtitle={
+                    selectedUserFilter === 'all' 
+                      ? `${adminSnapshots.length} snapshots from all users`
+                      : `${filteredSnapshots.length} snapshots from ${usersWithSnapshots.find(u => u.uid === selectedUserFilter)?.name || 'selected user'}`
                   }
-                }}
-                selectedProjectId={selectedProjectId}
-                onSelectProject={handleSelectProject}
-                showWidgets={true}
-                showExtensionSection={false}
-                user={user}
-                title="All Snapshots"
-                subtitle={`${adminSnapshots.length} snapshots from all users`}
-              />
+                />
+              </>
             )}
           </div>
 
