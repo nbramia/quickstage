@@ -80,7 +80,6 @@ export default function AdminDashboard() {
   const [systemAnalytics, setSystemAnalytics] = useState<any>(null);
   const [recentEvents, setRecentEvents] = useState<any[]>([]);
   const [analyticsTimeframe, setAnalyticsTimeframe] = useState<'24h' | '7d' | '30d'>('24h');
-  const [refreshEventsLoading, setRefreshEventsLoading] = useState(false);
   
   // Sorting state for user table
   const [sortField, setSortField] = useState<string | null>(null);
@@ -277,25 +276,6 @@ export default function AdminDashboard() {
     try {
       setAnalyticsLoading(true);
       
-      // Calculate time range based on selected timeframe
-      const now = Date.now();
-      let startTime: number;
-      
-      switch (analyticsTimeframe) {
-        case '24h':
-          startTime = now - (24 * 60 * 60 * 1000);
-          break;
-        case '7d':
-          startTime = now - (7 * 24 * 60 * 60 * 1000);
-          break;
-        case '30d':
-          startTime = now - (30 * 24 * 60 * 60 * 1000);
-          break;
-        default:
-          // Adaptive window: try recent periods until we find events
-          startTime = now - (2 * 60 * 60 * 1000); // Start with 2 hours
-      }
-      
       // Load basic analytics data
       const [statsResponse, usersResponse, snapshotsResponse] = await Promise.all([
         api.get('/debug/stats'),
@@ -308,39 +288,11 @@ export default function AdminDashboard() {
       setSnapshotAnalytics(snapshotsResponse);
       setSystemAnalytics(statsResponse);
       
-      // Adaptive event loading: try progressively wider time windows for 24h default view
-      const useAdaptiveWindows = analyticsTimeframe === '24h'; // Use adaptive for default 24h view
-      const timeWindows = useAdaptiveWindows 
-        ? [
-            { name: '2h', ms: 2 * 60 * 60 * 1000 },
-            { name: '24h', ms: 24 * 60 * 60 * 1000 },
-            { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
-            { name: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
-          ]
-        : [
-            { 
-              name: analyticsTimeframe, 
-              ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
-                  analyticsTimeframe === '30d' ? 30 * 24 * 60 * 60 * 1000 :
-                  24 * 60 * 60 * 1000 // 24h fallback
-            }
-          ];
-      
-      let foundEvents = [];
-      for (const window of timeWindows) {
-        const windowStartTime = now - window.ms;
-        console.log(`Trying ${window.name} window (fast mode), startTime: ${windowStartTime} (${new Date(windowStartTime).toISOString()})`);
-        
-        const eventsResponse = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}`);
-        
-        if (eventsResponse.events && eventsResponse.events.length > 0) {
-          foundEvents = eventsResponse.events;
-          console.log(`Found ${foundEvents.length} events in ${window.name} window`);
-          break;
-        } else {
-          console.log(`No events found in ${window.name} window`);
-        }
-      }
+      // Simply get the most recent events - backend handles chronological ordering
+      console.log('Loading most recent analytics events...');
+      const eventsResponse = await api.get(`/debug/analytics/events?limit=500`);
+      const foundEvents = eventsResponse?.events || [];
+      console.log(`Loaded ${foundEvents.length} recent events`);
       
       setRecentEvents(foundEvents);
       
@@ -493,24 +445,38 @@ export default function AdminDashboard() {
   // Filter events based on current filters
   const filteredEvents = recentEvents.filter(event => {
     // Skip malformed events
-    if (!event || !event.type) return false;
+    if (!event || !event.eventType) {
+      return false;
+    }
     
     // Event type filter
-    if (eventTypeFilter !== 'all' && event.type !== eventTypeFilter) return false;
+    if (eventTypeFilter !== 'all' && event.eventType !== eventTypeFilter) {
+      return false;
+    }
     
     // User filter - handle both email format and direct userId
     if (userFilter !== 'all') {
       if (userFilter.includes('(') && userFilter.includes(')')) {
         // Extract userId from "email (userId)" format
         const userIdMatch = userFilter.match(/\(([^)]+)\)/);
-        if (userIdMatch && event.userId !== userIdMatch[1]) return false;
+        if (userIdMatch && event.userId !== userIdMatch[1]) {
+          console.log('Filtered out by user filter (email format):', event.userId, 'vs', userIdMatch[1]);
+          return false;
+        }
       } else if (event.userId !== userFilter) {
+        console.log('Filtered out by user filter:', event.userId, 'vs', userFilter);
         return false;
       }
     }
     
-    // Page filter
-    if (pageFilter !== 'all' && event.page !== pageFilter) return false;
+    // Page filter - check both event.page and event.eventData.page
+    if (pageFilter !== 'all') {
+      const eventPage = event.page || event.eventData?.page;
+      if (eventPage !== pageFilter) {
+        console.log('Filtered out by page filter:', eventPage, 'vs', pageFilter);
+        return false;
+      }
+    }
     
     // Time filtering
     if (timeFilterType !== 'all' && event.timestamp) {
@@ -518,20 +484,41 @@ export default function AdminDashboard() {
       
       switch (timeFilterType) {
         case 'before':
-          if (timeFilterBefore && eventTime >= new Date(timeFilterBefore).getTime()) return false;
+          if (timeFilterBefore && eventTime >= new Date(timeFilterBefore).getTime()) {
+            console.log('Filtered out by time (before):', eventTime, 'vs', new Date(timeFilterBefore).getTime());
+            return false;
+          }
           break;
         case 'after':
-          if (timeFilterAfter && eventTime <= new Date(timeFilterAfter).getTime()) return false;
+          if (timeFilterAfter && eventTime <= new Date(timeFilterAfter).getTime()) {
+            console.log('Filtered out by time (after):', eventTime, 'vs', new Date(timeFilterAfter).getTime());
+            return false;
+          }
           break;
         case 'between':
-          if (timeFilterStart && eventTime < new Date(timeFilterStart).getTime()) return false;
-          if (timeFilterEnd && eventTime > new Date(timeFilterEnd).getTime()) return false;
+          if (timeFilterStart && eventTime < new Date(timeFilterStart).getTime()) {
+            console.log('Filtered out by time (between start):', eventTime, 'vs', new Date(timeFilterStart).getTime());
+            return false;
+          }
+          if (timeFilterEnd && eventTime > new Date(timeFilterEnd).getTime()) {
+            console.log('Filtered out by time (between end):', eventTime, 'vs', new Date(timeFilterEnd).getTime());
+            return false;
+          }
           break;
       }
     }
     
     return true;
   });
+  
+  // Debug logging
+  console.log('Recent Events Debug:');
+  console.log('- Total recentEvents:', recentEvents.length);
+  console.log('- Filtered events:', filteredEvents.length);
+  console.log('- Current filters:', { eventTypeFilter, userFilter, pageFilter, timeFilterType });
+  if (recentEvents.length > 0) {
+    console.log('- Sample event:', recentEvents[0]);
+  }
   
 
 
@@ -725,8 +712,8 @@ export default function AdminDashboard() {
 
   // Generate human-readable event descriptions
   const getEventDescription = (event: any) => {
-    // Safety check for event and event.type
-    if (!event || !event.type) {
+    // Safety check for event and event.eventType
+    if (!event || !event.eventType) {
       return 'Unknown event';
     }
     
@@ -734,9 +721,9 @@ export default function AdminDashboard() {
     if (baseDescription) return baseDescription;
     
     // Generate descriptions based on event type and data
-    switch (event.type) {
+    switch (event.eventType) {
       case 'page_view':
-        return `Viewed page: ${event.page || 'Unknown page'}`;
+        return `Viewed page: ${event.page || event.eventData?.page || 'Unknown page'}`;
       case 'user_login':
         return 'User logged in';
       case 'user_logout':
@@ -793,7 +780,7 @@ export default function AdminDashboard() {
         return 'Unauthorized access attempt';
       default:
         // Safe fallback for unknown event types
-        return `${event.type.charAt(0).toUpperCase() + event.type.slice(1).replace(/_/g, ' ')}`;
+        return `${event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1).replace(/_/g, ' ')}`;
     }
   };
 
@@ -909,7 +896,7 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center font-poppins">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading users...</p>
+          <p className="text-gray-600">Loading admin dashboard...</p>
         </div>
       </div>
     );
@@ -1607,51 +1594,27 @@ export default function AdminDashboard() {
                   <button
                     onClick={async () => {
                       try {
-                        setLoading(true);
-                        const now = Date.now();
+                        setAnalyticsLoading(true);
                         
-                        // Use adaptive time windows for fullRetrieval as well (for default 24h view)
-                        const useAdaptiveWindows = analyticsTimeframe === '24h'; // Use adaptive for default 24h view
-                        const timeWindows = useAdaptiveWindows 
-                          ? [
-                              { name: '2h', ms: 2 * 60 * 60 * 1000 },
-                              { name: '24h', ms: 24 * 60 * 60 * 1000 },
-                              { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 }
-                            ]
-                          : [
-                              { 
-                                name: analyticsTimeframe, 
-                                ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
-                                    30 * 24 * 60 * 60 * 1000 // 30d fallback
-                              }
-                            ];
-                        
-                        let foundEvents = [];
-                        for (const window of timeWindows) {
-                          const windowStartTime = now - window.ms;
-                          const response = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}&fullRetrieval=true`);
-                          const events = response?.events || [];
-                          
-                          if (events.length > 0) {
-                            foundEvents = events;
-                            console.log(`Full retrieval found ${foundEvents.length} events in ${window.name} window`);
-                            break;
-                          }
-                        }
+                        // Simply get the most recent events with full retrieval for completeness
+                        console.log('Refreshing with most recent events...');
+                        const response = await api.get(`/debug/analytics/events?limit=500&fullRetrieval=true`);
+                        const foundEvents = response?.events || [];
+                        console.log(`Refresh found ${foundEvents.length} recent events`);
                         
                         setRecentEvents(foundEvents);
                       } catch (error) {
                         console.error('Failed to refresh activity feed:', error);
                       } finally {
-                        setLoading(false);
+                        setAnalyticsLoading(false);
                       }
                     }}
-                    disabled={loading}
+                    disabled={analyticsLoading}
                     className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? (
+                    {analyticsLoading ? (
                       <>
-                        <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-gray-300 border-t-gray-900 rounded-full"></div>
+                        <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
                         Refreshing...
                       </>
                     ) : (
@@ -1765,12 +1728,19 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="border-t border-gray-200 px-4 py-5 sm:p-6">
-                {filteredEvents.length > 0 ? (
+                {analyticsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="inline-flex items-center">
+                      <div className="animate-spin -ml-1 mr-3 h-5 w-5 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
+                      <span className="text-gray-600">Loading recent activity...</span>
+                    </div>
+                  </div>
+                ) : filteredEvents.length > 0 ? (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {filteredEvents.map((event, index) => (
                       <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                        <div className={`px-2 py-1 rounded-full text-xs font-medium border ${getEventColor(event.type)}`}>
-                          {event.type}
+                        <div className={`px-2 py-1 rounded-full text-xs font-medium border ${getEventColor(event.eventType)}`}>
+                          {event.eventType}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between">
@@ -1800,67 +1770,6 @@ export default function AdminDashboard() {
                     <p className="text-gray-600">
                       {recentEvents.length === 0 ? 'No recent events available' : 'No events match the current filters'}
                     </p>
-                    <button
-                      onClick={async () => {
-                        if (refreshEventsLoading) return; // Prevent duplicate requests
-                        
-                        try {
-                          setRefreshEventsLoading(true);
-                          const now = Date.now();
-                          
-                          // Use adaptive time windows for fullRetrieval
-                          const useAdaptiveWindows = analyticsTimeframe === '24h';
-                          const timeWindows = useAdaptiveWindows 
-                            ? [
-                                { name: '2h', ms: 2 * 60 * 60 * 1000 },
-                                { name: '24h', ms: 24 * 60 * 60 * 1000 },
-                                { name: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
-                                { name: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
-                              ]
-                            : [
-                                { 
-                                  name: analyticsTimeframe, 
-                                  ms: analyticsTimeframe === '7d' ? 7 * 24 * 60 * 60 * 1000 :
-                                      30 * 24 * 60 * 60 * 1000 // 30d fallback
-                                }
-                              ];
-                          
-                          let foundEvents = [];
-                          for (const window of timeWindows) {
-                            const windowStartTime = now - window.ms;
-                            console.log(`Trying ${window.name} window with fullRetrieval, startTime: ${windowStartTime} (${new Date(windowStartTime).toISOString()})`);
-                            
-                            const response = await api.get(`/debug/analytics/events?limit=500&startTime=${windowStartTime}&fullRetrieval=true`);
-                            const events = response?.events || [];
-                            
-                            if (events.length > 0) {
-                              foundEvents = events;
-                              console.log(`Full retrieval found ${foundEvents.length} events in ${window.name} window`);
-                              break;
-                            } else {
-                              console.log(`No events found in ${window.name} window`);
-                            }
-                          }
-                          
-                          setRecentEvents(foundEvents);
-                        } catch (error) {
-                          console.error('Failed to refresh events:', error);
-                        } finally {
-                          setRefreshEventsLoading(false);
-                        }
-                      }}
-                      disabled={refreshEventsLoading}
-                      className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                    >
-                      {refreshEventsLoading ? (
-                        <>
-                          <div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                          Refreshing...
-                        </>
-                      ) : (
-                        'Refresh Events'
-                      )}
-                    </button>
                   </div>
                 )}
               </div>

@@ -55,18 +55,59 @@ export async function handleStartAIConversation(c: any) {
       return c.json({ success: false, error: 'Snapshot not found' }, 404);
     }
 
-    // Check access permissions (owner or public)
-    if (!snapshot.public && snapshot.ownerUid !== uid) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
+    // Debug access control
+    console.log('🔍 Snapshot access check:', {
+      snapshotId,
+      uid,
+      snapshotPublic: snapshot.public,
+      snapshotOwnerUid: snapshot.ownerUid,
+      isOwner: snapshot.ownerUid === uid,
+      shouldAllow: snapshot.public || snapshot.ownerUid === uid
+    });
+
+    // Get user info to check if superadmin
+    let isSuperadmin = false;
+    if (uid) {
+      try {
+        const user = await c.env.KV_USERS.get(`user:${uid}`, { type: 'json' });
+        isSuperadmin = user?.role === 'superadmin';
+        console.log('🔍 User role check:', { uid, role: user?.role, isSuperadmin });
+      } catch (err) {
+        console.warn('Failed to check user role:', err);
+      }
     }
+
+    // AI analysis is available to anyone - no access restrictions needed
+    // Each user gets their own conversation based on uid or ipAddress
+    console.log('✅ AI analysis access granted to:', { uid, ipAddress, isSuperadmin });
 
     // Get or create conversation
     const conversationId = `ai-conv:${snapshotId}:${uid || ipAddress}`;
+    console.log('🔍 Creating/retrieving conversation with ID:', conversationId);
+    console.log('🔍 User ID:', uid, 'IP Address:', ipAddress);
     let conversation = await c.env.KV_ANALYTICS.get(conversationId, { type: 'json' }) as AIConversation | null;
     
     if (!conversation) {
-      // Analyze snapshot files and create initial conversation
-      const analysisResult = await analyzeSnapshotWithAI(snapshotId, snapshot.files, c.env);
+      // Get snapshot content for analysis
+      const snapshotContent = await getSnapshotContentForAnalysis(snapshotId, snapshot.files, c.env);
+      
+      // Create initial conversation with OpenAI analysis
+      const initialMessages: OpenAIMessage[] = [
+        {
+          role: 'system',
+          content: getSystemPrompt()
+        },
+        {
+          role: 'user',
+          content: `
+            Please analyze this prototype and provide specific UI/UX feedback and suggestions. 
+            Here's the snapshot content:
+            \n\n${snapshotContent}`
+        }
+      ];
+      
+      // Get AI analysis
+      const analysisResult = await callOpenAI(initialMessages, c.env.OPENAI_API_KEY);
       
       conversation = {
         id: conversationId,
@@ -141,9 +182,13 @@ export async function handleSendAIMessage(c: any) {
 
     // Get conversation
     const conversationId = `ai-conv:${snapshotId}:${uid || ipAddress}`;
+    console.log('🔍 Looking for conversation with ID:', conversationId);
+    console.log('🔍 User ID:', uid, 'IP Address:', ipAddress);
     const conversation = await c.env.KV_ANALYTICS.get(conversationId, { type: 'json' }) as AIConversation | null;
+    console.log('🔍 Conversation found:', conversation ? 'Yes' : 'No');
     
     if (!conversation) {
+      console.error('❌ Conversation not found for ID:', conversationId);
       return c.json({ success: false, error: 'Conversation not found. Please start a new conversation.' }, 404);
     }
 
@@ -160,6 +205,7 @@ export async function handleSendAIMessage(c: any) {
 
     // Get AI response
     try {
+      console.log('🤖 Calling OpenAI with API key:', c.env.OPENAI_API_KEY ? 'Present' : 'Missing');
       const aiResponse = await callOpenAI(conversation.messages, c.env.OPENAI_API_KEY);
       
       conversation.messages.push({
@@ -239,7 +285,9 @@ export async function handleGetAIConversation(c: any) {
 
 // OpenAI API integration
 async function callOpenAI(messages: OpenAIMessage[], apiKey: string): Promise<string> {
+  console.log('🔑 OpenAI API Key check:', apiKey ? 'Present' : 'Missing');
   if (!apiKey) {
+    console.error('❌ OpenAI API key not configured');
     throw new Error('OpenAI API key not configured');
   }
 
@@ -267,6 +315,41 @@ async function callOpenAI(messages: OpenAIMessage[], apiKey: string): Promise<st
 
   const data: OpenAIResponse = await response.json();
   return data.choices[0]?.message?.content || 'I apologize, but I couldn\'t generate a response at this time.';
+}
+
+// Get snapshot content for AI analysis
+async function getSnapshotContentForAnalysis(snapshotId: string, files: SnapshotFile[], env: any): Promise<string> {
+  try {
+    // Get file contents from R2
+    const fileContents = await Promise.all(
+      files.slice(0, 10).map(async (file) => { // Limit to first 10 files
+        try {
+          if (file.ct === 'text/html' || file.ct === 'text/css' || file.ct === 'text/javascript' ||
+              file.p.endsWith('.html') || file.p.endsWith('.css') || file.p.endsWith('.js')) {
+            const object = await env.R2_SNAPSHOTS.get(`${snapshotId}/${file.p}`);
+            if (object) {
+              const content = await object.text();
+              return `\n\n--- ${file.p} (${file.ct}) ---\n${content.substring(0, 5000)}`; // Limit content length
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to read file ${file.p}:`, err);
+        }
+        return '';
+      })
+    );
+
+    const validContents = fileContents.filter(content => content.length > 0);
+    
+    if (validContents.length === 0) {
+      return `Snapshot ${snapshotId} contains ${files.length} files, but no readable text content was found. Files include: ${files.map(f => f.p).join(', ')}`;
+    }
+
+    return `Snapshot Analysis for ${snapshotId}:\nFiles: ${files.length} total\n\nContent:\n${validContents.join('\n')}`;
+  } catch (error) {
+    console.error('Failed to get snapshot content for analysis:', error);
+    return `Snapshot ${snapshotId} - Error retrieving content: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  }
 }
 
 // Generate system prompt for UI/UX analysis
@@ -299,63 +382,6 @@ function getSystemPrompt(): string {
 - Keep feedback constructive and collaboration-focused
 
 Focus on making this prototype an effective tool for cross-team communication and stakeholder buy-in.`;
-}
-
-// Analyze snapshot files with AI
-async function analyzeSnapshotWithAI(snapshotId: string, files: SnapshotFile[], env: any): Promise<string> {
-  try {
-    // Get file contents from R2
-    const fileContents = await Promise.all(
-      files.slice(0, 10).map(async (file) => { // Limit to first 10 files
-        try {
-          if (file.ct === 'text/html' || file.ct === 'text/css' || file.ct === 'text/javascript' ||
-              file.p.endsWith('.html') || file.p.endsWith('.css') || file.p.endsWith('.js')) {
-            const object = await env.R2_SNAPSHOTS.get(`${snapshotId}/${file.p}`);
-            if (object) {
-              const content = await object.text();
-              return `\n\n--- ${file.p} (${file.ct}) ---\n${content.substring(0, 5000)}`; // Limit content length
-            }
-          }
-        } catch (err) {
-          console.warn(`Failed to read file ${file.p}:`, err);
-        }
-        return '';
-      })
-    );
-
-    const analysisContent = fileContents.filter(Boolean).join('');
-    
-    if (!analysisContent.trim()) {
-      return 'I can see your prototype structure, but I need to analyze the actual code content to provide specific UI/UX suggestions. Could you share more details about what specific areas you\'d like me to focus on?';
-    }
-
-    const analysisPrompt = `I'm analyzing a web prototype with the following files and content:
-
-Files in this prototype: ${files.map(f => f.p).join(', ')}
-
-Content to analyze:${analysisContent.substring(0, 20000)}
-
-Please provide a comprehensive UI/UX analysis of this prototype. Focus on:
-1. Overall design and visual hierarchy
-2. User experience and navigation flow
-3. Accessibility considerations
-4. Mobile responsiveness potential issues
-5. Interactive elements and usability
-6. Specific actionable improvements
-
-Provide 3-5 high-impact suggestions with clear explanations of why each improvement matters for the user experience.`;
-
-    const messages: OpenAIMessage[] = [
-      { role: 'system', content: getSystemPrompt() },
-      { role: 'user', content: analysisPrompt }
-    ];
-
-    return await callOpenAI(messages, env.OPENAI_API_KEY);
-    
-  } catch (error) {
-    console.error('AI analysis failed:', error);
-    return 'I\'m having trouble analyzing your prototype right now. The AI service is temporarily unavailable, but I\'d be happy to help once it\'s back online. In the meantime, consider checking for common UX improvements like mobile responsiveness, color contrast, and clear navigation.';
-  }
 }
 
 // Rate limiting functions

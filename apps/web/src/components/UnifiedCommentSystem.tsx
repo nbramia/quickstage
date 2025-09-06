@@ -166,7 +166,10 @@ function CommentItem({
     }
   };
 
-  const canEdit = currentUserId && (comment.author === currentUserId || isOwner);
+  const anonymousUserId = !currentUserId ? getAnonymousUserId() : null;
+  
+  const canEdit = (currentUserId && comment.author === currentUserId) || 
+                  (!currentUserId && comment.isAnonymous && comment.author === anonymousUserId);
   const canModerate = isOwner;
   const commentText = comment.text || '';
   const commentAuthor = comment.authorName || 'Anonymous';
@@ -232,7 +235,7 @@ function CommentItem({
           </div>
 
           {/* Action menu button */}
-          {(canEdit || canModerate) && (
+          {(canEdit || canModerate || (commentState !== 'resolved' && depth === 0) || commentState === 'resolved') && (
             <div className="relative" ref={actionMenuRef}>
               <button
                 onClick={() => setShowActionMenu(!showActionMenu)}
@@ -277,7 +280,7 @@ function CommentItem({
                     </button>
                   )}
                   
-                  {commentState === 'resolved' && (canEdit || canModerate) && (
+                  {commentState === 'resolved' && (
                     <button
                       onClick={() => {
                         onUpdate(comment.id, commentText); // Reopen by updating state
@@ -308,7 +311,7 @@ function CommentItem({
                     </button>
                   )}
                   
-                  {(canEdit || canModerate) && (
+                  {canEdit && (
                     <button
                       onClick={() => {
                         if (confirm('Are you sure you want to delete this comment? This action cannot be undone.')) {
@@ -571,6 +574,17 @@ function CommentItem({
   );
 }
 
+// Helper function to get or create anonymous user ID
+const getAnonymousUserId = () => {
+  if (typeof window === 'undefined') return null;
+  let anonymousId = localStorage.getItem('quickstage_anonymous_id');
+  if (!anonymousId) {
+    anonymousId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('quickstage_anonymous_id', anonymousId);
+  }
+  return anonymousId;
+};
+
 export default function UnifiedCommentSystem({ 
   snapshotId, 
   isOwner = false, 
@@ -629,9 +643,16 @@ export default function UnifiedCommentSystem({
       formData.append('text', trimmedText);
       formData.append('state', 'published');
       
-      // Add anonymous name if not authenticated
-      if (!user && anonymousName.trim()) {
-        formData.append('authorName', anonymousName.trim());
+      // Add anonymous name and ID if not authenticated
+      if (!user) {
+        if (anonymousName.trim()) {
+          formData.append('authorName', anonymousName.trim());
+        }
+        // Add anonymous user ID for ownership tracking
+        const anonymousId = getAnonymousUserId();
+        if (anonymousId) {
+          formData.append('anonymousUserId', anonymousId);
+        }
       }
       
       if (newCommentAttachments.length > 0) {
@@ -723,9 +744,17 @@ export default function UnifiedCommentSystem({
 
   const handleUpdate = async (commentId: string, text: string) => {
     try {
-      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, {
-        text
-      });
+      const updateData: any = { text };
+      
+      // Add anonymous user ID if not authenticated
+      if (!user) {
+        const anonymousId = getAnonymousUserId();
+        if (anonymousId) {
+          updateData.anonymousUserId = anonymousId;
+        }
+      }
+      
+      await api.put(`/api/snapshots/${snapshotId}/comments/${commentId}`, updateData);
       await loadComments();
     } catch (error) {
       console.error('Failed to update comment:', error);
@@ -852,9 +881,9 @@ export default function UnifiedCommentSystem({
   const commentTree = buildCommentTree(comments);
 
   return (
-    <div className={`bg-white rounded-lg shadow ${className}`}>
+    <div className={`bg-white rounded-lg shadow flex flex-col h-full ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
         <div className="flex items-center space-x-2">
           <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
@@ -1012,7 +1041,7 @@ export default function UnifiedCommentSystem({
       )}
 
       {/* Comment List */}
-      <div className="max-h-96 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0 pb-16">
         {commentTree.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <svg className="w-16 h-16 text-gray-300 mb-4" fill="currentColor" viewBox="0 0 20 20">
@@ -1089,10 +1118,10 @@ export default function UnifiedCommentSystem({
         )}
       </div>
 
-      {/* Footer with summary stats */}
+      {/* Footer with summary stats - pinned to bottom */}
       {commentTree.length > 0 && (
-        <div className="border-t border-gray-200 p-3 bg-gray-50">
-          <div className="flex items-center justify-between text-xs text-gray-600">
+        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 p-3 bg-gray-50 z-10">
+          <div className="max-w-4xl mx-auto flex items-center justify-between text-xs text-gray-600">
             <span>
               {commentTree.length} thread{commentTree.length !== 1 ? 's' : ''}
             </span>

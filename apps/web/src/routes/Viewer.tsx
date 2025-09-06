@@ -20,6 +20,7 @@ type Snapshot = {
   totalBytes: number;
   status: string;
   password?: string;
+  ownerUid?: string; // Owner user ID for authorization checks
 };
 
 export function Viewer() {
@@ -264,7 +265,7 @@ export function Viewer() {
         {iframeSection === 'comments' && snapshotId && (
           <UnifiedCommentSystem
             snapshotId={snapshotId}
-            isOwner={!!user}
+            isOwner={!!user && snapshot && user?.uid === snapshot.ownerUid}
           />
         )}
         
@@ -272,7 +273,8 @@ export function Viewer() {
           <div className="p-6">
             <ReviewPanel 
               snapshotId={snapshotId}
-              isOwner={!!user}
+              isOwner={!!user && snapshot && user?.uid === snapshot.ownerUid}
+              currentUserId={user?.uid}
             />
           </div>
         )}
@@ -380,14 +382,15 @@ export function Viewer() {
           <div className="lg:col-span-3">
             <UnifiedCommentSystem
               snapshotId={snapshotId || ''}
-              isOwner={!!user}
+              isOwner={!!user && snapshot && user?.uid === snapshot.ownerUid}
             />
             
             {/* Reviews Panel */}
             <div className="mt-6">
               <ReviewPanel 
                 snapshotId={snapshotId || ''}
-                isOwner={!!user} // Show review functionality to authenticated users
+                isOwner={!!user && snapshot && user?.uid === snapshot.ownerUid}
+                currentUserId={user?.uid}
               />
             </div>
           </div>

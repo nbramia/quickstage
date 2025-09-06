@@ -38,7 +38,8 @@ export async function handleCreateComment(c: any) {
         parentId: formData.get('parentId'),
         state: formData.get('state') || 'published',
         subscribe: formData.get('subscribe') === 'true',
-        authorName: formData.get('authorName') // For anonymous users
+        authorName: formData.get('authorName'), // For anonymous users
+        anonymousUserId: formData.get('anonymousUserId') // For anonymous user tracking
       };
       
       // Extract file attachments
@@ -56,7 +57,8 @@ export async function handleCreateComment(c: any) {
       parentId,
       state = 'published',
       subscribe = false,
-      authorName
+      authorName,
+      anonymousUserId
     } = body;
 
     if (!text || text.trim().length === 0) {
@@ -117,7 +119,7 @@ export async function handleCreateComment(c: any) {
       id: commentId,
       snapshotId,
       text: text.trim(),
-      author: uid || 'anonymous',
+      author: uid || anonymousUserId || 'anonymous',
       authorName: displayName,
       isAnonymous,
       createdAt: now,
@@ -240,7 +242,8 @@ export async function handleUpdateComment(c: any) {
     
     // Check ownership - only allow editing by author, but anyone can resolve
     const isResolveAction = body.state === 'resolved';
-    if (!isResolveAction && existingComment.author !== (uid || 'anonymous')) {
+    const currentAuthor = uid || (body.anonymousUserId ? body.anonymousUserId : 'anonymous');
+    if (!isResolveAction && existingComment.author !== currentAuthor) {
       return c.json({ error: 'Unauthorized' }, 403);
     }
 

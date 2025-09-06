@@ -30,7 +30,8 @@ export async function handleCreateComment(c) {
                 parentId: formData.get('parentId'),
                 state: formData.get('state') || 'published',
                 subscribe: formData.get('subscribe') === 'true',
-                authorName: formData.get('authorName') // For anonymous users
+                authorName: formData.get('authorName'), // For anonymous users
+                anonymousUserId: formData.get('anonymousUserId') // For anonymous user tracking
             };
             // Extract file attachments
             const files = formData.getAll('attachments');
@@ -39,7 +40,7 @@ export async function handleCreateComment(c) {
         else {
             body = await c.req.json();
         }
-        const { text, elementSelector, elementCoordinates, pageUrl, parentId, state = 'published', subscribe = false, authorName } = body;
+        const { text, elementSelector, elementCoordinates, pageUrl, parentId, state = 'published', subscribe = false, authorName, anonymousUserId } = body;
         if (!text || text.trim().length === 0) {
             return c.json({ error: 'Comment text is required' }, 400);
         }
@@ -90,7 +91,7 @@ export async function handleCreateComment(c) {
             id: commentId,
             snapshotId,
             text: text.trim(),
-            author: uid || 'anonymous',
+            author: uid || anonymousUserId || 'anonymous',
             authorName: displayName,
             isAnonymous,
             createdAt: now,
@@ -186,7 +187,8 @@ export async function handleUpdateComment(c) {
         const existingComment = await getResponse.json();
         // Check ownership - only allow editing by author, but anyone can resolve
         const isResolveAction = body.state === 'resolved';
-        if (!isResolveAction && existingComment.author !== (uid || 'anonymous')) {
+        const currentAuthor = uid || (body.anonymousUserId ? body.anonymousUserId : 'anonymous');
+        if (!isResolveAction && existingComment.author !== currentAuthor) {
             return c.json({ error: 'Unauthorized' }, 403);
         }
         // Update comment

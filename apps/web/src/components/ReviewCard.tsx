@@ -64,7 +64,7 @@ export function ReviewCard({ review, isOwner, onCancel, onSubmitFeedback }: Revi
   const isOverdue = review.deadline && Date.now() > review.deadline;
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div className="border border-gray-200 rounded-md p-4 bg-white mb-4">
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
@@ -111,7 +111,7 @@ export function ReviewCard({ review, isOwner, onCancel, onSubmitFeedback }: Revi
         <h4 className="text-sm font-medium text-gray-900">Reviewers ({review.reviewers.length})</h4>
         
         {review.reviewers.map((participant) => (
-          <div key={participant.userId} className="flex items-start justify-between bg-gray-50 p-3 rounded-lg">
+          <div key={participant.userId} className="flex items-start justify-between bg-gray-50 p-3 rounded-md mb-2">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <p className="font-medium text-gray-900">{participant.userName}</p>
@@ -148,7 +148,7 @@ export function ReviewCard({ review, isOwner, onCancel, onSubmitFeedback }: Revi
 
       {/* Feedback Form */}
       {showFeedbackForm && (
-        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
           <h5 className="font-medium text-gray-900 mb-3">Submit Your Review</h5>
           
           <textarea
@@ -156,13 +156,13 @@ export function ReviewCard({ review, isOwner, onCancel, onSubmitFeedback }: Revi
             onChange={(e) => setFeedback(e.target.value)}
             placeholder="Provide your feedback on this design..."
             rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           />
           
           <div className="flex justify-end gap-3 mt-3">
             <button
               onClick={() => setShowFeedbackForm(false)}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
               disabled={isSubmitting}
             >
               Cancel
@@ -170,14 +170,14 @@ export function ReviewCard({ review, isOwner, onCancel, onSubmitFeedback }: Revi
             <button
               onClick={() => handleSubmitFeedback('changes_requested')}
               disabled={isSubmitting || !feedback.trim()}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 transition-colors"
             >
               Request Changes
             </button>
             <button
               onClick={() => handleSubmitFeedback('approved')}
               disabled={isSubmitting || !feedback.trim()}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               Approve
             </button>

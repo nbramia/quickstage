@@ -81,7 +81,7 @@ describe('AdminDashboard Component', () => {
       render(<AdminDashboard />);
       
       // Initially shows loading
-      expect(screen.getByText('Loading users...')).toBeInTheDocument();
+      expect(screen.getByText('Loading admin dashboard...')).toBeInTheDocument();
       
       // Wait for loading to complete and content to appear
       await waitFor(() => {

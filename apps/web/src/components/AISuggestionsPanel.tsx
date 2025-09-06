@@ -40,6 +40,44 @@ export default function AISuggestionsPanel({
     scrollToBottom();
   }, [messages]);
 
+  // Add global error handler for MutationObserver errors from extensions
+  useEffect(() => {
+    const handleGlobalError = (event: ErrorEvent) => {
+      console.log('🔍 Global error caught:', event.message, 'at', event.filename, ':', event.lineno);
+      
+      if (event.message?.includes('MutationObserver') && event.message?.includes('parameter 1 is not of type \'Node\'')) {
+        console.warn('🚫 Suppressed MutationObserver error from browser extension:', event.message);
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+      
+      // Also catch unhandled promise rejections that might be related
+      if (event.message?.includes('observe') || event.message?.includes('MutationObserver')) {
+        console.warn('🚫 Suppressed potential MutationObserver-related error:', event.message);
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.log('🔍 Unhandled promise rejection:', event.reason);
+      if (event.reason?.message?.includes('MutationObserver') || event.reason?.message?.includes('observe')) {
+        console.warn('🚫 Suppressed MutationObserver promise rejection:', event.reason);
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
   // Load existing conversation when panel opens
   useEffect(() => {
     if (isVisible && !hasStarted) {
@@ -70,41 +108,113 @@ export default function AISuggestionsPanel({
   };
 
   const startConversation = async () => {
+    console.log('🚀 Starting AI conversation for snapshot:', snapshotId);
     setIsInitializing(true);
     setError(null);
+    setRetryCount(0);
     
     try {
-      // Add a small delay to ensure DOM is fully ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('⏳ Waiting for iframe to be ready...');
+      // Add a longer delay to ensure iframe is fully loaded and accessible
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
+      // Check if we're in an iframe context and if the parent iframe is accessible
+      if (window.parent !== window) {
+        console.log('🔍 Checking iframe context...');
+        try {
+          // Try to access parent document to check if iframe is ready
+          const parentDoc = window.parent.document;
+          if (!parentDoc) {
+            throw new Error('Parent document not accessible');
+          }
+          console.log('✅ Parent document accessible');
+          
+          // Check if the iframe is fully loaded
+          const iframe = window.parent.document.querySelector('iframe[src*="' + snapshotId + '"]') as HTMLIFrameElement;
+          if (iframe && iframe.contentDocument) {
+            console.log('✅ Iframe found and accessible');
+            // Iframe is accessible, check if it's fully loaded
+            if (iframe.contentDocument.readyState !== 'complete') {
+              console.warn('⏳ Iframe not fully loaded, waiting...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            console.log('✅ Iframe ready state:', iframe.contentDocument.readyState);
+          } else {
+            console.warn('⚠️ Iframe not found or not accessible');
+          }
+        } catch (iframeError) {
+          console.warn('⚠️ Iframe access check failed:', iframeError);
+          // Continue anyway - the backend will handle iframe content extraction
+        }
+      } else {
+        console.log('ℹ️ Not in iframe context, proceeding directly');
+      }
+      
+      console.log('📡 Making API request to start AI chat...');
       const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/start`);
+      console.log('📡 API response received:', response);
+      console.log('🔍 Response type:', typeof response);
+      console.log('🔍 Response keys:', Object.keys(response));
+      console.log('🔍 Response.data type:', typeof response.data);
+      console.log('🔍 Response.data keys:', response.data ? Object.keys(response.data) : 'undefined');
+      console.log('🔍 Response success value:', response.data?.success);
+      console.log('🔍 Response data:', response.data?.data);
       
-      if (response.data.success) {
-        const conversationMessages = response.data.data.messages.map((msg: any) => ({
+      if (response.success) {
+        console.log('✅ AI chat started successfully');
+        console.log('📊 Response data structure:', response.data);
+        
+        // Handle different possible response structures
+        let messages = [];
+        if (response.data.data && response.data.data.messages) {
+          messages = response.data.data.messages;
+        } else if (response.data.messages) {
+          messages = response.data.messages;
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          messages = response.data.data;
+        } else {
+          console.warn('⚠️ No messages found in response, using empty array');
+          messages = [];
+        }
+        
+        console.log('📝 Messages to display:', messages);
+        
+        const conversationMessages = messages.map((msg: any) => ({
           ...msg,
           timestamp: Date.now()
         }));
         setMessages(conversationMessages);
         setHasStarted(true);
       } else {
-        setError(response.data.error || 'Failed to start AI analysis');
+        console.error('❌ AI chat start failed:', response.error);
+        console.error('❌ Response structure:', response);
+        setError(response.error || 'Failed to start AI analysis');
       }
     } catch (error: any) {
-      console.error('Failed to start conversation:', error);
+      console.error('❌ Failed to start conversation:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
       
       // Enhanced error handling for different error types
       if (error.response?.status === 429) {
         setError('Rate limit exceeded. Please try again in an hour.');
       } else if (error.response?.status === 503) {
         setError('AI service is temporarily unavailable. Please try again later.');
-      } else if (error.message?.includes('MutationObserver')) {
+      } else if (error.message?.includes('MutationObserver') || error.message?.includes('observe')) {
         setError('Browser compatibility issue detected. Please refresh the page and try again.');
-      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument')) {
-        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded.');
+      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument') || error.message?.includes('cross-origin')) {
+        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded and try again.');
+      } else if (error.message?.includes('Network Error') || !navigator.onLine) {
+        setError('Network connection issue. Please check your internet connection and try again.');
       } else {
-        setError('Failed to connect to AI service. Please try again.');
+        setError(`Failed to connect to AI service: ${error.message || 'Unknown error'}`);
       }
     } finally {
+      console.log('🏁 AI conversation start attempt completed');
       setIsInitializing(false);
     }
   };
@@ -129,15 +239,15 @@ export default function AISuggestionsPanel({
         message: messageToSend
       });
 
-      if (response.data.success) {
+      if (response.success) {
         const aiResponse: AIMessage = {
           role: 'assistant',
-          content: response.data.data.response,
+          content: response.data.response,
           timestamp: Date.now()
         };
         setMessages(prev => [...prev, aiResponse]);
       } else {
-        setError(response.data.error || 'Failed to get AI response');
+        setError(response.error || 'Failed to get AI response');
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
@@ -146,11 +256,23 @@ export default function AISuggestionsPanel({
       if (error.response?.status === 429) {
         setError('Rate limit exceeded. Please try again in an hour.');
       } else if (error.response?.status === 503) {
-        setError('AI service is temporarily unavailable. Please try again later.');
-      } else if (error.message?.includes('MutationObserver')) {
+        if (retryCount < 3) {
+          setRetryCount(prev => prev + 1);
+          setError(`AI service temporarily unavailable. Retrying... (${retryCount + 1}/3)`);
+          // Retry after 2 seconds
+          setTimeout(() => {
+            sendMessage();
+          }, 2000);
+          return;
+        } else {
+          setError('AI service is temporarily unavailable. Please try again later.');
+        }
+      } else if (error.message?.includes('MutationObserver') || error.message?.includes('observe')) {
         setError('Browser compatibility issue detected. Please refresh the page and try again.');
-      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument')) {
-        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded.');
+      } else if (error.message?.includes('iframe') || error.message?.includes('contentDocument') || error.message?.includes('cross-origin')) {
+        setError('Unable to access snapshot content. Please ensure the snapshot is fully loaded and try again.');
+      } else if (error.message?.includes('Network Error') || !navigator.onLine) {
+        setError('Network connection issue. Please check your internet connection and try again.');
       } else {
         setError('Failed to send message. Please try again.');
       }
@@ -198,29 +320,18 @@ export default function AISuggestionsPanel({
             Get expert UI/UX feedback and suggestions
           </p>
         </div>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 text-lg font-bold"
-          aria-label="Close panel"
-        >
-          ×
-        </button>
       </div>
 
       {!hasStarted ? (
         /* Welcome Screen */
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <div className="text-6xl mb-4">🎨</div>
-          <h4 className="text-xl font-semibold text-gray-900 mb-4">
-            AI-Powered UX Analysis
-          </h4>
+        <div className="p-6">
           <p className="text-gray-600 mb-6 leading-relaxed">
             Get instant feedback on your prototype's user experience, accessibility, 
             design patterns, and modern UI best practices. Ask questions and get 
             specific suggestions for improvement.
           </p>
           
-          <div className="w-full space-y-3 mb-6 text-sm text-gray-500">
+          <div className="space-y-3 mb-6 text-sm text-gray-500">
             <div className="flex items-center">
               <span className="text-green-500 mr-2">✓</span>
               Accessibility & WCAG compliance

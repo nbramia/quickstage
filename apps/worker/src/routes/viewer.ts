@@ -7,7 +7,7 @@ import { getUidFromSession } from '../auth';
 // Viewer route handlers for snapshot display and access
 
 // Inject viewer overlay components into HTML
-function injectViewerOverlay(html: string, snapshotId: string): string {
+function injectViewerOverlay(html: string, snapshotId: string, isOwner: boolean = false): string {
   const overlayCSS = `
 <style id="quickstage-overlay-styles">
 /* QuickStage Viewer Overlay - Designed to work with any app */
@@ -27,13 +27,13 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
 }
 
 #quickstage-viewer-toggle {
-  background: var(--qs-primary);
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   color: white;
   border: none;
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 700;
   font-size: 12px;
   box-shadow: var(--qs-shadow);
   transition: all 0.2s ease;
@@ -41,10 +41,18 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
   align-items: center;
   gap: 6px;
   backdrop-filter: blur(8px);
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 999999;
+}
+
+#quickstage-viewer-toggle.hidden {
+  display: none;
 }
 
 #quickstage-viewer-toggle:hover {
-  background: var(--qs-primary-hover);
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
   transform: translateY(-1px);
 }
 
@@ -138,8 +146,8 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
   const overlayHTML = `
 <div id="quickstage-viewer-overlay">
   <button id="quickstage-viewer-toggle">
-    <span>📋</span>
-    <span>QuickStage</span>
+    <span>💬</span>
+    <span>Comments</span>
   </button>
   
   <div id="quickstage-viewer-panel">
@@ -158,10 +166,12 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
       <span>Add Comment</span>
     </button>
     
+    ${isOwner ? `
     <button class="qs-button" onclick="window.qsRequestReview?.()">
       <span>🔍</span>
       <span>Request Review</span>
     </button>
+    ` : ''}
     
     <button class="qs-button" onclick="window.qsShowAIAssistant?.()">
       <span>🤖</span>
@@ -170,14 +180,7 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
     
     <div class="qs-divider"></div>
     
-    <a href="https://quickstage.tech/" target="_blank" class="qs-button">
-      <span>🏠</span>
-      <span>Dashboard</span>
-    </a>
-    
-    <div class="qs-divider"></div>
-    
-    <a href="https://quickstage.tech/" target="_blank" class="qs-button">
+    <a href="https://quickstage.tech/dashboard" target="_blank" class="qs-button">
       <span>🏠</span>
       <span>Dashboard</span>
     </a>
@@ -205,8 +208,13 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
       isOpen = !isOpen;
       panel.classList.toggle('show', isOpen);
       
+      // Hide/show toggle button
+      toggle.classList.toggle('hidden', isOpen);
+      
       // Update toggle appearance
-      toggle.style.background = isOpen ? '#4338ca' : '#4f46e5';
+      toggle.style.background = isOpen 
+        ? 'linear-gradient(135deg, #4338ca 0%, #6d28d9 100%)' 
+        : 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)';
     });
     
     // Close panel when clicking outside
@@ -214,7 +222,8 @@ function injectViewerOverlay(html: string, snapshotId: string): string {
       if (!toggle.contains(e.target) && !panel.contains(e.target)) {
         isOpen = false;
         panel.classList.remove('show');
-        toggle.style.background = '#4f46e5';
+        toggle.classList.remove('hidden');
+        toggle.style.background = 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)';
       }
     });
     
@@ -841,7 +850,10 @@ export async function handleSnapshotFile(c: any, id?: string, fileName?: string)
     
     // For HTML files, inject viewer overlay components
     if (actualFilePath.endsWith('.html')) {
-      content = injectViewerOverlay(content, snapshotId);
+      // Check if user is authenticated and owns this snapshot
+      const uid = await getUidFromSession(c);
+      const isOwner = !!(uid && meta.ownerUid === uid);
+      content = injectViewerOverlay(content, snapshotId, isOwner);
     }
     
     console.log(`🔧 ${actualFilePath} asset paths rewritten for snapshot ${snapshotId}`);

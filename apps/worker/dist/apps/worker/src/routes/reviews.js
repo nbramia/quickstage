@@ -333,7 +333,7 @@ export async function handleGetSnapshotReviews(c) {
             return c.json({ success: true, reviews: [] });
         }
         const review = JSON.parse(reviewData);
-        return c.json({ success: true, review });
+        return c.json({ success: true, reviews: [review] });
     }
     catch (error) {
         console.error('Error fetching snapshot reviews:', error);
