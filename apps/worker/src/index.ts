@@ -1452,23 +1452,23 @@ app.get('/debug/analytics/events', async (c: any) => {
 //   return handleMigrationStatus(c);
 // });
 
-// app.get('/debug/analytics/migrate/test', async (c: any) => {
-//   if (!(await isSuperadmin(c))) {
-//     return c.json({ error: 'Superadmin access required' }, 403);
-//   }
-//   console.log('🧪 Test migration requested');
-//   const { handleMigrateAnalyticsEventsTest } = await import('./routes/debug');
-//   return handleMigrateAnalyticsEventsTest(c);
-// });
+app.get('/debug/analytics/migrate/test', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  console.log('🧪 Test migration requested');
+  const { handleMigrateAnalyticsEventsTest } = await import('./routes/debug');
+  return handleMigrateAnalyticsEventsTest(c);
+});
 
-// app.post('/debug/analytics/migrate/full', async (c: any) => {
-//   if (!(await isSuperadmin(c))) {
-//     return c.json({ error: 'Superadmin access required' }, 403);
-//   }
-//   console.log('🚀 Full migration requested');
-//   const { handleMigrateAnalyticsEventsFull } = await import('./routes/debug');
-//   return handleMigrateAnalyticsEventsFull(c);
-// });
+app.post('/debug/analytics/migrate/full', async (c: any) => {
+  if (!(await isSuperadmin(c))) {
+    return c.json({ error: 'Superadmin access required' }, 403);
+  }
+  console.log('🚀 Full migration requested');
+  const { handleMigrateAnalyticsEventsFull } = await import('./routes/debug');
+  return handleMigrateAnalyticsEventsFull(c);
+});
 
 // Migration system endpoints (superadmin only)
 app.get('/debug/migration/stats', async (c: any) => {

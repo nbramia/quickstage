@@ -1,5 +1,6 @@
 import { isSuperadmin } from '../auth';
 import { getAnalyticsManager } from '../worker-utils';
+import { AnalyticsEventMigration } from '../migration/analytics-reverse-timestamp';
 
 // Constants for reverse timestamp strategy
 const MAX_TS = 10000000000000; // Same constant used in analytics.ts
@@ -260,18 +261,56 @@ export async function handleMigrationStatus(c: any) {
   return c.json({ status: 'Migration complete', message: 'All events migrated to new format' });
 }
 
-// Migration test route (stub)
+// Migration test route
 export async function handleMigrateAnalyticsEventsTest(c: any) {
   if (!(await isSuperadmin(c))) {
     return c.json({ error: 'Superadmin access required' }, 403);
   }
-  return c.json({ status: 'Test migration complete', message: 'Test migration functionality disabled' });
+  
+  try {
+    console.log('🧪 Starting test migration of analytics events...');
+    const migration = new AnalyticsEventMigration(c.env);
+    const result = await migration.testMigration();
+    
+    console.log('✅ Test migration completed:', result);
+    return c.json({ 
+      status: 'Test migration complete', 
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('❌ Test migration failed:', error);
+    return c.json({ 
+      error: 'Test migration failed', 
+      message: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
 }
 
-// Migration full route (stub)
+// Migration full route
 export async function handleMigrateAnalyticsEventsFull(c: any) {
   if (!(await isSuperadmin(c))) {
     return c.json({ error: 'Superadmin access required' }, 403);
   }
-  return c.json({ status: 'Full migration complete', message: 'Full migration functionality disabled' });
+  
+  try {
+    console.log('🚀 Starting FULL migration of analytics events...');
+    const migration = new AnalyticsEventMigration(c.env);
+    const result = await migration.executeMigration();
+    
+    console.log('✅ Full migration completed:', result);
+    return c.json({ 
+      status: 'Full migration complete', 
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('❌ Full migration failed:', error);
+    return c.json({ 
+      error: 'Full migration failed', 
+      message: error.message,
+      timestamp: new Date().toISOString()
+    }, 500);
+  }
 }

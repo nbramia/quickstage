@@ -12,13 +12,15 @@ interface AIChatPanelProps {
   isVisible: boolean;
   onClose: () => void;
   className?: string;
+  user?: any; // User object from auth context
 }
 
 export default function AISuggestionsPanel({ 
   snapshotId, 
   isVisible, 
   onClose, 
-  className = '' 
+  className = '',
+  user
 }: AIChatPanelProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -107,8 +109,12 @@ export default function AISuggestionsPanel({
     startConversation();
   };
 
-  const startConversation = async () => {
-    console.log('🚀 Starting AI conversation for snapshot:', snapshotId);
+  const restartConversation = () => {
+    startConversation(true);
+  };
+
+  const startConversation = async (forceRestart = false) => {
+    console.log('🚀 Starting AI conversation for snapshot:', snapshotId, forceRestart ? '(restarting)' : '');
     setIsInitializing(true);
     setError(null);
     setRetryCount(0);
@@ -151,7 +157,24 @@ export default function AISuggestionsPanel({
       }
       
       console.log('📡 Making API request to start AI chat...');
-      const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/start`);
+      
+      // Get anonymous user ID for persistent conversations (like comments)
+      const getAnonymousUserId = () => {
+        let anonymousId = localStorage.getItem('quickstage_anonymous_id');
+        if (!anonymousId) {
+          anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+          localStorage.setItem('quickstage_anonymous_id', anonymousId);
+        }
+        return anonymousId;
+      };
+      
+      const anonymousUserId = !user ? getAnonymousUserId() : null;
+      console.log('🔍 Anonymous user ID:', anonymousUserId);
+      
+      const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/start`, {
+        anonymousUserId: anonymousUserId,
+        forceReanalysis: forceRestart
+      });
       console.log('📡 API response received:', response);
       console.log('🔍 Response type:', typeof response);
       console.log('🔍 Response keys:', Object.keys(response));
@@ -235,8 +258,21 @@ export default function AISuggestionsPanel({
     setError(null);
 
     try {
+      // Get anonymous user ID for persistent conversations (like comments)
+      const getAnonymousUserId = () => {
+        let anonymousId = localStorage.getItem('quickstage_anonymous_id');
+        if (!anonymousId) {
+          anonymousId = 'anon_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+          localStorage.setItem('quickstage_anonymous_id', anonymousId);
+        }
+        return anonymousId;
+      };
+      
+      const anonymousUserId = !user ? getAnonymousUserId() : null;
+      
       const response = await api.post(`/api/snapshots/${snapshotId}/ai-chat/message`, {
-        message: messageToSend
+        message: messageToSend,
+        anonymousUserId: anonymousUserId
       });
 
       if (response.success) {
@@ -320,6 +356,16 @@ export default function AISuggestionsPanel({
             Get expert UI/UX feedback and suggestions
           </p>
         </div>
+        {hasStarted && (
+          <button
+            onClick={restartConversation}
+            disabled={isLoading || isInitializing}
+            className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Clear and restart analysis with fresh file content"
+          >
+            🔄 Restart
+          </button>
+        )}
       </div>
 
       {!hasStarted ? (
@@ -351,7 +397,7 @@ export default function AISuggestionsPanel({
           </div>
 
           <button
-            onClick={startConversation}
+            onClick={() => startConversation()}
             disabled={isInitializing}
             className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium"
           >

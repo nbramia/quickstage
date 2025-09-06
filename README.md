@@ -158,6 +158,32 @@ QuickStage includes a powerful AI assistant that analyzes your prototypes and pr
    - "Is this color scheme accessible?"
    - "How can I make this more mobile-friendly?"
 
+### What the AI "Sees" and Analyzes
+
+**File Content Analysis:**
+- **HTML Files**: Structure, semantic elements, accessibility attributes, content hierarchy
+- **CSS Files**: Visual design, layout, typography, spacing, color schemes, responsive breakpoints
+- **JavaScript Files**: User interactions, form handling, navigation patterns, state management
+
+**What It Focuses On:**
+- **User Experience**: Navigation flow, task completion, usability patterns
+- **Visual Design**: Typography hierarchy, color contrast, spacing consistency, visual balance
+- **Accessibility**: Screen reader compatibility, keyboard navigation, color accessibility
+- **Mobile Experience**: Responsive design, touch targets, mobile-first considerations
+- **Business Value**: User problem-solving effectiveness, stakeholder communication clarity
+
+**What It Ignores:**
+- Code quality, performance, or technical implementation details
+- Architecture patterns or development best practices
+- Security considerations or technical debt
+- Framework-specific optimizations
+
+**Content Limits:**
+- Analyzes up to 10 files per snapshot
+- Reads first 5,000 characters of each file
+- Focuses on text-based files (HTML, CSS, JS, TS, TSX, JSX)
+- Skips binary files, images, and non-text content
+
 ### Rate Limiting & Error Handling
 
 - **User Limits**: 40 AI requests per hour per user/IP

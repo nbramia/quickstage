@@ -47,14 +47,20 @@ export async function handleStartAIConversation(c) {
             }
         }
         // AI analysis is available to anyone - no access restrictions needed
-        // Each user gets their own conversation based on uid or ipAddress
+        // Each user gets their own conversation based on uid or persistent anonymous ID
         console.log('✅ AI analysis access granted to:', { uid, ipAddress, isSuperadmin });
-        // Get or create conversation
-        const conversationId = `ai-conv:${snapshotId}:${uid || ipAddress}`;
+        // For anonymous users, we need to get a persistent ID from the request
+        // This should be sent from the frontend like we do for comments
+        const requestBody = await c.req.json().catch(() => ({}));
+        const anonymousUserId = requestBody.anonymousUserId;
+        const forceReanalysis = requestBody.forceReanalysis || false;
+        // Use uid if authenticated, otherwise use anonymousUserId, fallback to ipAddress
+        const userId = uid || anonymousUserId || ipAddress;
+        const conversationId = `ai-conv:${snapshotId}:${userId}`;
         console.log('🔍 Creating/retrieving conversation with ID:', conversationId);
-        console.log('🔍 User ID:', uid, 'IP Address:', ipAddress);
+        console.log('🔍 User ID:', uid, 'Anonymous ID:', anonymousUserId, 'IP Address:', ipAddress, 'Final User ID:', userId);
         let conversation = await c.env.KV_ANALYTICS.get(conversationId, { type: 'json' });
-        if (!conversation) {
+        if (!conversation || forceReanalysis) {
             // Get snapshot content for analysis
             const snapshotContent = await getSnapshotContentForAnalysis(snapshotId, snapshot.files, c.env);
             // Create initial conversation with OpenAI analysis
@@ -66,8 +72,28 @@ export async function handleStartAIConversation(c) {
                 {
                     role: 'user',
                     content: `
-            Please analyze this prototype and provide specific UI/UX feedback and suggestions. 
-            Here's the snapshot content:
+            I'm a product manager sharing a web prototype with my design and engineering team. This is throwaway code - I don't care about code quality, performance, or technical implementation. I need your help to give actionable feedback to improve the USER EXPERIENCE and DESIGN.
+
+            Please analyze this prototype from a PRODUCT and USER EXPERIENCE perspective:
+
+            **What I need from you:**
+            - User experience insights and pain points
+            - Design suggestions that will improve usability
+            - Accessibility issues that could exclude users
+            - Mobile experience improvements
+            - Visual hierarchy and information architecture feedback
+            - User flow and task completion improvements
+            - Specific, actionable recommendations for my team
+
+            **What I DON'T need:**
+            - Code quality feedback
+            - Technical implementation suggestions
+            - Performance optimization advice
+            - Architecture recommendations
+
+            **Context:** This is a web prototype that users will interact with. Focus on what users will see, feel, and experience when using this interface.
+
+            Here's the prototype content:
             \n\n${snapshotContent}`
                 }
             ];
@@ -121,7 +147,7 @@ export async function handleSendAIMessage(c) {
             return c.json({ success: false, error: 'Snapshot ID required' }, 400);
         }
         const body = await c.req.json();
-        const { message } = body;
+        const { message, anonymousUserId } = body;
         if (!message || typeof message !== 'string' || message.trim().length === 0) {
             return c.json({ success: false, error: 'Message is required' }, 400);
         }
@@ -130,15 +156,17 @@ export async function handleSendAIMessage(c) {
         }
         const uid = await getUidFromSession(c);
         const ipAddress = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
+        // Use uid if authenticated, otherwise use anonymousUserId, fallback to ipAddress
+        const userId = uid || anonymousUserId || ipAddress;
         // Check rate limiting
         const rateLimitCheck = await checkRateLimit(c, uid || undefined, ipAddress);
         if (!rateLimitCheck.allowed) {
             return c.json({ success: false, error: rateLimitCheck.error }, 429);
         }
         // Get conversation
-        const conversationId = `ai-conv:${snapshotId}:${uid || ipAddress}`;
+        const conversationId = `ai-conv:${snapshotId}:${userId}`;
         console.log('🔍 Looking for conversation with ID:', conversationId);
-        console.log('🔍 User ID:', uid, 'IP Address:', ipAddress);
+        console.log('🔍 User ID:', uid, 'Anonymous ID:', anonymousUserId, 'IP Address:', ipAddress, 'Final User ID:', userId);
         const conversation = await c.env.KV_ANALYTICS.get(conversationId, { type: 'json' });
         console.log('🔍 Conversation found:', conversation ? 'Yes' : 'No');
         if (!conversation) {
@@ -256,26 +284,54 @@ async function callOpenAI(messages, apiKey) {
 // Get snapshot content for AI analysis
 async function getSnapshotContentForAnalysis(snapshotId, files, env) {
     try {
+        console.log('🔍 Files to analyze:', files.map(f => ({
+            path: f.p || f.name,
+            contentType: f.ct || f.type,
+            size: f.sz || f.size
+        })));
         // Get file contents from R2
         const fileContents = await Promise.all(files.slice(0, 10).map(async (file) => {
             try {
-                if (file.ct === 'text/html' || file.ct === 'text/css' || file.ct === 'text/javascript' ||
-                    file.p.endsWith('.html') || file.p.endsWith('.css') || file.p.endsWith('.js')) {
-                    const object = await env.R2_SNAPSHOTS.get(`${snapshotId}/${file.p}`);
+                // Handle both old and new file formats
+                const filePath = file.p || file.name;
+                const fileType = file.ct || file.type;
+                // Check if file has a valid path
+                if (!filePath) {
+                    console.warn('File missing path property:', file);
+                    return '';
+                }
+                // Check if it's a text file we can analyze
+                const isTextFile = fileType === 'text/html' || fileType === 'text/css' || fileType === 'text/javascript' ||
+                    filePath.endsWith('.html') || filePath.endsWith('.css') || filePath.endsWith('.js') ||
+                    filePath.endsWith('.ts') || filePath.endsWith('.tsx') || filePath.endsWith('.jsx');
+                if (isTextFile) {
+                    console.log(`📄 Reading file: ${filePath} (${fileType})`);
+                    // Try both path formats: snap/snapshotId/filePath and snapshotId/filePath
+                    let object = await env.R2_SNAPSHOTS.get(`snap/${snapshotId}/${filePath}`);
+                    if (!object) {
+                        object = await env.R2_SNAPSHOTS.get(`${snapshotId}/${filePath}`);
+                    }
                     if (object) {
                         const content = await object.text();
-                        return `\n\n--- ${file.p} (${file.ct}) ---\n${content.substring(0, 5000)}`; // Limit content length
+                        console.log(`✅ Successfully read ${filePath}, length: ${content.length}`);
+                        return `\n\n--- ${filePath} (${fileType}) ---\n${content.substring(0, 5000)}`; // Limit content length
                     }
+                    else {
+                        console.warn(`❌ File not found in R2: snap/${snapshotId}/${filePath} or ${snapshotId}/${filePath}`);
+                    }
+                }
+                else {
+                    console.log(`⏭️ Skipping non-text file: ${filePath} (${fileType})`);
                 }
             }
             catch (err) {
-                console.warn(`Failed to read file ${file.p}:`, err);
+                console.warn(`Failed to read file ${file.p || file.name}:`, err);
             }
             return '';
         }));
         const validContents = fileContents.filter(content => content.length > 0);
         if (validContents.length === 0) {
-            return `Snapshot ${snapshotId} contains ${files.length} files, but no readable text content was found. Files include: ${files.map(f => f.p).join(', ')}`;
+            return `Snapshot ${snapshotId} contains ${files.length} files, but no readable text content was found. Files include: ${files.map(f => f.p || f.name).join(', ')}`;
         }
         return `Snapshot Analysis for ${snapshotId}:\nFiles: ${files.length} total\n\nContent:\n${validContents.join('\n')}`;
     }
@@ -286,34 +342,34 @@ async function getSnapshotContentForAnalysis(snapshotId, files, env) {
 }
 // Generate system prompt for UI/UX analysis
 function getSystemPrompt() {
-    return `You are an expert UI/UX consultant specializing in prototype review and cross-functional communication. You help product managers, designers, developers, and technical sales teams improve prototypes used for stakeholder communication and product development alignment.
+    return `You are a senior product manager and UX strategist with 10+ years of experience reviewing prototypes and giving feedback to design and engineering teams. You understand that prototypes are communication tools, not production code.
 
-**Your role:** Analyze prototypes as communication tools between PMs, designers, engineers, and sales teams. Focus on clarity, usability, and technical feasibility.
+**Your expertise:**
+- Product strategy and user experience design
+- Cross-functional team communication and feedback
+- Stakeholder presentation and demo preparation
+- User research and usability principles
+- Design system and accessibility standards
 
-**Target audience context:**
-- **Product Managers**: Need clear user flows, business logic validation, and stakeholder-friendly interfaces
-- **Product Designers**: Want feedback on design systems, visual hierarchy, and user experience patterns  
-- **Software Developers**: Need technically feasible designs with clear interaction patterns and edge cases
-- **Tech Sales**: Require compelling, professional interfaces that demonstrate product value effectively
+**Your role:** Help product managers give actionable, strategic feedback to their teams. Focus on user experience, business value, and team alignment - NOT code quality or technical implementation.
 
-**Key analysis areas:**
-- **Communication Clarity**: Does the prototype clearly convey intended functionality?
-- **User Flow Logic**: Are the workflows intuitive and complete for demo purposes?
-- **Technical Feasibility**: Can developers easily understand and implement this design?
-- **Professional Polish**: Does this look credible for client/stakeholder presentations?
-- **Accessibility & Standards**: WCAG compliance and modern web standards
-- **Mobile/Responsive**: Cross-device compatibility for various demo scenarios
-- **Edge Cases**: Missing states, error handling, loading patterns that teams often overlook
+**Analysis priorities:**
+1. **User Experience**: Is this intuitive and user-friendly?
+2. **Business Value**: Does this solve real user problems effectively?
+3. **Team Alignment**: Will this help designers and engineers understand the vision?
+4. **Stakeholder Communication**: Is this ready for demos and presentations?
+5. **Accessibility**: Will this work for all users?
+6. **Mobile Experience**: How does this work on different devices?
 
-**Your response style:**
-- Lead with business impact and user value
-- Provide specific, implementable suggestions with priority levels
-- Include technical considerations for developers
-- Suggest demo/presentation improvements for sales scenarios
-- Reference modern design patterns and industry standards
-- Keep feedback constructive and collaboration-focused
+**Your feedback style:**
+- Lead with user impact and business value
+- Give specific, actionable recommendations
+- Explain the "why" behind each suggestion
+- Prioritize feedback by user impact and effort
+- Use language that helps PMs communicate with their teams
+- Focus on what users will see, feel, and experience
 
-Focus on making this prototype an effective tool for cross-team communication and stakeholder buy-in.`;
+Remember: This is throwaway prototype code. Focus on the user experience and design, not the technical implementation.`;
 }
 // Rate limiting functions
 async function checkRateLimit(c, uid, ipAddress) {

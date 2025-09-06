@@ -284,6 +284,7 @@ export function Viewer() {
             snapshotId={snapshotId}
             isVisible={true}
             onClose={() => {}} // No close needed in iframe
+            user={user}
           />
         )}
       </div>
@@ -403,6 +404,7 @@ export function Viewer() {
           snapshotId={snapshotId}
           isVisible={showAISuggestions}
           onClose={() => setShowAISuggestions(false)}
+          user={user}
         />
       )}
 
